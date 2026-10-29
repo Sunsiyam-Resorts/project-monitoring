@@ -1936,6 +1936,30 @@ dialog::backdrop {
   width: 13px;
   height: 13px;
 }
+.auth-enrollment {
+  margin: 20px 0;
+}
+.auth-enrollment h3 {
+  margin-bottom: 8px;
+}
+.auth-enrollment p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.auth-enrollment button[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.auth-qr {
+  text-align: center;
+}
+.auth-qr img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+  background: white;
+}
 .secret {
   font-family: ui-monospace, monospace;
   word-break: break-all;

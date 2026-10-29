@@ -1,5 +1,13 @@
 # First portal review
 
+## Handover history and authenticator checks
+
+- Open a payment's printable view after a return/correction/resubmission. Verify its current approvals, earlier decisions and reasons, order reference, and separate order/additional/payment document filenames appear. Planning documents must omit Reviewer and Approval 2.
+- Open an order with approved, rejected and returned amendment attempts. Expand Amendment history and each saved version; check previous/proposed details, supplier, PO/invoice, budget/category allocations, totals, reasons and decision history. Download both the old and approved supporting PDFs. A missing/expired lock or inaccessible company must block downloads.
+- Revise an MVR budget, then change the current MVR rate. Previous budget versions must display MVR amounts and USD equivalents using that version's saved rate. Legacy revisions without a currency default to USD.
+- With a new actual account, enter the correct password. Choose Scan QR code, scan it in an authenticator, switch to Enter setup key, and verify the same key configures the same account. Switching methods must preserve any entered verification code. Complete enrollment with a valid six-digit code. Subsequent sign-ins must show only code verification, without offering enrollment again. Back to sign in must remove enrollment material from the page.
+- Review DATABASE.md and database-example.sql before changing database structure. The SQL file may be run against an isolated development database; Admin and workspace bootstrap remain application responsibilities.
+
 All demo records and uploaded demo changes remain in the current browser. Start with **Explore demo workspace**. The top role selector simulates users; real authentication is separate.
 
 1. As Admin, inspect all five pages. Test group/company/project dashboards. Review category balances and export summary.

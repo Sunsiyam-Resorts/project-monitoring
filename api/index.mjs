@@ -9,7 +9,8 @@ import {
   decrypt,
   totpOK,
 } from "../lib/auth.mjs";
-import { apply, visibleState, access } from "../public/domain.js";
+import { apply, visibleState, supportingFile } from "../public/domain.js";
+import { authenticatorEnrollment } from "../lib/enrollment.mjs";
 const token = () => randomBytes(32).toString("hex");
 const safeUser = (u) => ({
   id: u.id,
@@ -101,6 +102,7 @@ export default async function handler(req, res) {
           throw Error("Invalid username or password");
         if (!u.totpSecret) {
           const key = secret();
+          const enrollment = await authenticatorEnrollment(u.username, key);
           return {
             challenge: await challenge(
               { userId: u.id, key: encrypt(key), kind: "enroll" },
@@ -108,7 +110,7 @@ export default async function handler(req, res) {
             ),
             enroll: true,
             secret: key,
-            uri: `otpauth://totp/Sun%20Siyam:${encodeURIComponent(u.username)}?secret=${key}&issuer=Sun%20Siyam`,
+            ...enrollment,
           };
         }
         return {
@@ -219,27 +221,13 @@ export default async function handler(req, res) {
         return { ok: true };
       }
       if (action === "file") {
-        const id = url.searchParams.get("id"),
-          kind = url.searchParams.get("kind"),
-          index = Number(url.searchParams.get("index") || 0);
-        const rec = ["order", "amendment"].includes(kind)
-          ? s.orders.find((o) => o.id === id)
-          : s.requests.find((r) => r.id === id);
-        if (!rec || !access(u, rec.companyId))
-          throw Error("File not available");
-        const l = s.locks[id];
-        if (!l || l.userId !== u.id || l.expires < Date.now())
-          throw Error("Open the record to view supporting files");
-        const f =
-          kind === "order"
-            ? rec.files[index]
-            : kind === "amendment"
-              ? rec.amendment?.data.files[index]
-              : kind === "request"
-                ? rec.files?.[index]
-                : rec.payment?.files?.[index];
-        if (!f) throw Error("File not available");
-        return { file: f };
+        return { file: supportingFile(s, u, {
+          id: url.searchParams.get("id"),
+          kind: url.searchParams.get("kind"),
+          index: url.searchParams.get("index") || 0,
+          version: url.searchParams.get("version"),
+          side: url.searchParams.get("side") || "data",
+        }) };
       }
       if (action === "command") {
         const cmd = b;

@@ -11,6 +11,7 @@ import {
   currencyStats,
   firstStage,
   visibleState,
+  supportingFile,
   kpis,
   money,
   access,
@@ -65,6 +66,8 @@ let state,
   loginStep = "password",
   loginChallenge = "",
   enrollKey = "",
+  enrollQr = "",
+  enrollMethod = "qr",
   busy = false;
 const symbols = {
   dashboard:
@@ -717,25 +720,50 @@ function orderDetail(id) {
       .map((w) => `<div class="notice warn">${esc(w)}</div>`)
       .join(
         "",
-      )}${m ? amendmentView(o) : ""}<h3>Budget allocations</h3>${categoryTable(o)}<div class="detail-section"><h3>Supporting documents</h3>${fileList(o.files, "order", id)}</div><div class="detail-section"><h3>Payment Requests</h3>${requestTable(rs)}</div>${o.amendments?.length ? `<details class="details-disclosure"><summary>Approved amendment history</summary>${o.amendments.map((m) => `<div class="notice">${date(m.approvedAt)} · ${esc(m.reason)}<br>Previous total ${o.currency} ${fmt(m.previous.total)} · Updated ${o.currency} ${fmt(m.data.total)}${(m.approvals || []).map((a) => `<br>${esc(a.stage)} · ${esc(a.by)} · ${date(a.at)}`).join("")}</div>`).join("")}</details>` : ""}`,
+      )}${m ? amendmentView(o) : ""}<h3>Budget allocations</h3>${categoryTable(o)}<div class="detail-section"><h3>Supporting documents</h3>${fileList(o.files, "order", id)}</div><div class="detail-section"><h3>Payment Requests</h3>${requestTable(rs)}</div>${amendmentHistory(o)}`,
   );
 }
-function fileList(files, kind, id) {
+function fileList(files, kind, id, version = "", side = "data") {
   return (files || [])
     .map(
       (f, i) =>
-        `<button class="document-link" data-action="file" data-kind="${kind}" data-id="${id}" data-index="${i}">${icon("requests")}<span class="document-name">${esc(f.name)}<small>PDF</small></span>${icon("download")}</button>`,
+        `<button class="document-link" data-action="file" data-kind="${kind}" data-id="${id}" data-index="${i}" data-version="${esc(version)}" data-side="${side}">${icon("requests")}<span class="document-name">${esc(f.name)}<small>PDF</small></span>${icon("download")}</button>`,
     )
     .join("");
 }
 function amendmentView(o) {
   const m = o.amendment,
     review = stageActor(user, m);
-  return `<section class="decision-panel"><h3>Proposed amendment · ${esc(m.status)}</h3><p>${esc(m.reason)}</p><div class="detail-grid">${["total", "po", "invoice", "description"].map((k) => detail(k, `<span class="secondary">${esc(o[k])}</span> → ${esc(m.data[k])}`)).join("")}</div><p>Supplier: ${esc(name("suppliers", m.data.supplierId))} · Budget: ${esc(name("budgets", m.data.budgetId))}</p>${categoryTable(m.data)}${fileList(m.data.files, "amendment", o.id)}<p class="help">Effective details stay unchanged until final approval.</p>${review ? `<div class="actions"><button class="primary" data-action="amendApprove" data-id="${o.id}">Approve amendment</button><button data-action="amendReturn" data-id="${o.id}">Return to requester</button><button class="danger" data-action="amendReject" data-id="${o.id}">Reject amendment</button></div>` : ""}</section>`;
+  return `<section class="decision-panel"><h3>Proposed amendment · ${esc(m.status)}</h3><p>${esc(m.reason)}</p><div class="detail-grid">${["total", "po", "invoice", "description"].map((k) => detail(k, `<span class="secondary">${esc(o[k])}</span> → ${esc(m.data[k])}`)).join("")}</div><p>Supplier: ${esc(name("suppliers", m.data.supplierId))} · Budget: ${esc(name("budgets", m.data.budgetId))}</p>${categoryTable(m.data)}${fileList(m.data.files, "amendment", o.id)}${reviewHistory(m.history, o.team)}<p class="help">Effective details stay unchanged until final approval.</p>${review ? `<div class="actions"><button class="primary" data-action="amendApprove" data-id="${o.id}">Approve amendment</button><button data-action="amendReturn" data-id="${o.id}">Return to requester</button><button class="danger" data-action="amendReject" data-id="${o.id}">Reject amendment</button></div>` : ""}</section>`;
 }
 function categoryTable(o) {
   const b = state.budgets.find((b) => b.id === o.budgetId);
-  return `<div class="table-wrap"><table><thead><tr><th>Budget category</th><th class="right">Order allocation ${o.currency}</th><th class="right">USD equivalent</th></tr></thead><tbody>${o.allocations.map((a) => `<tr><td>${esc(b.categories.find((c) => c.id === a.categoryId)?.name)}</td><td class="right">${fmt(a.amount)}</td><td class="right">${fmt(a.amount / o.rate)}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Budget category</th><th class="right">Order allocation ${o.currency}</th><th class="right">USD equivalent</th></tr></thead><tbody>${o.allocations.map((a) => `<tr><td>${esc(b?.categories.find((c) => c.id === a.categoryId)?.name || a.categoryId)}</td><td class="right">${fmt(a.amount)}</td><td class="right">${fmt(a.amount / o.rate)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function reviewHistory(history = [], team) {
+  const entries = history.filter((h) => team !== "Planning" || h.stage !== "Reviewer");
+  return `<section class="detail-section"><h3>Review history</h3>${entries.length ? `<div class="table-wrap"><table><thead><tr><th>Stage / Action</th><th>Name</th><th>Date / Time</th><th>Reason</th></tr></thead><tbody>${entries.map((h) => `<tr><td>${esc(h.stage)} · ${esc(h.action)}</td><td>${esc(h.by)}</td><td>${date(h.at)}</td><td>${esc(h.reason || "—")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="help">No review actions recorded yet.</p>'}</section>`;
+}
+function amendmentDetails(o, data, title, kind, version, side) {
+  if (!data) return "";
+  return `<section class="detail-section"><h4>${title}</h4><div class="detail-grid">${detail("Supplier", esc(name("suppliers", data.supplierId)))}${detail("PO", esc(data.po))}${detail("Invoice", esc(data.invoice || "—"))}${detail("Approved budget", esc(name("budgets", data.budgetId)))}${detail("Full order amount", `${esc(data.currency)} ${fmt(data.total)}`)}${detail("Saved exchange rate", `1 USD = ${fmt(data.rate)} ${esc(data.currency)}`)}</div><p>${esc(data.description)}</p>${categoryTable(data)}<h4>Supporting documents</h4>${fileList(data.files, kind, o.id, version, side) || '<p class="help">No supporting documents recorded.</p>'}</section>`;
+}
+function amendmentHistory(o) {
+  const versions = [
+    ...(o.amendments || []).map((m) => ({ m, kind: "amendment-history", status: "Approved" })),
+    ...(o.amendmentAttempts || []).map((m) => ({ m, kind: "amendment-attempt", status: m.status === "Draft" ? "Returned for correction" : m.status })),
+  ].sort((a, b) => (b.m.createdAt || "").localeCompare(a.m.createdAt || ""));
+  return versions.length ? `<details class="details-disclosure"><summary>Amendment history <span class="count">${versions.length}</span></summary>${versions.map(({m, kind, status}) => `<details class="details-disclosure"><summary>${esc(status)} · ${date(m.createdAt)}</summary><p>${esc(m.reason)}</p>${m.approvedAt ? `<p>Effective from ${date(m.approvedAt)}</p>` : ""}${amendmentDetails(o, m.previous, "Previous effective details", kind, m.id, "previous")}${amendmentDetails(o, m.data, status === "Approved" ? "Approved details" : "Proposed details", kind, m.id, "data")}${reviewHistory(m.history, o.team)}</details>`).join("")}</details>` : "";
+}
+function budgetHistory(budget) {
+  return budget?.revisions?.length ? `<details class="details-disclosure"><summary>Previous budget versions <span class="count">${budget.revisions.length}</span></summary>${budget.revisions.map((v) => {
+    const currency = v.currency || "USD", rate = v.rate || 1;
+    return `<section class="detail-section"><h3>${date(v.at)} · ${esc(v.by)}</h3><p>${esc(v.reason)}</p><p>Saved exchange rate: 1 USD = ${fmt(rate)} ${esc(currency)}</p><div class="table-wrap"><table><thead><tr><th>Category</th><th class="right">Approved ${esc(currency)}</th><th class="right">USD equivalent</th></tr></thead><tbody>${v.categories.map((c) => `<tr><td>${esc(c.name)}</td><td class="right">${esc(currency)} ${fmt(c.amount)}</td><td class="right">USD ${fmt(c.amount / rate)}</td></tr>`).join("")}</tbody><tfoot><tr><td>Total</td><td class="right">${esc(currency)} ${fmt(v.categories.reduce((n,c) => n + Number(c.amount), 0))}</td><td class="right">USD ${fmt(budgetAmount(v))}</td></tr></tfoot></table></div></section>`;
+  }).join("")}</details>` : "";
+}
+function supportingReferences(o, r) {
+  const groups = [["Order supporting", o.files], ["Additional supporting", r.files], ["Payment evidence", r.payment?.files]];
+  return `<section class="detail-section"><h3>Supporting document references</h3><p>Order reference: ${esc(o.number)}</p>${groups.map(([label, files]) => `<h4>${label}</h4>${files?.length ? `<ul>${files.map((f) => `<li>${esc(f.name)}</li>`).join("")}</ul>` : '<p class="help">None recorded.</p>'}`).join("")}</section>`;
 }
 function requestDetail(id) {
   const r = state.requests.find((r) => r.id === id),
@@ -955,7 +983,7 @@ function masterForm(id) {
       : "";
   showModal(
     r ? "Edit / Revise master record" : "Add master record",
-    `<form data-form="master" data-id="${id || ""}">${section("01", "Record details", `<div class="grid2">${html}</div>`)}${budget}${r?.revisions?.length ? `<details class="details-disclosure"><summary>Previous budget versions <span class="count">${r.revisions.length}</span></summary>${r.revisions.map((v) => `<div class="notice"><strong>${date(v.at)} · ${esc(v.by)}</strong><br>${esc(v.reason)}<br>${v.categories.map((c) => esc(c.name) + ": USD " + fmt(c.amount)).join(" · ")}</div>`).join("")}</details>` : ""}${footer("Save record", k === "suppliers" ? "Suppliers are shared across all companies." : k === "currencies" ? "USD is the base reporting currency." : "Admin-managed master data.")}</form>`,
+    `<form data-form="master" data-id="${id || ""}">${section("01", "Record details", `<div class="grid2">${html}</div>`)}${budget}${budgetHistory(r)}${footer("Save record", k === "suppliers" ? "Suppliers are shared across all companies." : k === "currencies" ? "USD is the base reporting currency." : "Admin-managed master data.")}</form>`,
   );
 }
 function budgetRow(c) {
@@ -1028,13 +1056,17 @@ function documentView(id) {
   const ap = (st) => r.approvals.find((x) => x.stage === st);
   showModal(
     "View Payment Request",
-    `<div class="noprint actions" style="margin-top:0;margin-bottom:20px"><button class="primary" data-action="print">Print / Save as PDF</button><button data-action="openRequest" data-id="${id}">Back to request</button></div><article class="printdoc"><div class="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75"></div><small>GROUP PROJECT MONITORING</small><h1>PAYMENT REQUEST</h1><div class="detail-top"><strong>${esc(r.number)}</strong>${badge(r.status)}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Date", r.date)}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO number", esc(o.po))}${detail("Invoice number", esc(o.invoice || "—"))}${detail("Team", o.team)}${detail("Order currency", o.currency)}${detail("Payment currency", r.currency || o.currency)}${detail("Saved payment rate", `1 USD = ${fmt(r.rate)} ${r.currency || o.currency}`)}${detail("Approved budget", esc(name("budgets", o.budgetId)))}</div><h3>Description</h3><p>${esc(o.description)}</p>${categoryTable(o)}<table style="margin-top:18px"><tbody><tr><td>Full order amount</td><td class="right">${o.currency} ${fmt(o.total)}</td></tr><tr><td>Other instalments paid to date</td><td class="right">${o.currency} ${fmt(prior)}</td></tr><tr><td><strong>This payment request · ${r.percent}% at creation</strong></td><td class="right"><strong>${r.currency || o.currency} ${fmt(r.amount)}</strong></td></tr><tr><td>Payment terms</td><td>${esc(r.terms)}</td></tr></tbody></table><h3 style="margin-top:22px">Request & approvals · this payment request only</h3><table><thead><tr><th>Stage</th><th>Name</th><th>Date / Time</th></tr></thead><tbody><tr><td>Requested by</td><td>${esc(name("users", r.requestedBy))}</td><td>${date(r.createdAt)}</td></tr>${[...(r.team === "Purchasing" ? ["Reviewer"] : []), "Approval 1", ...(r.team === "Purchasing" ? ["Approval 2"] : [])].map((st) => `<tr><td>${st === "Reviewer" ? "Checked by" : st}</td><td>${esc(ap(st)?.by || "Pending")}</td><td>${date(ap(st)?.at)}</td></tr>`).join("")}${r.payment ? `<tr><td>Paid by</td><td>${esc(r.payment.by)}</td><td>${r.payment.date} · ${r.payment.type}</td></tr>` : ""}</tbody></table>${r.remarks.length ? '<h3 style="margin-top:22px">Finance remarks</h3>' + r.remarks.map((m) => `<p>${esc(m.text)} — ${esc(m.by)}</p>`).join("") : ""}<div class="docfooter">System-generated document · ${esc(r.number)} · Generated ${date(Date.now())}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}</div></article>`,
+    `<div class="noprint actions" style="margin-top:0;margin-bottom:20px"><button class="primary" data-action="print">Print / Save as PDF</button><button data-action="openRequest" data-id="${id}">Back to request</button></div><article class="printdoc"><div class="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75"></div><small>GROUP PROJECT MONITORING</small><h1>PAYMENT REQUEST</h1><div class="detail-top"><strong>${esc(r.number)}</strong>${badge(r.status)}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Date", r.date)}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO number", esc(o.po))}${detail("Invoice number", esc(o.invoice || "—"))}${detail("Team", o.team)}${detail("Order currency", o.currency)}${detail("Payment currency", r.currency || o.currency)}${detail("Saved payment rate", `1 USD = ${fmt(r.rate)} ${r.currency || o.currency}`)}${detail("Approved budget", esc(name("budgets", o.budgetId)))}</div><h3>Description</h3><p>${esc(o.description)}</p>${categoryTable(o)}<table style="margin-top:18px"><tbody><tr><td>Full order amount</td><td class="right">${o.currency} ${fmt(o.total)}</td></tr><tr><td>Other instalments paid to date</td><td class="right">${o.currency} ${fmt(prior)}</td></tr><tr><td><strong>This payment request · ${r.percent}% at creation</strong></td><td class="right"><strong>${r.currency || o.currency} ${fmt(r.amount)}</strong></td></tr><tr><td>Payment terms</td><td>${esc(r.terms)}</td></tr></tbody></table><h3 style="margin-top:22px">Request & approvals · this payment request only</h3><table><thead><tr><th>Stage</th><th>Name</th><th>Date / Time</th></tr></thead><tbody><tr><td>Requested by</td><td>${esc(name("users", r.requestedBy))}</td><td>${date(r.createdAt)}</td></tr>${[...(r.team === "Purchasing" ? ["Reviewer"] : []), "Approval 1", ...(r.team === "Purchasing" ? ["Approval 2"] : [])].map((st) => `<tr><td>${st === "Reviewer" ? "Checked by" : st}</td><td>${esc(ap(st)?.by || "Pending")}</td><td>${date(ap(st)?.at)}</td></tr>`).join("")}${r.payment ? `<tr><td>Paid by</td><td>${esc(r.payment.by)}</td><td>${r.payment.date} · ${r.payment.type}</td></tr>` : ""}</tbody></table>${r.remarks.length ? '<h3 style="margin-top:22px">Finance remarks</h3>' + r.remarks.map((m) => `<p>${esc(m.text)} — ${esc(m.by)}</p>`).join("") : ""}${supportingReferences(o, r)}${reviewHistory(r.history, r.team)}<div class="docfooter">System-generated document · ${esc(r.number)} · Generated ${date(Date.now())}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}</div></article>`,
   );
+}
+function enrollmentOptions() {
+  if (!enrollKey) return "";
+  return `<section id="enrollmentOptions" class="auth-enrollment" aria-labelledby="enrollmentTitle"><h3 id="enrollmentTitle">Add your authenticator</h3><p>Choose how to add this account to your authenticator app, then enter its six-digit code below.</p><div class="actions" role="group" aria-label="Authenticator setup method"><button type="button" data-action="enrollMethod" data-method="qr" aria-pressed="${enrollMethod === "qr"}" ${enrollQr ? "" : "disabled"}>Scan QR code</button><button type="button" data-action="enrollMethod" data-method="key" aria-pressed="${enrollMethod === "key"}">Enter setup key</button></div>${enrollMethod === "qr" && enrollQr ? `<div class="auth-qr"><img src="${esc(enrollQr)}" width="280" height="280" alt="Scan this QR code with your authenticator app to add your Sun Siyam account"><p>In your authenticator app, add an account and select Scan QR code.</p></div>` : `<p>In your authenticator app, add an account with a setup key. Select a time-based code.</p><div class="secret" aria-label="Authenticator setup key">${esc(enrollKey)}</div>`}</section>`;
 }
 function renderLogin() {
   const reset = loginStep.startsWith("reset");
   $("#app").innerHTML =
-    `<div class="login"><div class="login-art">${brand()}<div class="login-message"><div class="eyebrow">A CLEARER FINANCIAL PICTURE</div><h1>Every commitment.<br>Every payment.<br>One clear picture.</h1><p>Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p><div class="login-graphic" aria-hidden="true"><div class="graphic-label">FROM PLAN TO PAYMENT</div><div class="graphic-line"><span>Approved budget</span><i style="width:100%"></i></div><div class="graphic-line"><span>Commitment</span><i style="width:72%"></i></div><div class="graphic-line"><span>Payment</span><i style="width:44%"></i></div></div></div><div class="login-foot">SUN SIYAM GROUP &nbsp; / &nbsp; PROJECT MONITORING</div></div><div class="login-panel"><div class="login-card"><div class="login-mobile-brand" style="display:none">${brand()}</div><div class="eyebrow">SECURE WORKSPACE</div><h2 id="pageTitle">${reset ? "Reset password" : loginStep === "totp" ? "Verify your identity" : "Welcome back"}</h2><p class="sub">${loginStep === "totp" ? "Enter the six-digit code from your authenticator." : reset ? "Recover access to your project workspace." : "Sign in to your project workspace."}</p><form data-form="login">${loginStep === "password" ? field("Username", input("username", "", "text", 'required autocomplete="username"')) + field("Password", input("password", "", "password", 'required autocomplete="current-password"')) : loginStep === "totp" ? `${enrollKey ? '<div class="notice">First sign-in: add this key to an authenticator app, then enter its six-digit code.</div><div class="secret">' + esc(enrollKey) + "</div>" : ""}${field("Authenticator code", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"'))}` : loginStep === "reset-start" ? field("Account email", input("email", "", "email", 'required autocomplete="email"')) : field("Email OTP", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"')) + field("New password", input("password", "", "password", 'required minlength="12" maxlength="256" autocomplete="new-password"'))}<button class="primary">${loginStep === "password" ? "Sign in" : loginStep === "reset-start" ? "Send email OTP" : loginStep === "reset-finish" ? "Reset password" : "Verify & continue"}${icon("arrow")}</button><div id="loginError" role="alert" class="help"></div></form><div class="actions">${loginStep === "password" ? '<button class="linkbtn" data-action="resetPassword">Forgot password?</button>' : '<button class="linkbtn" data-action="backLogin">Back to sign in</button>'}</div><div class="login-demo"><button data-action="demo">Explore demo workspace ${icon("arrow")}</button><p class="help">Sample data only. Explore the portal and test workflows without changing live records.</p></div><div class="login-security">${icon("shield")}Password + authenticator verification</div></div></div></div>`;
+    `<div class="login"><div class="login-art">${brand()}<div class="login-message"><div class="eyebrow">A CLEARER FINANCIAL PICTURE</div><h1>Every commitment.<br>Every payment.<br>One clear picture.</h1><p>Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p><div class="login-graphic" aria-hidden="true"><div class="graphic-label">FROM PLAN TO PAYMENT</div><div class="graphic-line"><span>Approved budget</span><i style="width:100%"></i></div><div class="graphic-line"><span>Commitment</span><i style="width:72%"></i></div><div class="graphic-line"><span>Payment</span><i style="width:44%"></i></div></div></div><div class="login-foot">SUN SIYAM GROUP &nbsp; / &nbsp; PROJECT MONITORING</div></div><div class="login-panel"><div class="login-card"><div class="login-mobile-brand" style="display:none">${brand()}</div><div class="eyebrow">SECURE WORKSPACE</div><h2 id="pageTitle">${reset ? "Reset password" : loginStep === "totp" ? "Verify your identity" : "Welcome back"}</h2><p class="sub">${loginStep === "totp" ? "Enter the six-digit code from your authenticator." : reset ? "Recover access to your project workspace." : "Sign in to your project workspace."}</p><form data-form="login">${loginStep === "password" ? field("Username", input("username", "", "text", 'required autocomplete="username"')) + field("Password", input("password", "", "password", 'required autocomplete="current-password"')) : loginStep === "totp" ? `${enrollmentOptions()}${field("Authenticator code", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"'))}` : loginStep === "reset-start" ? field("Account email", input("email", "", "email", 'required autocomplete="email"')) : field("Email OTP", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"')) + field("New password", input("password", "", "password", 'required minlength="12" maxlength="256" autocomplete="new-password"'))}<button class="primary">${loginStep === "password" ? "Sign in" : loginStep === "reset-start" ? "Send email OTP" : loginStep === "reset-finish" ? "Reset password" : "Verify & continue"}${icon("arrow")}</button><div id="loginError" role="alert" class="help"></div></form><div class="actions">${loginStep === "password" ? '<button class="linkbtn" data-action="resetPassword">Forgot password?</button>' : '<button class="linkbtn" data-action="backLogin">Back to sign in</button>'}</div><div class="login-demo"><button data-action="demo">Explore demo workspace ${icon("arrow")}</button><p class="help">Sample data only. Explore the portal and test workflows without changing live records.</p></div><div class="login-security">${icon("shield")}Password + authenticator verification</div></div></div></div>`;
   accessible();
 }
 async function readFiles(fd) {
@@ -1063,30 +1095,15 @@ async function readPDF(file) {
   };
 }
 async function fileDownload(b) {
-  let f;
-  if (demo) {
-    const rec = ["order", "amendment"].includes(b.kind)
-      ? raw.orders.find((o) => o.id === b.id)
-      : raw.requests.find((r) => r.id === b.id);
-    f =
-      b.kind === "order"
-        ? rec.files[Number(b.index) || 0]
-        : b.kind === "amendment"
-          ? rec.amendment.data.files[Number(b.index) || 0]
-          : b.kind === "request"
-            ? rec.files[Number(b.index) || 0]
-            : rec.payment.files[Number(b.index) || 0];
-  } else
-    f = (
-      await api(
-        "file&id=" +
-          encodeURIComponent(b.id) +
-          "&kind=" +
-          b.kind +
-          "&index=" +
-          (b.index || 0),
-      )
-    ).file;
+  const f = demo
+    ? supportingFile(raw, user, b)
+    : (await api("file&" + new URLSearchParams({
+        id: b.id,
+        kind: b.kind,
+        index: b.index || 0,
+        version: b.version || "",
+        side: b.side || "data",
+      }))).file;
   const bytes = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
   const url = URL.createObjectURL(
     new Blob([bytes], { type: "application/pdf" }),
@@ -1336,9 +1353,13 @@ document.addEventListener("click", async (e) => {
     } else if (a === "resetPassword") {
       loginStep = "reset-start";
       renderLogin();
+    } else if (a === "enrollMethod" && loginStep === "totp" && enrollKey) {
+      enrollMethod = b.dataset.method === "qr" && enrollQr ? "qr" : "key";
+      $("#enrollmentOptions").outerHTML = enrollmentOptions();
+      document.querySelector(`[data-method="${enrollMethod}"]`)?.focus();
     } else if (a === "backLogin") {
       loginStep = "password";
-      enrollKey = "";
+      enrollKey = enrollQr = loginChallenge = "";
       renderLogin();
     }
   } catch (e) {
@@ -1493,6 +1514,8 @@ document.addEventListener("submit", async (e) => {
         const r = await api("login", d);
         loginChallenge = r.challenge;
         enrollKey = r.secret || "";
+        enrollQr = r.qrCode || "";
+        enrollMethod = enrollQr ? "qr" : "key";
         loginStep = "totp";
         renderLogin();
       } else if (loginStep === "totp") {
@@ -1502,6 +1525,7 @@ document.addEventListener("submit", async (e) => {
         });
         user = r.user;
         state = r.state;
+        enrollKey = enrollQr = loginChallenge = "";
         demo = false;
         render();
       } else if (loginStep === "reset-start") {

@@ -9,6 +9,7 @@ import {
   remainingToRequest,
   reservation,
   currencyStats,
+  supportingFile,
 } from "../public/domain.js";
 import { demoState } from "../public/demo.js";
 const now = Date.parse("2026-10-14T12:00:00Z");
@@ -621,6 +622,43 @@ test("Parent amendment holds effective text and amounts until independent team f
   assert.equal(x.o.amendments[0].previous.total, 100000);
   assert.equal(x.r.percent, 30);
   assert.equal(x.r.amount, 30000);
+});
+test("Amendment documents stay retrievable by version with company access and a live parent lock", () => {
+  const x = setup("Planning");
+  const original = structuredClone(x.o.files[0]);
+  const revised = { ...original, name: "revised-scope.pdf", data: "JVBERi0xLjUK" };
+  x.run(x.requester, "order.amend", x.o.id, {
+    ...x.payload, files: [revised], reason: "Scope clarification",
+  });
+  const version = x.o.amendment.id;
+  x.run(x.requester, "unlock", x.o.id);
+  x.lock(x.approver, x.o.id);
+  x.run(x.approver, "amendment.return", x.o.id, { reason: "Correct description" });
+  x.run(x.approver, "unlock", x.o.id);
+  x.lock(x.requester, x.o.id);
+  x.run(x.requester, "order.amend", x.o.id, {
+    ...x.payload, description: "Corrected scope", files: [revised], reason: "Corrected proposal",
+  });
+  const locator = { id: x.o.id, kind: "amendment-attempt", version };
+  assert.deepEqual(supportingFile(x.s, x.requester, locator, now), revised);
+  assert.deepEqual(supportingFile(x.s, x.requester, { ...locator, side: "previous" }, now), original);
+  x.run(x.requester, "unlock", x.o.id);
+  x.lock(x.approver, x.o.id);
+  x.run(x.approver, "amendment.approve", x.o.id);
+  const archived = { id: x.o.id, kind: "amendment-history", version: x.o.amendments[0].id };
+  assert.deepEqual(supportingFile(x.s, x.approver, archived, now), revised);
+  assert.deepEqual(supportingFile(x.s, x.approver, { ...archived, side: "previous" }, now), original);
+  assert.throws(() => supportingFile(x.s, { ...x.approver, companies: [], groupAccess: false }, archived, now), /not available/);
+  assert.throws(() => supportingFile(x.s, x.requester, archived, now), /another user/);
+  assert.throws(() => supportingFile(x.s, x.approver, archived, now + 600001), /obtain a lock/);
+  assert.throws(() => supportingFile(x.s, x.approver, { ...archived, version: "unknown" }, now), /not available/);
+  assert.throws(() => supportingFile(x.s, x.approver, { ...archived, side: "passwordHash" }, now), /Invalid document version/);
+  assert.throws(() => supportingFile(x.s, x.approver, { ...archived, index: -1 }, now), /Invalid file index/);
+  assert.throws(() => supportingFile(x.s, x.approver, { ...archived, kind: "unknown" }, now), /Invalid document type/);
+  const visible = visibleState(x.s, x.approver).orders.find((o) => o.id === x.o.id);
+  assert.equal(visible.amendments[0].previous.files[0].data, undefined);
+  assert.equal(visible.amendmentAttempts[0].data.files[0].data, undefined);
+  assert.equal(x.o.files[0].data, revised.data);
 });
 test("Reduction cannot contradict any non-rejected children and pending reduction limits new reservations", () => {
   const x = setup();

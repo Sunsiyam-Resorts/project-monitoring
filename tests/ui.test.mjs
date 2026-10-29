@@ -5,7 +5,7 @@ import { Window } from "happy-dom";
 import * as domain from "../public/domain.js";
 import { demoState } from "../public/demo.js";
 const flush = () => new Promise((r) => setTimeout(r, 20));
-async function app(seed) {
+async function app(seed, handleFetch) {
   const window = new Window({
     url: "http://localhost:3000",
     settings: {
@@ -23,10 +23,10 @@ async function app(seed) {
       "ss-project-monitoring-demo-v1",
       JSON.stringify(seed),
     );
-  window.fetch = async () => ({
+  window.fetch = handleFetch || (async () => ({
     ok: true,
     json: async () => ({ configured: false }),
-  });
+  }));
   window.__deps = { ...domain, demoState };
   const source = (
     await readFile(new URL("../public/app.js", import.meta.url), "utf8")
@@ -45,6 +45,131 @@ const click = (w, s) => {
   assert.ok(el, "Missing " + s);
   el.click();
 };
+test("First sign-in offers QR or manual key without resetting the challenge or entered code", async () => {
+  const key = "JBSWY3DPEHPK3PXP";
+  const qr = "data:image/png;base64,iVBORw0KGgo=";
+  const calls = [];
+  const w = await app(null, async (url, options) => {
+    const action = new URL(url, "http://localhost:3000").searchParams.get("action");
+    calls.push({ action, body: options?.body && JSON.parse(options.body) });
+    return { ok: true, json: async () => action === "login"
+      ? { challenge: "fictional-enrollment-challenge", enroll: true, secret: key, qrCode: qr }
+      : action === "verify" ? { error: "Invalid authenticator code" } : { configured: false } };
+  });
+  try {
+    w.document.querySelector('[name="username"]').value = "fictional-user";
+    w.document.querySelector('[name="password"]').value = "FictionalPassword123";
+    w.document.querySelector('[data-form="login"]').dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+    assert.equal(w.document.querySelector(".auth-qr img").src, qr);
+    assert.equal(w.document.querySelector('[data-method="qr"]').getAttribute("aria-pressed"), "true");
+    assert.equal(w.document.querySelector(".secret"), null);
+    w.document.querySelector('[name="code"]').value = "123456";
+    click(w, '[data-method="key"]');
+    assert.equal(w.document.querySelector(".secret").textContent, key);
+    assert.equal(w.document.querySelector(".auth-qr"), null);
+    assert.equal(w.document.querySelector('[name="code"]').value, "123456");
+    click(w, '[data-method="qr"]');
+    assert.equal(w.document.querySelector('[name="code"]').value, "123456");
+    assert.equal(calls.filter((c) => c.action === "login").length, 1);
+    click(w, '[data-action="backLogin"]');
+    assert.equal(w.document.querySelector("#enrollmentOptions"), null);
+    assert.equal(w.document.querySelector(".auth-qr"), null);
+    assert.ok(!w.document.body.textContent.includes(key));
+    assert.equal(w.localStorage.length, 0);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test("Existing enrolled accounts do not show an enrollment key or QR code", async () => {
+  const w = await app(null, async (url) => ({ ok: true, json: async () => url.includes("action=login") ? { challenge: "existing-account-challenge" } : { configured: false } }));
+  try {
+    w.document.querySelector('[name="username"]').value = "fictional-user";
+    w.document.querySelector('[name="password"]').value = "FictionalPassword123";
+    w.document.querySelector('[data-form="login"]').dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Verify your identity");
+    assert.equal(w.document.querySelector("#enrollmentOptions"), null);
+    assert.ok(w.document.querySelector('[name="code"]'));
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+test("Printed requests include supporting references and prior decisions; Planning omits Reviewer", async () => {
+  for (const team of ["Purchasing", "Planning"]) {
+    const seed = demoState(), o = seed.orders[0], r = seed.requests[0];
+    o.team = r.team = team;
+    o.files[0].name = "order-evidence.pdf";
+    r.files = [{ ...o.files[0], name: "additional-evidence.pdf" }];
+    r.payment.files = [{ ...r.payment.files[0], name: "settlement-evidence.pdf" }];
+    r.history = [
+      { stage: "Reviewer", action: "approve", by: "Purchasing reviewer", at: r.createdAt },
+      { stage: "Approval 1", action: "return", by: "First approver", at: r.createdAt, reason: "Correct <terms>" },
+      { stage: "Approval 1", action: "approve", by: "First approver", at: r.createdAt },
+    ];
+    const w = await app(seed);
+    try {
+      click(w, "[data-action=demo]");
+      click(w, "[data-page=requests]");
+      click(w, "[data-action=expand][data-id=o1]");
+      click(w, "[data-action=openRequest][data-id=r0]");
+      await flush();
+      click(w, "[data-action=document]");
+      const print = w.document.querySelector(".printdoc");
+      for (const label of ["order-evidence.pdf", "additional-evidence.pdf", "settlement-evidence.pdf", "Review history", "Correct <terms>", o.number])
+        assert.ok(print.textContent.includes(label), label);
+      assert.equal(print.querySelector("terms"), null);
+      assert.equal(print.textContent.includes("Purchasing reviewer"), team === "Purchasing");
+      if (team === "Planning") assert.doesNotMatch(print.textContent, /Reviewer|Checked by|Approval 2/);
+    } finally { w.close(); await w.happyDOM.abort(); }
+  }
+});
+
+test("Budget history uses each version's saved currency and exchange rate", async () => {
+  const seed = demoState();
+  seed.currencies.find((c) => c.id === "MVR").rate = 20;
+  seed.budgets[0].revisions = [
+    { at: "2026-10-01T08:00:00Z", by: "Administrator", reason: "MVR baseline", currency: "MVR", rate: 15.42, categories: [{ id: "civil0", name: "Civil", amount: 15420 }] },
+    { at: "2026-09-01T08:00:00Z", by: "Administrator", reason: "Legacy USD baseline", categories: [{ id: "civil0", name: "Civil", amount: 500 }] },
+  ];
+  const w = await app(seed);
+  try {
+    click(w, "[data-action=demo]"); click(w, "[data-page=master]");
+    click(w, "[data-master=budgets]"); click(w, "[data-action=editMaster][data-id=b0]");
+    const history = w.document.querySelector(".details-disclosure");
+    assert.match(history.textContent, /MVR 15,420\.00/);
+    assert.match(history.textContent, /USD 1,000\.00/);
+    assert.match(history.textContent, /1 USD = 15\.42 MVR/);
+    assert.doesNotMatch(history.textContent, /USD 15,420\.00/);
+    assert.match(history.textContent, /USD 500\.00/);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test("Amendment history exposes complete versions, attempts and archived document downloads", async () => {
+  const seed = demoState(), o = seed.orders[0];
+  const previous = structuredClone(o), data = { ...structuredClone(o), po: "UPDATED-PO", description: "Approved updated scope" };
+  previous.files[0].name = "previous-support.pdf";
+  data.files[0].name = "approved-support.pdf";
+  const history = [{ stage: "Approval 1", action: "return", by: "First approver", at: o.createdAt, reason: "Clarify scope" }];
+  o.amendments = [{ id: "approved-version", createdAt: o.createdAt, approvedAt: "2026-10-20T08:00:00Z", previous, data, reason: "Approved variation", history }];
+  o.amendmentAttempts = [{ id: "returned-version", createdAt: o.createdAt, status: "Draft", previous, data: { ...data, description: "Returned proposal" }, reason: "Initial proposal", history }];
+  const w = await app(seed);
+  try {
+    click(w, "[data-action=demo]"); click(w, "[data-page=requests]");
+    click(w, "[data-action=openOrder][data-id=o1]"); await flush();
+    const text = w.document.querySelector("#modal").textContent;
+    for (const label of ["Previous effective details", "Approved details", "UPDATED-PO", "Approved updated scope", "Returned for correction", "Returned proposal", "Clarify scope", "previous-support.pdf", "approved-support.pdf"])
+      assert.ok(text.includes(label), label);
+    const button = w.document.querySelector('[data-kind="amendment-history"][data-side="previous"]');
+    assert.equal(button.dataset.version, "approved-version");
+    let downloaded;
+    w.URL.createObjectURL = (blob) => { downloaded = blob; return "blob:test-history"; };
+    w.URL.revokeObjectURL = () => {};
+    button.click(); await flush();
+    assert.ok(downloaded, w.document.querySelector("#toast").textContent);
+    assert.equal(downloaded.type, "application/pdf");
+    assert.equal(await downloaded.text(), Buffer.from(previous.files[0].data, "base64").toString());
+    const saved = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
+    assert.equal(saved.orders[0].amendments[0].previous.po, previous.po);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
 test("All five pages and document render, scoped role switching works", async () => {
   const w = await app();
   assert.match(w.document.body.textContent, /Welcome back/);

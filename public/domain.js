@@ -448,6 +448,27 @@ function checkLock(s, u, id, now, required = true) {
       "Open this record again to obtain a lock",
     );
 }
+export function supportingFile(s, u, { id, kind, index = 0, version, side = "data" }, now = Date.now()) {
+  need(u && u.active !== false, "Active user required");
+  need(Number.isInteger(Number(index)) && Number(index) >= 0, "Invalid file index");
+  const parent = ["order", "amendment", "amendment-history", "amendment-attempt"].includes(kind);
+  need(parent || ["request", "payment"].includes(kind), "Invalid document type");
+  const rec = parent ? findOrder(s, id, u) : findRequest(s, id, u);
+  checkLock(s, u, id, now);
+  let files;
+  if (kind === "order") files = rec.files;
+  else if (kind === "amendment") files = rec.amendment?.data.files;
+  else if (kind === "amendment-history" || kind === "amendment-attempt") {
+    need(["data", "previous"].includes(side), "Invalid document version");
+    const versions = kind === "amendment-history" ? rec.amendments : rec.amendmentAttempts;
+    const amendment = versions?.find((m) => m.id === version);
+    files = amendment?.[side]?.files;
+  } else if (kind === "request") files = rec.files;
+  else files = rec.payment?.files;
+  const file = files?.[Number(index)];
+  need(file, "File not available");
+  return file;
+}
 function validateOrder(s, u, d, exclude) {
   need(u.role === "Requester", "Requester role required");
   need(access(u, d.companyId), "Company access required");
@@ -596,6 +617,10 @@ function createPayment(s, u, o, d, now) {
   s.requests.push(r);
   return r;
 }
+function orderSnapshot(o) {
+  const { amendment, amendments, amendmentAttempts, ...details } = o;
+  return structuredClone(details);
+}
 const nextStage = (r) =>
   r.status === "Reviewer"
     ? "Approval 1"
@@ -685,6 +710,7 @@ export function apply(s, u, a, now = Date.now()) {
     }
     o.amendment = {
       id: crypto.randomUUID(),
+      previous: orderSnapshot(o),
       data: next,
       reason: text(d.reason),
       status: firstStage(o.team),
@@ -739,7 +765,7 @@ export function apply(s, u, a, now = Date.now()) {
         o.amendments ||= [];
         o.amendments.push({
           ...m,
-          previous: { ...o, amendment: undefined, amendments: undefined },
+          previous: orderSnapshot(o),
           approvedAt: at,
         });
         Object.assign(o, m.data);

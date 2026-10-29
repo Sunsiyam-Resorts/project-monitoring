@@ -1,0 +1,54 @@
+# Vercel deployment
+
+Use ONLY `abuney9/sun-siyam-project-monitoring`. Do not import or change another repository.
+
+## First browser testing deployment
+
+1. In Vercel, choose Add New → Project and import `sun-siyam-project-monitoring` from GitHub. If it is not listed, grant the Vercel GitHub app access to this repository only.
+2. Framework preset: Other. Root directory: repository root. Build: `npm run build`. Output: `dist`. Install: `npm ci`. Node.js: 22 or later.
+3. Deploy. With no DATABASE_URL, the site serves the login screen and **Explore demo workspace**. No real credentials are needed for the demo; the actor selector is strictly a testing tool.
+4. Use `docs/TESTING.md` to review the workflow and appearance. GitHub pushes redeploy through the Vercel integration.
+
+## Enable live persistence and login
+
+Create a PostgreSQL database (a pooled provider connection is suitable). Add environment variables in Vercel → Project → Settings → Environment Variables, then redeploy:
+
+| Variable | Value |
+|---|---|
+| DATABASE_URL | PostgreSQL connection string; use the provider's TLS-enabled URL |
+| ADMIN_USERNAME | Initial administrator username, e.g. abuney |
+| ADMIN_EMAIL | Administrator email |
+| ADMIN_PASSWORD | Strong initial password, 12–256 characters |
+| AUTH_ENCRYPTION_KEY | Random 32-byte key written as 64 hexadecimal characters |
+| RESEND_API_KEY | Email service key for password reset OTP |
+| MAIL_FROM | Verified sender, e.g. Project Portal <portal@yourdomain> |
+
+Generate the encryption key locally with:
+
+```sh
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Keep all values out of GitHub and chat messages. The application creates its own tables and first Admin if the database is empty. Initial Admin settings remain required by the bootstrap; changing them does not reset an existing user's password. Do not rotate AUTH_ENCRYPTION_KEY without re-encrypting existing authenticator keys.
+
+First live sign-in: enter the initial username/password, add the displayed secret manually to an authenticator app, and verify its six-digit code. Subsequent sign-ins require both factors. Email OTP password reset requires the verified Resend sender and does not remove authenticator enrolment.
+
+Create companies/projects/budgets/suppliers, then users and their company access. Do not enter real finance records until the live checks below pass.
+
+## Live acceptance checks
+
+- Log in as separate actual users in separate browsers. Check company scope and team-specific approvals.
+- Attempt to open the same request twice as different users; check lock expiry and Admin unlock.
+- Submit two requests concurrently to test order balance protection and unique sequences in the connected PostgreSQL database.
+- Upload, retrieve and print real test PDFs under the size limit.
+- Verify mandatory TOTP, expired/invalid codes, sign-out and actual email OTP reset delivery.
+- Confirm persistent records after redeploy and device change; test database backups/restores with your provider.
+- Confirm Vercel function deployment and API paths, production secure cookies and HTTPS.
+
+## Architecture and verification limits
+
+Static browser UI + Node.js Vercel API + PostgreSQL. No additional hosting service or repository is needed. The local checks cover domain logic, authentication primitives and DOM interaction, not production database/network integration or browser visual layout. Vercel, database and email accounts must be connected separately; the repository alone does not provision those services.
+
+The implementation follows Vercel's Node.js function convention (`api/`) and node-postgres's same-client transactions:
+- https://vercel.com/docs/functions/runtimes/node-js
+- https://node-postgres.com/features/transactions

@@ -6,7 +6,7 @@ The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). 
 
 ## Repository and scope
 
-Only `abuney9/sun-siyam-project-monitoring` may be used. No other repository, including Test1, may be accessed or changed. GitHub is the source repository and Vercel is the chosen hosting platform. Physical project progress and milestones are deferred.
+Only `abuney9/sun-siyam-project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Physical project progress and milestones are deferred.
 
 ## Master structure
 
@@ -55,6 +55,8 @@ Company access grants visibility; Finance role grants payment processing. Any Fi
 Single role per user: Requester, Reviewer, Approver, Finance, Viewer, Admin. Users have explicit company access or full group access. Full group users can inspect all companies and projects; role still controls actions. Admin manages all configuration. Master data, User Manager and Settings are Admin-only in this release. Requesters see and create their team's requests within company access; they can edit their own drafts only. Group scope updates automatically when new companies are added.
 
 Admin creates username, email and initial password (minimum 12 characters). Sign-in requires password plus mandatory authenticator TOTP. First sign-in enrols TOTP after successful password verification. Email OTP resets password without removing TOTP. Sessions are revoked on password reset, Admin user changes and logout. Recovery from a lost authenticator needs an operational policy before wider rollout; there is no insecure bypass button.
+
+ERP single sign-on: users signed in to the ERP open the portal from the ERP sidebar. The ERP signs a 60-second, single-use HMAC-SHA256 token with the user's email; the portal matches an existing active user by email (never creates one) and starts a normal session. By decision, this path trusts the ERP sign-in completely and skips the portal password and TOTP, so its security depends on the ERP's authentication and on the shared `ERP_SSO_SECRET`. This is acceptable because ERP sign-in uses Microsoft SSO with the Microsoft Authenticator enforced; if the ERP ever allows sign-in without enforced MFA (e.g. plain email/password), restore portal TOTP on this path. It is disabled when that secret is not set. Each ERP sign-in is audited as "Signed in via ERP".
 
 ## Locks and audit
 

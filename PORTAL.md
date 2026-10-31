@@ -34,6 +34,6 @@ npm run build
 
 Tests cover both approval workflows, independent instalments, corrections, role/company restrictions, locks, exact payments, duplicate checks, budget commitment and revisions, numbering, currency conversion, authentication helpers, and DOM navigation/form behaviour.
 
-Browser visual verification, actual database integration, delivery of password reset email and Vercel deployment must be checked in the configured environment. No real database or email credentials are present in the repository.
+Browser visual verification, actual database integration, delivery of password reset email, ERP single sign-on and the self-hosted deployment must be checked in the configured environment. No real database or email credentials are present in the repository.
 
 See [specification](docs/SPECIFICATION.md), [deployment](docs/DEPLOYMENT.md) and [testing checklist](docs/TESTING.md).

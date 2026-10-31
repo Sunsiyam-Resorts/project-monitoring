@@ -8,6 +8,7 @@ import {
   encrypt,
   decrypt,
   totpOK,
+  ssoVerify,
 } from "../lib/auth.mjs";
 import { apply, visibleState, supportingFile } from "../public/domain.js";
 import { authenticatorEnrollment } from "../lib/enrollment.mjs";
@@ -77,7 +78,7 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "GET" && req.method !== "POST")
       return send(405, { error: "Method not allowed" });
-    if (req.method === "GET" && !["state", "config", "file"].includes(action))
+    if (req.method === "GET" && !["state", "config", "file", "sso"].includes(action))
       return send(405, { error: "POST required" });
     if (req.method === "POST") {
       const origin = req.headers.origin;
@@ -87,10 +88,46 @@ export default async function handler(req, res) {
     }
     const b =
       typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
-    if (["login", "verify", "reset-start", "reset-finish"].includes(action))
+    if (
+      ["login", "verify", "reset-start", "reset-finish", "sso"].includes(action)
+    )
       await throttle(
         `${action}:${req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"}`,
       );
+    if (action === "sso") {
+      res.statusCode = 303;
+      try {
+        const t = ssoVerify(
+          url.searchParams.get("token"),
+          process.env.ERP_SSO_SECRET,
+        );
+        await transaction(async (s, c) => {
+          const { rowCount } = await c.query(
+            "INSERT INTO portal_challenges(token,data,expires) VALUES($1,$2,now()+interval '10 minutes') ON CONFLICT DO NOTHING",
+            [hash("sso:" + t.jti), { kind: "sso" }],
+          );
+          if (!rowCount) throw Error("ERP sign-in link already used");
+          const u = s.users.find(
+            (u) => u.email.toLowerCase() === t.email.toLowerCase() && u.active,
+          );
+          if (!u) throw Error("No active portal user for this email");
+          await session(c, u, res);
+          s.audit.push({
+            id: token(),
+            at: new Date().toISOString(),
+            userId: u.id,
+            user: u.name,
+            action: "Signed in via ERP",
+            entity: u.id,
+            detail: "ERP single sign-on",
+          });
+        });
+        res.setHeader("Location", "/");
+      } catch {
+        res.setHeader("Location", "/?sso=failed");
+      }
+      return res.end();
+    }
     if (action === "login") {
       const outcome = await transaction(async (s, c) => {
         const u = s.users.find(

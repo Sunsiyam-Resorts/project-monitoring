@@ -1,6 +1,6 @@
 # Project boundary
 
-Use ONLY GitHub repository `abuney9/sun-siyam-project-monitoring` for this project or any related work. The single exception is the ERP repository `Sunsiyam-Resorts/rene-next` (local `D:codeene`), which may be changed only for the ERP single sign-on link to this portal. Do not access, modify, delete, clear, or overwrite any other repository. In particular, do not touch `Test1`.
+Use ONLY GitHub repository `Sunsiyam-Resorts/project-monitoring` for this project or any related work. The single exception is the ERP repository `Sunsiyam-Resorts/rene-next` (local `D:codeene`), which may be changed only for the ERP single sign-on link to this portal. Do not access, modify, delete, clear, or overwrite any other repository. In particular, do not touch `Test1`.
 
 # Workflow contract
 
@@ -12,4 +12,4 @@ Run `npm test` and `npm run build` after workflow or UI changes. Never commit se
 
 # Deployment
 
-The source repository is GitHub. The portal is self-hosted on the internal server at 130.3 behind an HTTPS reverse proxy (this replaces the earlier Vercel choice). Do not create an alternate source repository or hosting service. Follow `docs/DEPLOYMENT.md`.
+The source repository is GitHub. The portal is self-hosted on the internal server at 130.3 behind an HTTPS reverse proxy (this replaces the earlier Vercel choice). Do not create an alternate source repository or hosting service. Follow `docs/DEPLOYMENT.md`. Push only the `dev` branch; `main` changes only through pull requests from `dev` on GitHub (see `CLAUDE.md`).

@@ -6,7 +6,7 @@ The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). 
 
 ## Repository and scope
 
-Only `abuney9/sun-siyam-project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Physical project progress and milestones are deferred.
+Only `Sunsiyam-Resorts/project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Physical project progress and milestones are deferred.
 
 ## Master structure
 

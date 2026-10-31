@@ -1,5 +1,5 @@
 -- Sun Siyam Project Monitoring: PostgreSQL schema reference.
--- Repository: abuney9/sun-siyam-project-monitoring
+-- Repository: Sunsiyam-Resorts/project-monitoring
 -- This file contains no credentials, users or finance records.
 -- The app creates these tables automatically in lib/store.mjs.
 -- Optional use on a development database:

@@ -1,6 +1,6 @@
 # Self-hosted deployment (internal server 130.3)
 
-Use ONLY `abuney9/sun-siyam-project-monitoring` for the portal. The ERP repository `Sunsiyam-Resorts/rene-next` is changed only for the single sign-on link. Do not import or change another repository.
+Use ONLY `Sunsiyam-Resorts/project-monitoring` for the portal. The ERP repository `Sunsiyam-Resorts/rene-next` is changed only for the single sign-on link. Do not import or change another repository.
 
 The portal runs as a Node.js process on the internal server at 130.3, behind an nginx HTTPS reverse proxy, with PostgreSQL. It replaces the earlier Vercel deployment; `vercel.json` is kept only until cut-over.
 
@@ -17,7 +17,7 @@ The portal runs as a Node.js process on the internal server at 130.3, behind an 
 ## 2. Install the portal
 
 ```sh
-git clone https://github.com/abuney9/sun-siyam-project-monitoring.git /opt/project-monitoring
+git clone https://github.com/Sunsiyam-Resorts/project-monitoring.git /opt/project-monitoring
 cd /opt/project-monitoring
 npm ci --omit=dev
 ```

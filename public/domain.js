@@ -1,4 +1,6 @@
 import { importFields, importCommand } from './import-data.js';
+import { randomId } from './ids.js';
+export { randomId };
 export const ROLES = [
   "Requester",
   "Reviewer",
@@ -63,6 +65,9 @@ export function emptyState() {
 }
 export const access = (u, c) =>
   !!u && (u.groupAccess || (u.companies || []).includes(c));
+export const canCreateRequests = (u) => !!u && u.active !== false && ["Requester", "Admin"].includes(u.role);
+export const canManageRequest = (u, r) => canCreateRequests(u) && access(u, r.companyId) &&
+  (u.role === "Admin" || (u.id === r.requestedBy && u.team === r.team));
 export function roleFor(u, r, role, level) {
   return (
     u.role === role &&
@@ -237,7 +242,7 @@ export function warnings(s, o) {
 }
 function audit(s, u, action, entity, companyId, detail = "", now = Date.now()) {
   s.audit.push({
-    id: crypto.randomUUID(),
+    id: randomId(),
     at: new Date(now).toISOString(),
     userId: u.id,
     user: u.name,
@@ -471,9 +476,10 @@ export function supportingFile(s, u, { id, kind, index = 0, version, side = "dat
   return file;
 }
 function validateOrder(s, u, d, exclude) {
-  need(u.role === "Requester", "Requester role required");
+  need(canCreateRequests(u), "Requester or Admin role required");
   need(access(u, d.companyId), "Company access required");
-  need(u.team === d.team, "Your team must match the request");
+  need(["Planning", "Purchasing"].includes(d.team), "Select Planning or Purchasing team");
+  need(u.role === "Admin" || u.team === d.team, "Your team must match the request");
   need(
     s.projects.some((p) => p.id === d.projectId && p.companyId === d.companyId),
     "Select a valid project",
@@ -602,13 +608,14 @@ function createPayment(s, u, o, d, now) {
   need(!o.rejectedAt, "This request was rejected");
   const r = {
     ...paymentData(s, o, d),
-    id: crypto.randomUUID(),
+    id: randomId(),
     orderId: o.id,
     companyId: o.companyId,
     team: o.team,
     number: issue(s, o, "payment", now),
     status: "Draft",
-    requestedBy: u.id,
+    requestedBy: o.requestedBy,
+    createdBy: u.id,
     createdAt: new Date(now).toISOString(),
     approvals: [],
     history: [],
@@ -633,13 +640,13 @@ export function apply(s, u, a, now = Date.now()) {
     const { kind, rows, files = [] } = a.data || {};
     need(u && u.active !== false, 'Active user required');
     need(importFields[kind], 'Invalid import type');
-    need(['orders', 'payments'].includes(kind) ? u.role === 'Requester' : u.role === 'Admin', 'Your role cannot import these records');
+    need(['orders', 'payments'].includes(kind) ? canCreateRequests(u) : u.role === 'Admin', 'Your role cannot import these records');
     need(Array.isArray(rows) && rows.length > 0 && rows.length <= 100, 'Import between 1 and 100 records');
     need(Array.isArray(files) && JSON.stringify(files).length <= 2800000, 'Combined supporting PDFs must not exceed 2 MB');
     const next = structuredClone(s), errors = [];
     for (const [index, row] of rows.entries()) {
       try {
-        const cmd = importCommand(next, u, kind, row.values, files);
+        const cmd = importCommand(next, u, kind, row.values, files, a.data.team);
         // Payment creation retains its ordinary parent lock contract.
         const previousLock = cmd.type === 'request.create' ? next.locks?.[cmd.data.orderId] : null;
         if (cmd.type === 'request.create') apply(next, u, { type: 'lock', id: cmd.data.orderId }, now);
@@ -692,8 +699,9 @@ export function apply(s, u, a, now = Date.now()) {
     const data = validateOrder(s, u, d),
       o = {
         ...data,
-        id: crypto.randomUUID(),
+        id: randomId(),
         requestedBy: u.id,
+        createdBy: u.id,
         createdAt: at,
       };
     o.number = issue(s, o, "order", now);
@@ -710,11 +718,8 @@ export function apply(s, u, a, now = Date.now()) {
     const o = findOrder(s, a.id, u);
     checkLock(s, u, o.id, now);
     need(
-      !o.rejectedAt &&
-        u.role === "Requester" &&
-        o.requestedBy === u.id &&
-        u.team === o.team,
-      "Only the original requester can amend this request",
+      !o.rejectedAt && canManageRequest(u, o),
+      "Only the original requester or Admin can amend this request",
     );
     need(
       !o.amendment || ["Rejected", "Draft"].includes(o.amendment.status),
@@ -738,7 +743,7 @@ export function apply(s, u, a, now = Date.now()) {
       o.amendmentAttempts.push(o.amendment);
     }
     o.amendment = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       previous: orderSnapshot(o),
       data: next,
       reason: text(d.reason),
@@ -830,8 +835,8 @@ export function apply(s, u, a, now = Date.now()) {
   } else if (a.type === "request.create") {
     const o = findOrder(s, d.orderId, u);
     need(
-      u.role === "Requester" && u.id === o.requestedBy && u.team === o.team,
-      "Only the order requester can create a payment request",
+      canManageRequest(u, o),
+      "Only the order requester or Admin can create a payment request",
     );
     checkLock(s, u, o.id, now);
     const r = createPayment(s, u, o, d, now);
@@ -847,11 +852,8 @@ export function apply(s, u, a, now = Date.now()) {
     need(!o.rejectedAt, "Parent request is rejected");
     if (action === "edit" || action === "submit") {
       need(
-        r.status === "Draft" &&
-          u.role === "Requester" &&
-          r.requestedBy === u.id &&
-          u.team === r.team,
-        "Only requester can edit or submit a draft",
+        r.status === "Draft" && canManageRequest(u, r),
+        "Only requester or Admin can edit or submit a draft",
       );
       if (action === "edit") Object.assign(r, paymentData(s, o, d, r.id));
       else {
@@ -916,11 +918,8 @@ export function apply(s, u, a, now = Date.now()) {
       detail = d.reason;
     } else if (action === "support") {
       need(
-        r.status === "Documents Required" &&
-          u.role === "Requester" &&
-          r.requestedBy === u.id &&
-          u.team === r.team,
-        "Only the original requester can supply these documents",
+        r.status === "Documents Required" && canManageRequest(u, r),
+        "Only the original requester or Admin can supply these documents",
       );
       const files = documents(d.files);
       r.files.push(...files);
@@ -1092,7 +1091,7 @@ export function apply(s, u, a, now = Date.now()) {
     }
     if (prev && kind === "projects")
       need(prev.companyId === rec.companyId, "Project company cannot change");
-    rec.id = rec.id || crypto.randomUUID();
+    rec.id = rec.id || randomId();
     rec.name = text(rec.name);
     if (prev) s[kind][s[kind].indexOf(prev)] = rec;
     else s[kind].push(rec);
@@ -1143,7 +1142,7 @@ export function apply(s, u, a, now = Date.now()) {
     const prev = s.users.find((y) => y.id === x.id);
     const user = {
       ...(prev || {}),
-      id: x.id || crypto.randomUUID(),
+      id: x.id || randomId(),
       name: text(x.name),
       username: text(x.username),
       email: text(x.email).toLowerCase(),

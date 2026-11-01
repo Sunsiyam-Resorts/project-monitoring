@@ -97,7 +97,7 @@ test('Order imports require evidence, create independent drafts and preserve num
 test('Server rejects cross-company and cross-role imports, unauthorized columns, and locked parents', () => {
   const { s, u, value } = orderSetup(), rows = rowsFor('orders', [value]);
   assert.throws(() => run(s, { ...u, companies: [], groupAccess: false }, 'orders', rows, { files: [pdf] }), /Company access/);
-  assert.throws(() => run(s, admin(s), 'orders', rows, { files: [pdf] }), /role/);
+  assert.throws(() => run(s, s.users.find(u => u.role === 'Viewer'), 'orders', rows, { files: [pdf] }), /role/);
   assert.throws(() => run(s, u, 'orders', [{ ...rows[0], values: { ...rows[0].values, Status: 'Paid' } }], { files: [pdf] }), /template columns/);
   run(s, u, 'orders', rows, { files: [pdf] });
   const o = s.orders[0];
@@ -105,4 +105,25 @@ test('Server rejects cross-company and cross-role imports, unauthorized columns,
   const saved = structuredClone(s);
   assert.throws(() => run(s, u, 'payments', rowsFor('payments', [{ 'Main request number': o.number, 'Payment Amount': '20' }])), /opened by another user/);
   assert.deepEqual(s, saved);
+});
+
+test('Admin order/payment imports select a team and preserve existing requester ownership', () => {
+  const { s, u, value } = orderSetup(), a = admin(s);
+  a.team = '';
+  const rows = rowsFor('orders', [value]), before = structuredClone(s);
+  assert.throws(() => run(s, a, 'orders', rows, { files: [pdf] }), /Select Planning/);
+  assert.deepEqual(s, before);
+  run(s, a, 'orders', rows, { files: [pdf], team: 'Planning' }, 'import.preview');
+  assert.deepEqual(s, before);
+  run(s, a, 'orders', rows, { files: [pdf], team: 'Planning' });
+  assert.equal(s.orders[0].team, 'Planning');
+  assert.equal(s.requests[0].requestedBy, a.id);
+  assert.equal(s.requests[0].status, 'Draft');
+  assert.deepEqual(s.requests[0].approvals, []);
+  run(s, u, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'REQUESTER-PO' }]), { files: [pdf], team: 'Planning' });
+  const order = s.orders.at(-1);
+  assert.equal(order.team, 'Purchasing');
+  run(s, a, 'payments', rowsFor('payments', [{ 'Main request number': order.number, 'Payment Amount': '10' }]));
+  assert.equal(s.requests.at(-1).requestedBy, u.id);
+  assert.equal(s.requests.at(-1).createdBy, a.id);
 });

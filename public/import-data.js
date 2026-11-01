@@ -1,3 +1,4 @@
+import { randomId } from './ids.js';
 // Shared by the browser and server. Import fields never accept approvals or issued IDs.
 export const importFields = {
   companies: ['Name', 'Short code'],
@@ -110,7 +111,7 @@ function categories(value) {
   });
 }
 
-export function importCommand(s, u, kind, v, files = []) {
+export function importCommand(s, u, kind, v, files = [], team = u.team) {
   requireValue(importFields[kind], 'Invalid import type');
   requireValue(Object.keys(v).length === importFields[kind].length && Object.keys(v).every(k => importFields[kind].includes(k)), 'Use the template columns only');
   const payment = () => {
@@ -136,7 +137,7 @@ export function importCommand(s, u, kind, v, files = []) {
     return { type: 'order.create', data: {
       companyId: company.id, projectId: project.id, budgetId: budget.id,
       supplierId: find(s.suppliers, v.Supplier, 'supplier').id,
-      team: u.team, po: v['PO number'], invoice: v['Invoice number'], currency: v.Currency.toUpperCase(),
+      team: u.role === 'Admin' ? team : u.team, po: v['PO number'], invoice: v['Invoice number'], currency: v.Currency.toUpperCase(),
       total: positive(v['Full order amount'], 'Full order amount'), description: v.Description,
       allocations: categories(v['Budget category allocations']).map(c => ({ categoryId: find(budget.categories, c.name, 'budget category').id, amount: c.amount })),
       files: names.map(name => { const matches = files.filter(f => f.name === name); requireValue(matches.length === 1, `Attach exactly one PDF named ${name}`); return matches[0]; }),
@@ -158,7 +159,7 @@ export function importCommand(s, u, kind, v, files = []) {
   if (kind === 'budgets') {
     requireValue(!s.budgets.some(b => b.projectId === project.id && norm(b.name) === norm(record.name)), 'Budget already exists; revise it using Master Data');
     record.currency = v['Budget currency'].toUpperCase();
-    record.categories = categories(v.Categories).map(c => ({ ...c, id: crypto.randomUUID() }));
+    record.categories = categories(v.Categories).map(c => ({ ...c, id: randomId() }));
   }
   if (kind === 'projects') requireValue(!s.projects.some(p => p.companyId === company.id && norm(p.name) === norm(record.name)), 'Project name already exists in this company');
   return { type: 'master.save', data: { kind, record } };

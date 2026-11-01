@@ -9,7 +9,7 @@ import ExcelJS from 'exceljs';
 import { createUI } from '../public/ui.js';
 import { icon } from '../public/icons.js';
 const flush = () => new Promise((r) => setTimeout(r, 20));
-async function app(seed, handleFetch) {
+async function app(seed, handleFetch, { withoutRandomUUID = false } = {}) {
   const window = new Window({
     url: "http://localhost:3000",
     settings: {
@@ -22,6 +22,10 @@ async function app(seed, handleFetch) {
   window.document.body.innerHTML =
     '<div id="app"></div><dialog id="modal"></dialog><div id="toast"></div>';
   window.structuredClone = structuredClone;
+  if (withoutRandomUUID) {
+    Object.defineProperty(window.crypto, "randomUUID", { value: undefined, configurable: true });
+    window.eval((await readFile(new URL('../public/ids.js', import.meta.url), 'utf8')).replace('export function randomId', 'window.browserRandomId = function'));
+  }
   window.ExcelJS = ExcelJS;
   window.eval(await readFile(new URL('../public/theme.js', import.meta.url), 'utf8'));
   if (seed)
@@ -33,7 +37,7 @@ async function app(seed, handleFetch) {
     ok: true,
     json: async () => ({ configured: false }),
   }));
-  window.__deps = { ...domain, ...imports, demoState, createUI, icon };
+  window.__deps = { ...domain, ...imports, demoState, createUI, icon, ...(withoutRandomUUID ? { randomId: window.browserRandomId } : {}) };
   const source = (
     await readFile(new URL("../public/app.js", import.meta.url), "utf8")
   ).replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, "");
@@ -915,4 +919,87 @@ test('Navbar theme icon switches themes in place, keeps focus and remembers the 
     assert.equal(nextToggle.getAttribute('aria-label'), 'Switch to dark theme');
     assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'light');
   } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Approved budgets can be created and revised when crypto.randomUUID is unavailable', async () => {
+  const w = await app(null, null, { withoutRandomUUID: true });
+  try {
+    assert.equal(typeof w.crypto.randomUUID, 'undefined');
+    click(w, '[data-action=demo]'); click(w, '[data-page=master]');
+    click(w, '[data-master=budgets]'); click(w, '[data-action=newMaster]');
+    let f = w.document.querySelector('[data-form=master]');
+    assert.ok(f, w.document.querySelector('#toast').textContent);
+    f.elements.name.value = 'Fictional compatibility budget';
+    change(w, 'masterCompany', 'c1'); change(w, 'masterProject', 'p1');
+    f.querySelector('[name=categoryName]').value = 'Civil';
+    f.querySelector('[name=categoryAmount]').value = '1000';
+    click(w, '[data-action=addCategory]');
+    const names = f.querySelectorAll('[name=categoryName]'), amounts = f.querySelectorAll('[name=categoryAmount]');
+    assert.equal(names.length, 2);
+    names[1].value = 'Electrical'; amounts[1].value = '500';
+    const categoryIds = [...f.querySelectorAll('[data-category]')].map(el => el.dataset.category);
+    assert.equal(new Set(categoryIds).size, 2);
+    for (const id of categoryIds) assert.match(id, /^[0-9a-f-]{36}$/);
+    submit(w, '[data-form=master]'); await flush();
+    let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    const b = saved.budgets.at(-1);
+    assert.equal(b.name, 'Fictional compatibility budget', w.document.querySelector('#toast').textContent);
+    assert.deepEqual(b.categories.map(c => c.id), categoryIds);
+    click(w, `[data-action=editMaster][data-id="${b.id}"]`);
+    f = w.document.querySelector('[data-form=master]');
+    f.querySelector('[name=categoryAmount]').value = '1200';
+    f.elements.reason.value = 'Fictional budget adjustment';
+    submit(w, '[data-form=master]'); await flush();
+    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    const revised = saved.budgets.find(x => x.id === b.id);
+    assert.equal(revised.categories[0].amount, 1200);
+    assert.equal(revised.revisions[0].categories[0].amount, 1000);
+    assert.deepEqual(revised.categories.map(c => c.id), categoryIds);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Admin can create and submit requests for either team and add further independent payments', async () => {
+  for (const team of ['Planning', 'Purchasing']) {
+    const w = await app();
+    try {
+      click(w, '[data-action=demo]'); click(w, '[data-page=requests]');
+      assert.ok(w.document.querySelector('[data-action=import]'));
+      click(w, '[data-action=newOrder]');
+      let f = w.document.querySelector('[data-form=order]');
+      f.elements.team.value = team;
+      change(w, 'formCompany', 'c1'); change(w, 'formProject', 'p1'); change(w, 'formBudget', 'b0');
+      for (const [key, value] of Object.entries({ supplierId: 's1', po: 'ADMIN-POPULATION-PO', invoice: 'ADMIN-POPULATION-INV', total: '1000', description: 'Fictional Admin data entry', allocation_civil0: '1000', firstpercent: '30', firstamount: '300', firstterms: 'Advance' }))
+        f.elements[key].value = value;
+      const transfer = new w.DataTransfer();
+      transfer.items.add(new w.File(['%PDF-1.4\nFictional evidence'], 'sample.pdf', { type: 'application/pdf' }));
+      f.elements.files.files = transfer.files;
+      submit(w, '[data-form=order]'); await new Promise(r => setTimeout(r, 80));
+      let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+      const order = saved.orders.at(-1), child = saved.requests.at(-1);
+      assert.equal(order.team, team, w.document.querySelector('#toast').textContent);
+      assert.equal(order.requestedBy, 'admin');
+      assert.equal(child.status, 'Draft');
+      assert.ok(w.document.querySelector('[data-action=submit]'));
+      click(w, '[data-action=submit]'); await flush();
+      saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+      assert.equal(saved.requests.at(-1).status, team === 'Planning' ? 'Approval 1' : 'Reviewer');
+      assert.equal(saved.orders.at(-1).committedAt, undefined);
+      click(w, '[data-action=close]'); await flush();
+      click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
+      click(w, '[data-action=newPayment]');
+      f = w.document.querySelector('[data-form=payment]');
+      f.elements.percent.value = '20'; f.elements.amount.value = '200';
+      submit(w, '[data-form=payment]'); await flush();
+      saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+      assert.equal(saved.requests.at(-1).amount, 200, w.document.querySelector('#toast').textContent);
+      assert.equal(saved.requests.at(-1).status, 'Draft');
+      assert.deepEqual(saved.requests.at(-1).approvals, []);
+      click(w, '[data-action=close]'); await flush();
+      click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
+      click(w, '[data-action=editOrder]');
+      f = w.document.querySelector('[data-form=order]');
+      assert.equal(f.elements.team.value, team, JSON.stringify({ savedTeam: saved.orders.at(-1).team, select: f.elements.team.outerHTML }));
+      assert.equal(f.elements.team.disabled, true);
+    } finally { w.close(); await w.happyDOM.abort(); }
+  }
 });

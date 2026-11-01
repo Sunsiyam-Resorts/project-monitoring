@@ -2,6 +2,10 @@
 
 ## Handover history and authenticator checks
 
+- For temporary data population, sign in as Admin and use New Request for both Planning and Purchasing. Save and submit a draft, add a further payment to an existing requester's order, propose an amendment and supply requested PDFs. Confirm requester ownership stays unchanged on existing orders and each change identifies Admin in audit. Submitted records must still follow the normal team approval route; company scope, record locks, duplicate references and remaining balances still apply.
+- As Admin, preview and confirm an order import after choosing its team; import additional payments for existing orders. Preview must not save records, and failed batches must preserve all existing records and counters.
+- In a browser where `crypto.randomUUID` is unavailable, create an Approved Budget with several categories, save, then revise it. Verify category IDs remain stable and previous amounts remain in history. Repeat ordinary record creation and imports; the shared ID helper must use cryptographic random bytes without changing issued references.
+
 - Open a payment's printable view after a return/correction/resubmission. Verify its current approvals, earlier decisions and reasons, order reference, and separate order/additional/payment document filenames appear. Planning documents must omit Reviewer and Approval 2.
 - Open an order with approved, rejected and returned amendment attempts. Expand Amendment history and each saved version; check previous/proposed details, supplier, PO/invoice, budget/category allocations, totals, reasons and decision history. Download both the old and approved supporting PDFs. A missing/expired lock or inaccessible company must block downloads.
 - Revise an MVR budget, then change the current MVR rate. Previous budget versions must display MVR amounts and USD equivalents using that version's saved rate. Legacy revisions without a currency default to USD.

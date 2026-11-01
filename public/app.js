@@ -23,6 +23,7 @@ import {
 } from "./domain.js";
 import { demoState } from "./demo.js";
 import { createUI } from "./ui.js";
+import { icon } from "./icons.js";
 import { importFields, parseCSV, tableRows, excelRows, checkExcelArchive } from './import-data.js';
 let importPreview = null;
 async function excelLibrary() {
@@ -106,35 +107,6 @@ let state,
   enrollQr = "",
   enrollMethod = "qr",
   busy = false;
-const symbols = {
-  filter: '<path d="M4 4h16l-6 7v7l-4 2v-9z"/>',
-  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
-  logout: '<path d="M9 4H4v16h5M14 8l4 4-4 4M8 12h10"/>',
-  dashboard:
-    '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  requests: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/>',
-  master:
-    '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/>',
-  users:
-    '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m3 10v-3a5 5 0 0 0-3-4"/>',
-  settings:
-    '<path d="m9 3 6 0 1 3 3 1 2 5-2 4-3 1-1 4H9l-1-3-3-1-2-5 2-4 3-1z"/><circle cx="12" cy="12" r="3"/>',
-  search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
-  arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
-  chevron: '<path d="m9 5 7 7-7 7"/>',
-  download: '<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  shield:
-    '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',
-  close: '<path d="m6 6 12 12M18 6 6 18"/>',
-  check: '<path d="m5 12 4 4L19 6"/>',
-  hold: '<circle cx="12" cy="12" r="9"/><path d="M9 8v8m6-8v8"/>',
-  chart: '<path d="M4 20h17M7 16V9m6 7V4m6 12v-5"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
-};
-const icon = (n) =>
-  `<svg viewBox="0 0 24 24" aria-hidden="true">${symbols[n] || symbols.chart}</svg>`;
 const expanded = new Set();
 let sortOrder = "date-desc",
   masterSearch = "",
@@ -155,7 +127,7 @@ const pageNames = {
 const brand = () =>
   `<div class="brand"><img class="brand-logo" src="/logo.svg" alt="Sun Siyam" width="110" height="88"><span class="brand-label">PROJECT MONITORING</span></div>`;
 const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard,
-  field, badge, empty, disclosure, loadingSkeleton } = createUI({ esc, icon });
+  field, badge, empty, disclosure, loadingSkeleton, themePicker } = createUI({ esc, icon, getThemePreference: () => document.documentElement.dataset.themePreference || 'system', getResolvedTheme: () => document.documentElement.dataset.theme || 'light' });
 const section = (number, title, body, description = "") =>
   `<fieldset class="form-section"><legend><span>${number}</span>${title}</legend>${description ? `<p>${description}</p>` : ""}${body}</fieldset>`;
 const footer = (label, note = "") =>
@@ -268,6 +240,9 @@ function sortRequests(rs) {
   });
 }
 function accessible(root = document) {
+  root.querySelectorAll('[data-theme-picker]').forEach(picker => {
+    picker.value = document.documentElement.dataset.themePreference || 'system';
+  });
   root
     .querySelectorAll(".field, .filters>div, .category-row")
     .forEach((group) => {
@@ -1015,7 +990,7 @@ function enrollmentOptions() {
 function renderLogin() {
   const reset = loginStep.startsWith("reset");
   $("#app").innerHTML =
-    `<div class="login"><div class="login-art">${brand()}<div class="login-message"><div class="eyebrow">A CLEARER FINANCIAL PICTURE</div><h1>Every commitment.<br>Every payment.<br>One clear picture.</h1><p>Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p><div class="login-graphic" aria-hidden="true"><div class="graphic-label">FROM PLAN TO PAYMENT</div><div class="graphic-line"><span>Approved budget</span><i style="width:100%"></i></div><div class="graphic-line"><span>Commitment</span><i style="width:72%"></i></div><div class="graphic-line"><span>Payment</span><i style="width:44%"></i></div></div></div><div class="login-foot">SUN SIYAM GROUP &nbsp; / &nbsp; PROJECT MONITORING</div></div><div class="login-panel"><div class="login-card"><div class="login-mobile-brand" style="display:none">${brand()}</div><div class="eyebrow">SECURE WORKSPACE</div><h2 id="pageTitle">${reset ? "Reset password" : loginStep === "totp" ? "Verify your identity" : "Welcome back"}</h2><p class="sub">${loginStep === "totp" ? "Enter the six-digit code from your authenticator." : reset ? "Recover access to your project workspace." : "Sign in to your project workspace."}</p><form data-form="login">${loginStep === "password" ? field("Username", input("username", "", "text", 'required autocomplete="username"')) + field("Password", input("password", "", "password", 'required autocomplete="current-password"')) : loginStep === "totp" ? `${enrollmentOptions()}${field("Authenticator code", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"'))}` : loginStep === "reset-start" ? field("Account email", input("email", "", "email", 'required autocomplete="email"')) : field("Email OTP", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"')) + field("New password", input("password", "", "password", 'required minlength="12" maxlength="256" autocomplete="new-password"'))}<button class="primary">${loginStep === "password" ? "Sign in" : loginStep === "reset-start" ? "Send email OTP" : loginStep === "reset-finish" ? "Reset password" : "Verify & continue"}${icon("arrow")}</button><div id="loginError" role="alert" class="help"></div></form><div class="actions">${loginStep === "password" ? '<button class="linkbtn" data-action="resetPassword">Forgot password?</button>' : '<button class="linkbtn" data-action="backLogin">Back to sign in</button>'}</div><div class="login-demo"><button data-action="demo">Explore demo workspace ${icon("arrow")}</button><p class="help">Sample data only. Explore the portal and test workflows without changing live records.</p></div><div class="login-security">${icon("shield")}Password + authenticator verification</div></div></div></div>`;
+    `<div class="login"><div class="login-appearance">${themePicker("loginAppearance")}</div><div class="login-art">${brand()}<div class="login-message"><div class="eyebrow">A CLEARER FINANCIAL PICTURE</div><h1>Every commitment.<br>Every payment.<br>One clear picture.</h1><p>Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p><div class="login-graphic" aria-hidden="true"><div class="graphic-label">FROM PLAN TO PAYMENT</div><div class="graphic-line"><span>Approved budget</span><i style="width:100%"></i></div><div class="graphic-line"><span>Commitment</span><i style="width:72%"></i></div><div class="graphic-line"><span>Payment</span><i style="width:44%"></i></div></div></div><div class="login-foot">SUN SIYAM GROUP &nbsp; / &nbsp; PROJECT MONITORING</div></div><div class="login-panel"><div class="login-card"><div class="login-mobile-brand" style="display:none">${brand()}</div><div class="eyebrow">SECURE WORKSPACE</div><h2 id="pageTitle">${reset ? "Reset password" : loginStep === "totp" ? "Verify your identity" : "Welcome back"}</h2><p class="sub">${loginStep === "totp" ? "Enter the six-digit code from your authenticator." : reset ? "Recover access to your project workspace." : "Sign in to your project workspace."}</p><form data-form="login">${loginStep === "password" ? field("Username", input("username", "", "text", 'required autocomplete="username"')) + field("Password", input("password", "", "password", 'required autocomplete="current-password"')) : loginStep === "totp" ? `${enrollmentOptions()}${field("Authenticator code", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"'))}` : loginStep === "reset-start" ? field("Account email", input("email", "", "email", 'required autocomplete="email"')) : field("Email OTP", input("code", "", "text", 'required pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"')) + field("New password", input("password", "", "password", 'required minlength="12" maxlength="256" autocomplete="new-password"'))}<button class="primary">${loginStep === "password" ? "Sign in" : loginStep === "reset-start" ? "Send email OTP" : loginStep === "reset-finish" ? "Reset password" : "Verify & continue"}${icon("arrow")}</button><div id="loginError" role="alert" class="help"></div></form><div class="actions">${loginStep === "password" ? '<button class="linkbtn" data-action="resetPassword">Forgot password?</button>' : '<button class="linkbtn" data-action="backLogin">Back to sign in</button>'}</div><div class="login-demo"><button data-action="demo">Explore demo workspace ${icon("arrow")}</button><p class="help">Sample data only. Explore the portal and test workflows without changing live records.</p></div><div class="login-security">${icon("shield")}Password + authenticator verification</div></div></div></div>`;
   accessible();
   if (new URLSearchParams(location.search).get("sso") === "failed") {
     history.replaceState(null, "", location.pathname);

@@ -1,0 +1,150 @@
+/* Appearance controls are shared by both themes. */
+.ui-icon { stroke-width: 1.75; }
+.theme-toggle > span { display: inline-flex; }
+.theme-toggle .theme-sun { display: none; }
+[data-theme="dark"] .theme-toggle .theme-moon { display: none; }
+[data-theme="dark"] .theme-toggle .theme-sun { display: inline-flex; }
+.topbar .theme-toggle { flex: 0 0 44px; color: var(--accent); background: var(--accent-soft); border-color: var(--line); }
+.theme-toggle:hover { box-shadow: inset 0 0 0 1px var(--input-line); }
+.appearance-control { display: grid; gap: 6px; margin-top: 16px; }
+.appearance-control label { margin: 0; font-size: 12px; }
+.appearance-control select { width: 100%; min-height: 44px; font-size: 13px; }
+.login-appearance { position: absolute; top: 34px; right: 44px; z-index: 2; }
+.login-appearance .appearance-control { display: flex; align-items: center; gap: 10px; margin: 0; }
+.login-appearance select { width: 112px; }
+@media screen and (max-width: 760px) {
+  .topbar .header-scope { min-width: 0; }
+  .topbar .top-right { gap: 6px; }
+  .topbar .theme-toggle { flex-basis: 40px; width: 40px; }
+  .login-appearance { top: 26px; right: 30px; }
+  .login-appearance label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .login-appearance select { width: 104px; font-size: 16px; }
+  .login-mobile-brand { padding-right: 116px; }
+}
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #111814;
+    --surface: #1b2520;
+    --surface-soft: #26332b;
+    --surface-hover: #2c3b30;
+    --ink: #edf2eb;
+    --secondary: #c7d2c2;
+    --muted: #a5b49f;
+    --accent: #bddcbb;
+    --accent-hover: #d1e8cd;
+    --accent-soft: #2b402f;
+    --line: #36483b;
+    --line-strong: #52674f;
+    --input-line: #7b9073;
+    --focus-ring: #c6e9b6;
+    --focus-halo: #c6e9b626;
+    --table-head: #202e25;
+    --chart-secondary: #8caa85;
+    --success: #b7dfbd;
+    --success-soft: #263e2d;
+    --info: #bed5ed;
+    --info-soft: #263747;
+    --warning: #e9cc8d;
+    --warning-soft: #3d3524;
+    --warning-line: #77643d;
+    --danger: #f0b5aa;
+    --danger-soft: #442c2b;
+    --danger-line: #86544f;
+    --shadow-overlay: #00000066;
+    --backdrop: #060c09b3;
+    --glass-surface: rgb(29 42 34 / 78%);
+    --glass-chrome: rgb(21 32 25 / 86%);
+    --glass-border: rgb(171 199 156 / 18%);
+    --glass-shadow: 0 8px 32px #00000021, inset 0 1px 0 rgb(215 235 202 / 5%);
+  }
+  :root[data-theme="dark"] body {
+    background-color: var(--canvas);
+    background-image:
+      radial-gradient(ellipse at 82% 8%, rgb(49 77 52 / 38%), transparent 45%),
+      radial-gradient(ellipse at 22% 64%, rgb(70 63 43 / 18%), transparent 42%),
+      radial-gradient(ellipse at 95% 88%, rgb(37 63 66 / 22%), transparent 45%);
+  }
+  :root[data-theme="dark"] .sidebar,
+  :root[data-theme="dark"] .topbar { background: #17231b; border-color: var(--line); }
+  :root[data-theme="dark"] .panel,
+  :root[data-theme="dark"] .budget-kpis .dashboard-kpi,
+  :root[data-theme="dark"] .payment-kpis,
+  :root[data-theme="dark"] .report-disclosure,
+  :root[data-theme="dark"] .login-panel { background: var(--surface); border-color: var(--glass-border); }
+  :root[data-theme="dark"] .dashboard-kpi[data-kpi="available"] { background: #293c2b; border-color: #435a3d; }
+  :root[data-theme="dark"] .nav button.active { background: var(--accent-soft); }
+  :root[data-theme="dark"] .sidebar .brand-logo,
+  :root[data-theme="dark"] .login-mobile-brand .brand-logo { filter: invert(1); }
+  :root[data-theme="dark"] button.primary { color: #152319; }
+  :root[data-theme="dark"] .nav-count { color: #152319; }
+  :root[data-theme="dark"] input,
+  :root[data-theme="dark"] select,
+  :root[data-theme="dark"] textarea { background-color: var(--surface); }
+  :root[data-theme="dark"] input[type="file"] { background: var(--surface-soft); }
+  :root[data-theme="dark"] input::file-selector-button { color: var(--ink); background: var(--surface); border-color: var(--input-line); }
+  :root[data-theme="dark"] .tabs { background: rgb(20 32 23 / 72%); border-color: var(--line); }
+  :root[data-theme="dark"] .tabs button.active { background: #304333; }
+  :root[data-theme="dark"] th { background: var(--table-head); color: var(--muted); }
+  :root[data-theme="dark"] td { border-color: var(--line); }
+  :root[data-theme="dark"] tbody tr:hover { background: rgb(105 142 97 / 8%); }
+  :root[data-theme="dark"] .table-footer { background: rgb(18 29 21 / 22%); }
+  :root[data-theme="dark"] .demo-banner { background: rgb(27 43 31 / 35%); border-color: var(--line-strong); }
+  :root[data-theme="dark"] .detail-lead { background: #25372a; }
+  :root[data-theme="dark"] dialog { background: #1b2720; border-color: var(--line); }
+  :root[data-theme="dark"] dialog::backdrop { background: var(--backdrop); }
+  :root[data-theme="dark"] .modal-head,
+  :root[data-theme="dark"] .form-footer { background: #1b2720; }
+  :root[data-theme="dark"] .profile-popover,
+  :root[data-theme="dark"] .actor-popover { background: #202e25; }
+  :root[data-theme="dark"] .login-art { background: #17271d; }
+  :root[data-theme="dark"] .login-card .primary { color: #152319; }
+  :root[data-theme="dark"] .notice.success { color: var(--success); background: var(--success-soft); }
+  :root[data-theme="dark"] #toast { background: #d4e8cd; color: #152319; border-color: #d4e8cd; }
+  :root[data-theme="dark"] .payment-kpis .dashboard-kpi { background: transparent; }
+  /* Keep printable request previews paper-like; print itself uses the light tokens. */
+  :root[data-theme="dark"] .printdoc {
+    color-scheme: light;
+    --surface: #ffffff;
+    --surface-soft: #f3f4ef;
+    --ink: #242722;
+    --secondary: #4e534a;
+    --muted: #65695f;
+    --accent: #273d30;
+    --accent-soft: #eaf0e8;
+    --line: #e2e5dc;
+    --table-head: #f7f8f4;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root[data-theme="dark"] .sidebar,
+    :root[data-theme="dark"] .topbar { background: var(--glass-chrome); }
+    :root[data-theme="dark"] .panel,
+    :root[data-theme="dark"] .budget-kpis .dashboard-kpi,
+    :root[data-theme="dark"] .payment-kpis,
+    :root[data-theme="dark"] .report-disclosure,
+    :root[data-theme="dark"] .login-panel { background: var(--glass-surface); }
+    :root[data-theme="dark"] .dashboard-kpi[data-kpi="available"] { background: rgb(47 70 46 / 75%); }
+    :root[data-theme="dark"] dialog { background: rgb(27 39 32 / 96%); }
+  }
+}
+@media screen and (max-width: 760px) {
+  :root[data-theme="dark"] .work-table tr { background: #202e25; }
+  :root[data-theme="dark"] .work-table tr.children-row { background: transparent; }
+}
+@media screen and (prefers-reduced-transparency: reduce) {
+  :root[data-theme="dark"] .sidebar,
+  :root[data-theme="dark"] .topbar,
+  :root[data-theme="dark"] .panel,
+  :root[data-theme="dark"] .budget-kpis .dashboard-kpi,
+  :root[data-theme="dark"] .payment-kpis,
+  :root[data-theme="dark"] .report-disclosure,
+  :root[data-theme="dark"] .login-panel,
+  :root[data-theme="dark"] dialog { background: #1b2520; }
+  :root[data-theme="dark"] .dashboard-kpi[data-kpi="available"] { background: #293c2b; }
+  :root[data-theme="dark"] .payment-kpis .dashboard-kpi { background: transparent; }
+}
+@media print {
+  .login-appearance, .appearance-control { display: none !important; }
+}

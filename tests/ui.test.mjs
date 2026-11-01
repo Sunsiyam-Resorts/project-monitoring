@@ -7,6 +7,7 @@ import { demoState } from "../public/demo.js";
 import * as imports from '../public/import-data.js';
 import ExcelJS from 'exceljs';
 import { createUI } from '../public/ui.js';
+import { icon } from '../public/icons.js';
 const flush = () => new Promise((r) => setTimeout(r, 20));
 async function app(seed, handleFetch) {
   const window = new Window({
@@ -22,6 +23,7 @@ async function app(seed, handleFetch) {
     '<div id="app"></div><dialog id="modal"></dialog><div id="toast"></div>';
   window.structuredClone = structuredClone;
   window.ExcelJS = ExcelJS;
+  window.eval(await readFile(new URL('../public/theme.js', import.meta.url), 'utf8'));
   if (seed)
     window.localStorage.setItem(
       "ss-project-monitoring-demo-v1",
@@ -31,7 +33,7 @@ async function app(seed, handleFetch) {
     ok: true,
     json: async () => ({ configured: false }),
   }));
-  window.__deps = { ...domain, ...imports, demoState, createUI };
+  window.__deps = { ...domain, ...imports, demoState, createUI, icon };
   const source = (
     await readFile(new URL("../public/app.js", import.meta.url), "utf8")
   ).replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, "");
@@ -864,5 +866,53 @@ test('User menus close on Escape and outside interaction without losing page sta
     menu.open = true;
     w.document.querySelector('#pageTitle').click();
     assert.equal(menu.open, false);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Appearance changes persist across navigation without resetting entered form data', async () => {
+  const w = await app();
+  try {
+    const form = w.document.querySelector('[data-form=login]');
+    form.elements.username.value = 'fictional-theme-test';
+    form.elements.password.value = 'FictionalTestOnly123';
+    change(w, 'loginAppearance', 'dark');
+    assert.equal(w.document.documentElement.dataset.theme, 'dark');
+    assert.equal(form.elements.username.value, 'fictional-theme-test');
+    assert.equal(form.elements.password.value, 'FictionalTestOnly123');
+    assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'dark');
+    click(w, '[data-action=demo]');
+    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
+    click(w, '[data-page=master]');
+    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
+    change(w, 'accountAppearance', 'light');
+    assert.equal(w.document.documentElement.dataset.theme, 'light');
+    click(w, '[data-action=logout]'); await flush();
+    assert.equal(w.document.querySelector('#loginAppearance').value, 'light');
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Navbar theme icon switches themes in place, keeps focus and remembers the choice', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    const before = w.localStorage.getItem('ss-project-monitoring-demo-v1');
+    const toggle = w.document.querySelector('.topbar [data-theme-toggle]');
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute('aria-label'), 'Switch to dark theme');
+    toggle.focus();
+    toggle.querySelector('.theme-moon svg').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    assert.equal(w.document.documentElement.dataset.theme, 'dark');
+    assert.equal(toggle.getAttribute('aria-label'), 'Switch to light theme');
+    assert.equal(w.document.activeElement, toggle);
+    assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'dark');
+    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
+    assert.equal(w.localStorage.getItem('ss-project-monitoring-demo-v1'), before);
+    click(w, '[data-page=requests]');
+    const nextToggle = w.document.querySelector('[data-theme-toggle]');
+    assert.equal(nextToggle.getAttribute('aria-label'), 'Switch to light theme');
+    nextToggle.click();
+    assert.equal(w.document.documentElement.dataset.theme, 'light');
+    assert.equal(nextToggle.getAttribute('aria-label'), 'Switch to dark theme');
+    assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'light');
   } finally { w.close(); await w.happyDOM.abort(); }
 });

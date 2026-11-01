@@ -1,3 +1,27 @@
+# Navbar theme shortcut and icon refresh — 1 November 2026
+
+The top navbar now has a sun/moon button that switches directly between Light and Dark. Its icon, action label and tooltip follow the current theme; clicking chooses and saves an explicit preference. The Appearance selector still offers System. Theme changes update in place without rebuilding forms, changing business data or losing keyboard focus.
+
+All interface glyphs now use the local `public/icons.js` outline set: a shared 24px grid, 1.75px rounded strokes, and consistent navigation/action symbols. Icons are decorative to assistive technology; icon-only controls keep descriptive accessible names. No icon package or remote resource was added.
+
+Validation: 76 tests and build pass. A regression test exercises SVG clicks, remembered appearance, focus retention, navigation and unchanged demo business state. Browser checks verify desktop and 390px mobile navigation, both theme directions and contained page width.
+
+---
+
+# Appearance themes — 1 November 2026
+
+Use **Appearance → System / Light / Dark** on the sign-in screen or in the account menu. System is the default. The browser stores only the appearance preference under `ss-project-monitoring-appearance`; it is independent of users, roles and business records. Explicit choices persist across navigation/reloads and synchronize between tabs. Storage-disabled browsers can still switch themes during the current page session.
+
+`public/theme.js` runs from a same-origin external script before styles load, applying the saved/system theme without a light flash. Switching changes root attributes and picker values without rebuilding forms or losing entered values. System changes affect the page only while System is selected.
+
+`public/dark.css` adapts the glass theme, surfaces, inputs, menus, tables, status badges, focus rings and logo contrast. It retains solid fallbacks and reduced-transparency support. Dark tokens apply only to screens; print uses the existing light A4 styles, and printable request previews remain paper-like.
+
+Validation: 75 tests and the production build pass, including preference persistence, OS changes, cross-tab updates, unavailable storage, retained form entries and dark text/status/focus contrast. Desktop and 390px mobile browser checks verify switching and page-width containment. Print media rules are preserved; physical printer pagination was not retested.
+
+The existing package.json merge conflict was resolved to retain both self-hosted start and ExcelJS/vendor preparation, enabling verification. No new dependency or API/database/authentication/approval change was introduced for appearance themes.
+
+---
+
 # Interface redesign — 1 November 2026
 
 This section describes the current interface. Earlier sections below are historical releases. The current redesign follows the written direction supplied in chat; no reference screenshot was attached.

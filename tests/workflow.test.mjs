@@ -80,6 +80,71 @@ function approve(x) {
   advance(x, x.approver);
   if (x.o.team === "Purchasing") advance(x, x.final);
 }
+test("Admin can populate both teams but each child still requires independent team approvals", () => {
+  for (const team of ["Planning", "Purchasing"]) {
+    const x = setup(team);
+    x.admin.team = "";
+    x.run(x.admin, "order.create", null, {
+      ...x.payload, po: "ADMIN-PO", invoice: "ADMIN-INV",
+      payment: { percent: 30 },
+    });
+    const o = x.s.orders.at(-1), r = x.s.requests.at(-1);
+    assert.equal(o.requestedBy, x.admin.id);
+    assert.equal(o.createdBy, x.admin.id);
+    assert.equal(r.requestedBy, x.admin.id);
+    assert.equal(r.status, "Draft");
+    assert.equal(o.committedAt, undefined);
+    x.lock(x.admin, r.id);
+    x.run(x.admin, "request.edit", r.id, { percent: 40 });
+    assert.equal(r.amount, 40000);
+    x.run(x.admin, "request.submit", r.id);
+    assert.equal(r.status, team === "Planning" ? "Approval 1" : "Reviewer");
+    assert.throws(() => x.run(x.admin, "request.approve", r.id), /cannot review/);
+    x.run(x.admin, "unlock", r.id);
+    for (const actor of team === "Planning" ? [x.approver] : [x.reviewer, x.approver, x.final]) {
+      x.lock(actor, r.id); x.run(actor, "request.approve", r.id); x.run(actor, "unlock", r.id);
+    }
+    assert.equal(r.status, "Finance");
+    assert.ok(o.committedAt);
+    x.lock(x.admin, r.id);
+    assert.throws(() => x.run(x.admin, "request.edit", r.id, { percent: 50 }), /draft/);
+    x.lock(x.admin, o.id);
+    x.run(x.admin, "request.create", null, { orderId: o.id, percent: 20 });
+    assert.equal(x.s.requests.at(-1).status, "Draft");
+    assert.deepEqual(x.s.requests.at(-1).approvals, []);
+    x.run(x.admin, "order.amend", o.id, { ...x.payload, po: o.po, invoice: o.invoice, description: "Admin proposed correction", reason: "Population correction" });
+    assert.equal(o.description, x.payload.description);
+    assert.equal(o.amendment.status, team === "Planning" ? "Approval 1" : "Reviewer");
+    x.run(x.admin, "unlock", o.id);
+    for (const actor of team === "Planning" ? [x.approver] : [x.reviewer, x.approver, x.final]) {
+      x.lock(actor, o.id); x.run(actor, "amendment.approve", o.id); x.run(actor, "unlock", o.id);
+    }
+    assert.equal(o.description, "Admin proposed correction");
+  }
+});
+
+test("Admin data entry preserves requester ownership, locks, scope and balance limits", () => {
+  const x = setup();
+  assert.throws(() => x.run(x.admin, "request.edit", x.r.id, { percent: 20 }), /another user/);
+  x.run(x.requester, "unlock", x.r.id);
+  x.lock(x.admin, x.r.id);
+  x.run(x.admin, "request.edit", x.r.id, { percent: 20 });
+  assert.equal(x.r.requestedBy, x.requester.id);
+  x.run(x.requester, "unlock", x.o.id);
+  x.lock(x.admin, x.o.id);
+  x.run(x.admin, "request.create", null, { orderId: x.o.id, percent: 30 });
+  const child = x.s.requests.at(-1);
+  assert.equal(child.requestedBy, x.requester.id);
+  assert.equal(child.createdBy, x.admin.id);
+  assert.equal(x.s.audit.at(-1).userId, x.admin.id);
+  assert.throws(() => x.run(x.admin, "request.create", null, { orderId: x.o.id, percent: 90 }), /remaining/);
+  const restricted = { ...x.admin, groupAccess: false, companies: ["c2"] };
+  assert.throws(() => x.run(restricted, "request.edit", x.r.id, { percent: 10 }), /not available/);
+  assert.throws(() => x.run(restricted, "order.create", null, { ...x.payload, po: "SCOPED-PO" }), /Company access/);
+  assert.throws(() => x.run(x.admin, "order.create", null, { ...x.payload, team: "", po: "INVALID-PO" }), /Select Planning/);
+  assert.throws(() => x.run(x.finance, "order.create", null, { ...x.payload, po: "FIN-PO" }), /role required/);
+  assert.throws(() => x.run(x.requester, "order.create", null, { ...x.payload, team: "Planning", po: "WRONG-TEAM" }), /team must match/);
+});
 test("Purchasing child requires reviewer and two approvals, then commits full parent once", () => {
   const x = setup();
   assert.equal(x.r.amount, 30000);

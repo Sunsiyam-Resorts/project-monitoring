@@ -2,6 +2,12 @@
 
 The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). It supersedes the earlier testing-release rules below where they differ, including Planning approvals, financial calculations, amendments, payment deletion, numbering and currencies.
 
+## Temporary Admin data population access
+
+For the current data population period, Admin may also create orders and draft payment requests, import orders/payments, edit and submit drafts, propose parent amendments and supply requested documents within assigned company access. Admin selects Planning or Purchasing for new orders (and for each order-import batch); the team stays fixed after numbering. Master data and user creation remain Admin capabilities.
+
+Admin additions to an existing order preserve its original requester; `createdBy` and the audit trail identify the actual creator. These data-entry permissions do not grant Reviewer, Approver or Finance payment-processing actions. Each payment and amendment still follows the complete team approval route, and locks, duplicate checks, reservations, documents, references and prior history remain enforced. This exception supersedes requester-only data-entry restrictions below and in REVIEW-1.md until explicitly withdrawn.
+
 # Approved workflow — testing release 0.1
 
 ## Repository and scope

@@ -8,6 +8,9 @@ import {
   parentAmount,
   stageActor,
   canReject,
+  canCreateRequests,
+  canManageRequest,
+  randomId,
   currencyStats,
   firstStage,
   visibleState,
@@ -39,7 +42,7 @@ function importForm() {
   importPreview = null;
   const kinds = page === 'master' ? [masterTab] : ['orders', 'payments'];
   const labels = { companies: 'Companies', projects: 'Projects', suppliers: 'Suppliers', currencies: 'Currencies', budgets: 'Approved budgets', orders: 'New requests with first payment', payments: 'Additional payment requests' };
-  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts with independent approvals.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
+  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts with independent approvals.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${user.role === "Admin" ? field("Team for new requests", `<select name="team">${opt(["Planning", "Purchasing"].map(id => ({ id, name: id })))}</select>`) : ""}${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
 }
 async function importTemplate(excel) {
   const kind = document.querySelector('[name=importKind]').value, headers = importFields[kind];
@@ -216,13 +219,12 @@ const input = (n, v = "", type = "text", attrs = "") =>
   `<input name="${n}" value="${esc(v)}" type="${type}" ${attrs}>`;
 function amendmentAttention(o) {
   return !o.rejectedAt && o.amendment && (stageActor(user, o.amendment) ||
-    (o.amendment.status === 'Draft' && o.requestedBy === user.id && user.role === 'Requester'));
+    (o.amendment.status === 'Draft' && canManageRequest(user, o)));
 }
 function attention(r) {
   return (
     (["Draft", "Documents Required"].includes(r.status) &&
-      user.role === "Requester" &&
-      r.requestedBy === user.id) ||
+      canManageRequest(user, r)) ||
     stageActor(user, r)
   );
 }
@@ -450,7 +452,7 @@ function requestsPage() {
     tab === "finance"
       ? requestTable(lists.finance)
       : ordersTable(lists[tab] || lists.requests, tab, all);
-  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with independent approvals and evidence for every payment.", user.role === "Requester" && tab === "requests" ? `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
+  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with independent approvals and evidence for every payment.", canCreateRequests(user) && tab === "requests" ? `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
     ["requests", "Requests"],
     ["finance", "Finance"],
     ["balance", "Balance to request"],
@@ -633,7 +635,7 @@ function orderDetail(id) {
   const o = state.orders.find((o) => o.id === id),
     rs = state.requests.filter((r) => r.orderId === id),
     owner =
-      user.role === "Requester" && user.id === o.requestedBy && !o.rejectedAt,
+      canManageRequest(user, o) && !o.rejectedAt,
     m = o.amendment;
   showModal(
     "Request details",
@@ -704,8 +706,7 @@ function requestDetail(id) {
       roleFor(user, r, "Finance") && ["Finance", "On Hold"].includes(r.status),
     draft =
       r.status === "Draft" &&
-      r.requestedBy === user.id &&
-      user.role === "Requester";
+      canManageRequest(user, r);
   const stages = [
     "Requested",
     ...(r.team === "Purchasing" ? ["Reviewer"] : []),
@@ -745,7 +746,7 @@ function requestDetail(id) {
       .map((w) => `<div class="notice warn">${esc(w)}</div>`)
       .join(
         "",
-      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount with its own supporting PDF."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit for approval ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" && canReject(user, r) ? `<div class="actions"><button class="danger" data-action="reject" data-id="${id}">Reject payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${r.requestedBy === user.id && user.role === "Requester" ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${user.role === "Admin" ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is approved separately. Corrections return to the requester and restart the team approval workflow.</p>`,
+      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount with its own supporting PDF."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit for approval ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" && canReject(user, r) ? `<div class="actions"><button class="danger" data-action="reject" data-id="${id}">Reject payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${canManageRequest(user, r) ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${user.role === "Admin" ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is approved separately. Corrections return to the requester and restart the team approval workflow.</p>`,
   );
 }
 function orderForm(id) {
@@ -756,7 +757,7 @@ function orderForm(id) {
       : effective;
   showModal(
     o ? "Amend request" : "New Request",
-    `<form data-form="order" data-id="${id || ""}"><div class="form-intro"><p>Enter the order details and its first payment request. Each payment request follows its own approval workflow.</p></div>${section("01", "Company & budget", `<div class="grid2">${field("Company", `<select name="companyId" id="formCompany" required>${opt(state.companies, o?.companyId)}</select>`)}${field("Project", `<select name="projectId" id="formProject" required>${opt(o ? state.projects.filter((p) => p.companyId === o.companyId) : [], o?.projectId)}</select>`)}${field("Approved budget", `<select name="budgetId" id="formBudget" required>${opt(o ? state.budgets.filter((b) => b.projectId === o.projectId) : [], o?.budgetId)}</select>`)}${field("Supplier", `<select name="supplierId" required>${opt(state.suppliers, o?.supplierId)}</select>`)}</div>`)}${section(
+    `<form data-form="order" data-id="${id || ""}"><div class="form-intro"><p>Enter the order details and its first payment request. Each payment request follows its own approval workflow.</p></div>${section("01", "Company & budget", `<div class="grid2">${user.role === "Admin" ? field("Team", `<select name="team" required ${o ? "disabled" : ""}>${opt(["Planning", "Purchasing"].map(id => ({ id, name: id })), o?.team)}</select>`) : ""}${field("Company", `<select name="companyId" id="formCompany" required>${opt(state.companies, o?.companyId)}</select>`)}${field("Project", `<select name="projectId" id="formProject" required>${opt(o ? state.projects.filter((p) => p.companyId === o.companyId) : [], o?.projectId)}</select>`)}${field("Approved budget", `<select name="budgetId" id="formBudget" required>${opt(o ? state.budgets.filter((b) => b.projectId === o.projectId) : [], o?.budgetId)}</select>`)}${field("Supplier", `<select name="supplierId" required>${opt(state.suppliers, o?.supplierId)}</select>`)}</div>`)}${section(
       "02",
       "Order details",
       `<div class="grid2">${field("PO number", input("po", o?.po, "text", 'required maxlength="100"'))}${field("Invoice number · optional for advance", input("invoice", o?.invoice, "text", 'maxlength="100"'))}${field(
@@ -766,12 +767,13 @@ function orderForm(id) {
           o?.currency || "USD",
         )}</select>`,
       )}${field("Full order amount", input("total", o?.total, "number", 'required min="0.01" step="0.01"'))}${field("Description", `<textarea name="description" required maxlength="3000" placeholder="Describe the goods, services or works covered by this order.">${esc(o?.description)}</textarea>`, true)}</div>`,
-    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple ${o ? "" : "required"}><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", `${esc(user.team)} · Independent payment approvals.`)}</form>`,
+    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple ${o ? "" : "required"}><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", `${esc(o?.team || user.team || "Select a team")} · Independent payment approvals.`)}</form>`,
   );
   if (o) {
-    for (const name of ["companyId", "projectId", "currency"]) {
+    for (const name of ["companyId", "projectId", "currency", "team"]) {
       const el = document.querySelector(`[data-form=order] [name=${name}]`);
       if (el) {
+        el.value = o[name];
         el.disabled = true;
         el.setAttribute("aria-describedby", "identityNote");
       }
@@ -902,7 +904,7 @@ function masterForm(id) {
       ? section(
           "02",
           "Approved category amounts · selected budget currency",
-          `<div id="budgetCategories">${(r?.categories || [{ id: crypto.randomUUID(), name: "", amount: "" }]).map((c) => budgetRow(c)).join("")}</div><div class="actions"><button type="button" data-action="addCategory">${icon("plus")}Add category</button></div>${r ? '<div class="section-gap">' + field("Revision reason", '<textarea name="reason" required placeholder="Record why the approved budget is being revised."></textarea>') + '</div><div class="notice">The original budget and all prior revisions will be preserved.</div>' : ""}`,
+          `<div id="budgetCategories">${(r?.categories || [{ id: randomId(), name: "", amount: "" }]).map((c) => budgetRow(c)).join("")}</div><div class="actions"><button type="button" data-action="addCategory">${icon("plus")}Add category</button></div>${r ? '<div class="section-gap">' + field("Revision reason", '<textarea name="reason" required placeholder="Record why the approved budget is being revised."></textarea>') + '</div><div class="notice">The original budget and all prior revisions will be preserved.</div>' : ""}`,
         )
       : "";
   showModal(
@@ -1291,7 +1293,7 @@ document.addEventListener("click", async (e) => {
     else if (a === "addCategory")
       $("#budgetCategories").insertAdjacentHTML(
         "beforeend",
-        budgetRow({ id: crypto.randomUUID(), name: "", amount: "" }),
+        budgetRow({ id: randomId(), name: "", amount: "" }),
       );
     else if (a === "newUser") userForm();
     else if (a === "editUser") userForm(id);
@@ -1516,7 +1518,7 @@ document.addEventListener("submit", async (e) => {
       const uploads = fd.getAll('importPDFs').filter(f => f.size);
       if (uploads.reduce((sum, f) => sum + f.size, 0) > 2000000) throw Error('Combined supporting PDFs must not exceed 2 MB');
       const files = await Promise.all(uploads.map(readPDF));
-      const payload = { kind: d.importKind, rows, files };
+      const payload = { kind: d.importKind, rows, files, ...(user.role === "Admin" ? { team: d.team } : {}) };
       await command({ type: 'import.preview', data: payload });
       importPreview = payload;
       const headers = importFields[d.importKind];
@@ -1564,7 +1566,7 @@ document.addEventListener("submit", async (e) => {
             ...(await Promise.all(files.map(readPDF))),
           ]
         : keep;
-      d.team = user.team;
+      d.team = old?.team || (user.role === "Admin" ? d.team : user.team);
       d.allocations = state.budgets
         .find((b) => b.id === d.budgetId)
         .categories.map((c) => ({

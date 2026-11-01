@@ -1,3 +1,46 @@
+# Interface redesign — 1 November 2026
+
+This section describes the current interface. Earlier sections below are historical releases. The current redesign follows the written direction supplied in chat; no reference screenshot was attached.
+
+## Audit and scope
+
+The application is a static vanilla JavaScript frontend, one shared stylesheet, a Node API and PostgreSQL persistence. It has no React, Tailwind, client router, Prisma or lint/typecheck scripts. Existing inline SVG icons, local Inter/Inter Tight fonts, native dialogs and shared form/table helpers were reused. No packages were added for the redesign.
+
+The audit found duplicate company selection in page filters, a prominent mobile navigation strip, repeated dashboard summaries with equal visual weight, sharp containers, heavy table headings and inconsistent action grouping. The implementation updates the shared foundations and shell first, then dashboard disclosure and all existing page surfaces. Existing CSV/XLSX import work is retained.
+
+## Current design system
+
+- Warm neutral application canvas (`#F5F5F0`) and white surfaces. Dark forest/charcoal (`#273D30`) is the single action/selection accent, with a pale tint for selected navigation and available budget.
+- Central tokens cover color, semantic success/info/warning/error states, typography, spacing, input boundaries, focus, shadows, 20px containers, 10px controls and pill navigation. Status text remains explicit; color is supplementary.
+- Local Inter handles interface text; Inter Tight handles titles and financial amounts. Supporting labels, section titles and page titles have distinct sizes/weights. Financial amounts retain tabular alignment and original values.
+- Short transitions, visible focus rings, reduced-motion overrides and touch-sized main controls. Checked text/background pairs meet 4.5:1 contrast; this is targeted verification, not a complete WCAG certification.
+
+## Shared presentation
+
+`public/ui.js` contains reusable shell, sidebar, header, property/company switcher, page header, stat card, form field, status badge, empty state, report disclosure and loading skeleton templates. Existing table-region, search, filter, tab, dialog and validation helpers are adapted rather than replaced with a new framework.
+
+The compact sidebar separates operational pages from Admin-only configuration. Company selection lives once in the header on Dashboard and Requests, using only the server-provided accessible companies. The selected scope carries between those pages. Administration pages explicitly show Group administration and retain their original group-level scope. Role/team/company checks remain in the domain and API.
+
+Mobile navigation uses a native modal drawer with focus containment, Escape support and a close button. Navigation returns focus to the destination heading. User/demo selectors use disclosure menus; Escape and outside interaction close them. The demo remains visibly labelled as fictional browser-local testing, and role switching is not secure login.
+
+## Page changes
+
+- Dashboard retains all seven budget/payment figures. Secondary payments share one surface; the full project financial overview is visible immediately below. Company/project summaries, currencies, category balances and payment-completion details are expandable. Disclosure choices survive filtering and refreshes within the session. My Actions includes existing child and amendment tasks.
+- Requests retains all four views, expansion of parent/child records, search, date/team/status filters, sorting, import, financial details and independent approvals. The balance tab uses the concise label Balance to request. Mobile requests use labelled work items; other tables scroll inside focusable regions.
+- Master Data, User Manager and Settings use the same tabs, search, table, surface and action styles. Existing master revisions, roles, numbering configuration, locks and audit remain available.
+- Forms keep grouped fields, persistent labels, required markers, input values on validation failure, inline errors, PDF controls and sticky footer actions. Detail views keep their amounts prominent and retain the original approval progress, history, supporting files and available actions.
+- Login, TOTP enrolment and password reset share the updated surfaces and typography. Authentication contracts and required factors are unchanged. Printable requests retain their print-specific A4 layout and monochrome styling.
+
+## Verification and limits
+
+`npm test` and `npm run build` pass. Tests cover existing workflows/imports plus one header company selector, scope continuity, dependent project options, drawer focus/navigation, role visibility in both navigations, persistent breakdown state, menu dismissal, responsive CSS and semantic color contrast. JavaScript syntax and whitespace checks also pass. There are no lint/typecheck commands configured.
+
+Real-browser checks cover desktop, 1024px tablet and 390px mobile layouts, mobile drawer navigation, focus restoration, filters, master forms, details and loading of existing records. Tables contain their horizontal scrolling; tested viewports do not overflow the page. This UI-only work does not verify production PostgreSQL concurrency, email delivery, live TOTP or Vercel deployment; follow DEPLOYMENT.md for those acceptance checks. Print data and layout rules are preserved, but actual printer pagination still needs acceptance.
+
+No database models, migrations, APIs, authentication, permissions, tenant/company isolation or finance transitions were changed for this redesign. Existing data is used without replacement or reset.
+
+---
+
 The sections below record the completed design and branding releases. Current workflow and verification details are in [REVIEW-1.md](REVIEW-1.md); its workflow changes supersede the earlier preservation-only scope.
 
 # Interface system — October 2026

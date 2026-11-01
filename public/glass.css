@@ -1,0 +1,86 @@
+/* Reversible visual experiment: remove this stylesheet link to restore the
+   minimalist theme. No workflow, layout, print or data changes are required. */
+@media screen {
+  :root {
+    --glass-surface: rgb(255 255 255 / 67%);
+    --glass-chrome: rgb(248 250 245 / 74%);
+    --glass-border: rgb(255 255 255 / 88%);
+    --glass-blur: 20px;
+    --glass-shadow: 0 8px 32px rgb(50 68 52 / 5%), inset 0 1px 0 rgb(255 255 255 / 90%);
+  }
+  body {
+    background-color: #e9eee7;
+    background-image:
+      radial-gradient(ellipse at 82% 8%, rgb(193 212 195 / 65%), transparent 45%),
+      radial-gradient(ellipse at 22% 64%, rgb(223 213 195 / 48%), transparent 42%),
+      radial-gradient(ellipse at 95% 88%, rgb(208 220 225 / 52%), transparent 45%);
+    background-attachment: fixed;
+  }
+  .sidebar, .topbar { background: #f0f3ed; }
+  .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .report-disclosure, .login-panel { background: #f9fbf7; }
+  .dashboard-kpi[data-kpi=available] { background: #e3ebdf; }
+  .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .report-disclosure, .login-panel, dialog {
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+  .nav button.active { background: #e0e9dc; }
+  .table-wrap { background: transparent; }
+  th { background: rgb(239 244 235 / 76%); }
+  td { border-bottom-color: rgb(129 149 126 / 14%); }
+  tbody tr:hover { background: rgb(255 255 255 / 65%); }
+  .table-footer { background: rgb(255 255 255 / 25%); }
+  .tabs { background: rgb(242 246 237 / 65%); border-color: rgb(255 255 255 / 80%); }
+  .tabs button.active { background: rgb(255 255 255 / 90%); }
+  .demo-banner { background: rgb(255 255 255 / 30%); border-color: rgb(101 121 99 / 30%); }
+  /* Forms and menus remain nearly opaque for reliable reading over content. */
+  input, select, textarea { background-color: rgb(255 255 255 / 90%); }
+  dialog { background: #f8faf6; }
+  dialog::backdrop { background: rgb(39 53 43 / 24%); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+  .modal-head, .form-footer { background: rgb(250 252 248 / 96%); }
+  .detail-lead { background: rgb(228 237 223 / 70%); }
+  .profile-popover, .actor-popover { background: #fbfcf9; }
+  .login { background: transparent; }
+  .login-art { background: #293e31; }
+  /* Blur is optional; the solid colors above provide the same usable layout. */
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .sidebar, .topbar {
+      background: var(--glass-chrome);
+      backdrop-filter: blur(var(--glass-blur)) saturate(115%);
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(115%);
+      border-color: rgb(255 255 255 / 65%);
+    }
+    .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+    .report-disclosure, .login-panel {
+      background: var(--glass-surface);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+    .dashboard-kpi[data-kpi=available] { background: rgb(222 234 215 / 66%); }
+    dialog {
+      background: rgb(249 252 246 / 93%);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+    }
+  }
+  /* Avoid nested backdrop compositing on the four secondary metric cells. */
+  .payment-kpis .dashboard-kpi { background: transparent; box-shadow: none; }
+}
+@media screen and (max-width: 760px) {
+  :root { --glass-blur: 12px; }
+  .navigation-drawer .drawer-sidebar { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .work-table tr { background: rgb(255 255 255 / 82%); }
+  .work-table tr.children-row { background: transparent; }
+}
+@media screen and (prefers-reduced-transparency: reduce) {
+  .sidebar, .topbar, .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .report-disclosure, .login-panel, dialog {
+    background: #f9fbf7;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .dashboard-kpi[data-kpi=available] { background: #e3ebdf; }
+  .payment-kpis .dashboard-kpi { background: transparent; }
+  dialog::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

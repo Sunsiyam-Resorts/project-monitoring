@@ -22,6 +22,43 @@ import {
   ROLES,
 } from "./domain.js";
 import { demoState } from "./demo.js";
+import { createUI } from "./ui.js";
+import { importFields, parseCSV, tableRows, excelRows, checkExcelArchive } from './import-data.js';
+let importPreview = null;
+async function excelLibrary() {
+  if (!globalThis.ExcelJS) await import('./vendor/exceljs.min.js');
+  return globalThis.ExcelJS;
+}
+function downloadImport(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importForm() {
+  importPreview = null;
+  const kinds = page === 'master' ? [masterTab] : ['orders', 'payments'];
+  const labels = { companies: 'Companies', projects: 'Projects', suppliers: 'Suppliers', currencies: 'Currencies', budgets: 'Approved budgets', orders: 'New requests with first payment', payments: 'Additional payment requests' };
+  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts with independent approvals.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
+}
+async function importTemplate(excel) {
+  const kind = document.querySelector('[name=importKind]').value, headers = importFields[kind];
+  if (excel) {
+    const Excel = await excelLibrary(), workbook = new Excel.Workbook(), sheet = workbook.addWorksheet('Import');
+    sheet.addRow(headers); sheet.getRow(1).font = { bold: true };
+    sheet.columns.forEach((col, i) => { col.width = Math.max(20, headers[i].length + 3); });
+    downloadImport(new Blob([await workbook.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${kind}-template.xlsx`);
+  } else downloadImport(new Blob(['\uFEFF' + headers.join(',') + '\r\n'], { type: 'text/csv;charset=utf-8' }), `${kind}-template.csv`);
+}
+async function readImport(file, kind) {
+  if (!file?.size || file.size > 2000000) throw Error('Choose a CSV or XLSX file up to 2 MB');
+  if (/\.csv$/i.test(file.name)) return tableRows(kind, parseCSV(await file.text()));
+  if (!/\.xlsx$/i.test(file.name)) throw Error('Choose a .csv or .xlsx file');
+  const Excel = await excelLibrary(), workbook = new Excel.Workbook();
+  const buffer = await file.arrayBuffer();
+  checkExcelArchive(buffer);
+  await workbook.xlsx.load(buffer);
+  return excelRows(kind, workbook);
+}
 const $ = (s) => document.querySelector(s),
   esc = (v) =>
     String(v ?? "").replace(
@@ -70,6 +107,9 @@ let state,
   enrollMethod = "qr",
   busy = false;
 const symbols = {
+  filter: '<path d="M4 4h16l-6 7v7l-4 2v-9z"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  logout: '<path d="M9 4H4v16h5M14 8l4 4-4 4M8 12h10"/>',
   dashboard:
     '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   requests: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/>',
@@ -114,8 +154,8 @@ const pageNames = {
 };
 const brand = () =>
   `<div class="brand"><img class="brand-logo" src="/logo.svg" alt="Sun Siyam" width="110" height="88"><span class="brand-label">PROJECT MONITORING</span></div>`;
-const pageHeader = (eyebrow, title, description, action = "") =>
-  `<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1 id="pageTitle">${title}</h1><p class="sub">${description}</p></div>${action}</div>`;
+const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard,
+  field, badge, empty, disclosure, loadingSkeleton } = createUI({ esc, icon });
 const section = (number, title, body, description = "") =>
   `<fieldset class="form-section"><legend><span>${number}</span>${title}</legend>${description ? `<p>${description}</p>` : ""}${body}</fieldset>`;
 const footer = (label, note = "") =>
@@ -192,8 +232,6 @@ async function command(a) {
   }
 }
 const name = (kind, id) => state[kind].find((x) => x.id === id)?.name || "—";
-const badge = (s) =>
-  `<span class="badge ${s.replaceAll(" ", "")}">${esc(s === "Finance" ? "Pending Payment" : s)}</span>`;
 const opt = (arr, val, blank = "Select…") =>
   `<option value="">${esc(blank)}</option>` +
   arr
@@ -202,10 +240,12 @@ const opt = (arr, val, blank = "Select…") =>
         `<option value="${esc(x.id)}" ${x.id === val ? "selected" : ""}>${esc(x.name)}</option>`,
     )
     .join("");
-const field = (label, html, wide = false) =>
-  `<div class="field ${wide ? "wide" : ""}"><label>${label}</label>${html}</div>`;
 const input = (n, v = "", type = "text", attrs = "") =>
   `<input name="${n}" value="${esc(v)}" type="${type}" ${attrs}>`;
+function amendmentAttention(o) {
+  return !o.rejectedAt && o.amendment && (stageActor(user, o.amendment) ||
+    (o.amendment.status === 'Draft' && o.requestedBy === user.id && user.role === 'Requester'));
+}
 function attention(r) {
   return (
     (["Draft", "Documents Required"].includes(r.status) &&
@@ -268,6 +308,14 @@ function accessible(root = document) {
       );
   });
 }
+const disclosureState = new Map();
+function restoreDisclosures() {
+  document.querySelectorAll('[data-disclosure]').forEach(el => {
+    const key = page + ':' + el.dataset.disclosure;
+    el.open = disclosureState.get(key) || false;
+    el.addEventListener('toggle', () => disclosureState.set(key, el.open));
+  });
+}
 function render() {
   if (!user) {
     renderLogin();
@@ -277,47 +325,32 @@ function render() {
     company = "";
     project = "";
   }
-  const pending = state.requests.filter(attention).length;
-  $("#app").innerHTML =
-    `<a class="skip-link" href="#workspace">Skip to workspace</a><div class="shell"><aside class="sidebar">${brand()}<div class="eyebrow nav-label">GROUP WORKSPACE</div><nav class="nav" aria-label="Main navigation">${[
-      ["dashboard", "Dashboard"],
-      ["requests", "Requests"],
-      ...(user.role === "Admin"
-        ? [
-            ["master", "Master Data"],
-            ["users", "User Manager"],
-            ["settings", "Settings"],
-          ]
-        : []),
-    ]
-      .map(
-        ([p, t]) =>
-          `<button data-page="${p}" class="${page === p ? "active" : ""}" ${page === p ? 'aria-current="page"' : ""}>${icon(p)}${t}${p === "requests" && pending ? `<span class="nav-count">${pending}<span class="sr-only"> awaiting your action</span></span>` : ""}</button>`,
-      )
-      .join(
-        "",
-      )}</nav><div class="sidebar-foot"><div class="workspace-note"><strong>Clarity at every stage.</strong>Budgets. Commitments. Payments.<br><span class="release">PROJECT WORKSPACE</span></div></div></aside><main class="main" id="workspace" tabindex="-1"><header class="topbar"><div class="crumb"><span>Group workspace</span>${icon("chevron")}<strong>${pageNames[page]}</strong></div><div class="top-right">${
-      demo
-        ? `<select id="actor" aria-label="Demo user — role switching for testing only">${raw.users
-            .filter((u) => u.active)
-            .map(
-              (u) =>
-                `<option value="${u.id}" ${u.id === user.id ? "selected" : ""}>${esc(u.name)}</option>`,
-            )
-            .join("")}</select>`
-        : ""
-    }<div class="profile"><span class="avatar" aria-hidden="true">${esc(user.name.slice(0, 1).toUpperCase())}</span><div class="profile-name"><strong>${esc(user.name)}</strong><small>${esc(user.role)}${user.team ? " · " + esc(user.team) : ""}</small></div></div><button data-action="logout" class="linkbtn">Sign out</button></div></header>${demo ? '<div class="demo-banner"><span><strong>DEMO WORKSPACE</strong>Sample data · browser-local changes<span class="demo-explanation"> · Role switching is for testing only.</span></span><a href="#" data-action="resetDemo">Reset sample data</a></div>' : ""}<div class="content" aria-labelledby="pageTitle">${page === "dashboard" ? dashboard() : page === "requests" ? requestsPage() : page === "master" ? masterPage() : page === "users" ? usersPage() : settingsPage()}</div></main></div>`;
+  const pending = state.requests.filter(attention).length + state.orders.filter(amendmentAttention).length;
+  const sidebarProps = { brand: brand(), page, admin: user.role === 'Admin', pending };
+  const actor = demo ? `<select id="actor" aria-label="Demo user — role switching for testing only">${raw.users.filter(u => u.active).map(u => `<option value="${u.id}" ${u.id === user.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>` : '';
+  const scope = ['dashboard', 'requests'].includes(page)
+    ? propertySwitcher(state.companies, company)
+    : '<span class="admin-scope">Group administration</span>';
+  $("#app").innerHTML = appShell({
+    sidebar: appSidebar(sidebarProps),
+    drawer: appSidebar({ ...sidebarProps, drawer: true }),
+    header: appHeader({ title: pageNames[page], scope, user, actor }),
+    banner: demo ? '<div class="demo-banner"><span><strong>Demo workspace</strong>Sample data · browser-local changes<span class="demo-explanation"> · Role switching is for testing only.</span></span><a href="#" data-action="resetDemo">Reset sample data</a></div>' : '',
+    content: page === 'dashboard' ? dashboard() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : settingsPage(),
+  });
+  $('#navigationDrawer').addEventListener('close', () => $('[data-action=openNavigation]')?.setAttribute('aria-expanded', 'false'));
+  restoreDisclosures();
   accessible();
 }
 function filters(dates = false) {
   const extra = Boolean(from || to || statusFilter || teamFilter);
-  return `<div class="filters"><div><label for="company">Company</label><select id="company">${opt(state.companies, company, user.groupAccess ? "All" : "All")}</select></div><div><label for="project">Project</label><select id="project">${opt(
+  return `<div class="filters"><div><label for="project">Project</label><select id="project">${opt(
     state.projects.filter((p) => !company || p.companyId === company),
     project,
     "All",
   )}</select></div>${
     dates
-      ? `<button data-action="toggleFilters" aria-expanded="${filtersExpanded}" aria-controls="extraFilters">${icon("settings")}Filters${extra ? '<span class="count">Active</span>' : ""}</button><div class="advanced-filters wide" id="extraFilters" ${filtersExpanded ? "" : "hidden"}><div><label for="from">Request date · From</label><input id="from" type="date" value="${from}"></div><div><label for="to">To</label><input id="to" type="date" value="${to}"></div><div><label for="statusFilter">Status</label><select id="statusFilter">${opt(
+      ? `<button data-action="toggleFilters" aria-expanded="${filtersExpanded}" aria-controls="extraFilters">${icon("filter")}Filters${extra ? '<span class="count">Active</span>' : ""}</button><div class="advanced-filters wide" id="extraFilters" ${filtersExpanded ? "" : "hidden"}><div><label for="from">Request date · From</label><input id="from" type="date" value="${from}"></div><div><label for="to">To</label><input id="to" type="date" value="${to}"></div><div><label for="statusFilter">Status</label><select id="statusFilter">${opt(
           [
             "Draft",
             "Reviewer",
@@ -340,117 +373,42 @@ function filters(dates = false) {
   }<div class="filter-end"><span class="currency-label">Reporting currency <strong>USD</strong></span></div>${company || project || extra ? '<button class="linkbtn" data-action="clearFilters">Clear filters</button>' : ""}</div>`;
 }
 function dashboard() {
-  const k = kpis(state, company, project),
-    ps = state.projects.filter(
-      (p) =>
-        (!company || p.companyId === company) && (!project || p.id === project),
-    ),
-    pct = k.utilized ? Math.round((k.paid / k.utilized) * 100) : 0;
-  const kpiTile = (label, value, key, level = 2) =>
-    `<article class="dashboard-kpi" aria-labelledby="kpi-title-${key}" data-kpi="${key}"><h${level} id="kpi-title-${key}">${label}</h${level}><div class="dashboard-kpi-value"><span>USD</span>${fmt(value)}</div></article>`;
-  const summary = (items, title) =>
-    `<section class="panel flush"><div class="section-title"><h2>${title}</h2><small>USD</small></div><div class="table-wrap"><table><thead><tr><th>${title.includes("Company") ? "Company" : "Project / Company"}</th><th class="right">Approved Budget</th><th class="right">Utilized</th><th class="right">Available</th></tr></thead><tbody>${items
-      .map((v) => {
-        const x = kpis(state, v.companyId, v.projectId);
-        return `<tr><td>${esc(v.name)}</td>${[x.budget, x.utilized, x.available].map((n) => `<td class="right">${fmt(n)}</td>`).join("")}</tr>`;
-      })
-      .join("")}</tbody></table></div></section>`;
-  return `${pageHeader("PORTFOLIO OVERVIEW", "Project dashboard", "Approved budgets, order utilization and payment status — consolidated in USD.", `<button data-action="export">${icon("download")}Export summary</button>`)}${filters()}
- <section class="dashboard-kpis budget-kpis" aria-label="Budget overview">${[
-   ["Total Approved Budget", k.budget, "budget"],
-   ["Budget Utilized", k.utilized, "utilized"],
-   ["Available Budget", k.available, "available"],
- ].map(([label,value,key])=>kpiTile(label,value,key)).join("")}</section>
- <section class="dashboard-kpis payment-kpis" aria-label="Payment overview">${[
-   ["Paid", k.paid, "paid"],
-   ["Outstanding Payments", k.outstanding, "outstanding"],
-   ["On Hold", k.hold, "hold"],
-   ["Balance Payments Pending", k.balance, "balance"],
- ].map(([label,value,key])=>kpiTile(label,value,key,3)).join("")}</section>
- <div class="actions section-gap"><button data-action="queue" data-target="Finance">Finance payments ${icon("arrow")}</button><button data-action="queue" data-target="inbox">My Actions ${icon("arrow")}</button></div><div class="panels section-gap">${summary(
-   ps.map((p) => ({
-     name: p.name + " / " + name("companies", p.companyId),
-     companyId: p.companyId,
-     projectId: p.id,
-   })),
-   "Budget Summary by Project",
- )}<section class="panel coverage-panel"><div class="section-title"><h2>Payment Status</h2></div><div class="coverage-heading"><strong>${pct}%</strong><span>Payments Completed</span></div><div class="coverage-track"><span style="width:${Math.min(100, pct)}%"></span></div>${[
-   ["Paid", k.paid],
-   ["Outstanding Payments", k.outstanding],
-   ["On Hold", k.hold],
-   ["Balance Payments Pending", k.balance],
- ]
-   .map(
-     ([t, v]) =>
-       `<div class="stats-line"><span>${t}</span><strong>USD ${fmt(v)}</strong></div>`,
-   )
-   .join(
-     "",
-   )}</section></div>
- <div class="section-gap">${summary(
-   state.companies
-     .filter((c) => !company || c.id === company)
-     .map((c) => ({ name: c.name, companyId: c.id, projectId: project })),
-   "Budget Summary by Company",
- )}</div>
- <section class="panel flush section-gap"><div class="section-title"><h2>Project Financial Overview</h2><small>USD</small></div><div class="table-wrap"><table><thead><tr><th>Project / Company</th>${["Approved Budget", "Utilized", "Available", "Paid", "Outstanding Payments", "Balance Payments Pending", "On Hold"].map((t) => `<th class="right">${t}</th>`).join("")}</tr></thead><tbody>${ps
-   .map((p) => {
-     const x = kpis(state, p.companyId, p.id);
-     return `<tr><td><button class="linkbtn" data-action="project" data-id="${p.id}">${esc(p.name)}</button><span class="secondary">${esc(name("companies", p.companyId))}</span></td>${[x.budget, x.utilized, x.available, x.paid, x.outstanding, x.balance, x.hold].map((v) => `<td class="right">${fmt(v)}</td>`).join("")}</tr>`;
-   })
-   .join(
-     "",
-   )}</tbody><tfoot><tr class="total-row"><td>Total</td>${[k.budget, k.utilized, k.available, k.paid, k.outstanding, k.balance, k.hold].map((v) => `<td class="right">${fmt(v)}</td>`).join("")}</tr></tfoot></table></div></section>
- <section class="panel flush section-gap"><div class="section-title"><h2>Currency Summary</h2><small>Original currencies · USD totals above</small></div><div class="table-wrap"><table><thead><tr><th>Currency</th>${["Approved Budget", "Utilized", "Paid", "Outstanding Payments", "On Hold"].map((t) => `<th class="right">${t}</th>`).join("")}</tr></thead><tbody>${currencyStats(
-   state,
-   company,
-   project,
- )
-   .map(
-     (c) =>
-       `<tr><td>${c.currency}</td>${[c.budget, c.utilized, c.paid, c.outstanding, c.hold].map((v) => `<td class="right">${fmt(v)}</td>`).join("")}</tr>`,
-   )
-   .join(
-     "",
-   )}</tbody></table></div><p class="help">Budget and utilization use their original currencies; payment figures use each payment request’s currency. Saved exchange rates determine consolidated USD totals.</p></section>
- <div class="panels section-gap"><section class="panel flush"><div class="section-title"><h2>Budget Categories</h2><small>USD</small></div><div class="table-wrap"><table><thead><tr><th>Category / Project</th><th class="right">Approved</th><th class="right">Utilized</th><th class="right">Available</th></tr></thead><tbody>${state.budgets
-   .filter(
-     (b) =>
-       (!company || b.companyId === company) &&
-       (!project || b.projectId === project),
-   )
-   .flatMap((b) =>
-     b.categories.map((c) => {
-       const used = categoryUsed(state, b.id, c.id),
-         amount = c.amount / (b.rate || 1);
-       return `<tr><td>${esc(c.name)}<span class="secondary">${esc(name("projects", b.projectId))}</span></td><td class="right">${fmt(amount)}</td><td class="right">${fmt(used)}</td><td class="right">${fmt(amount - used)}</td></tr>`;
-     }),
-   )
-   .join(
-     "",
-   )}</tbody></table></div></section><section class="panel"><div class="section-title"><h2>Recent activity</h2></div>${
-   state.audit
-     .filter(
-       (a) =>
-         (!company || a.companyId === company) &&
-         (!project ||
-           state.orders.some(
-             (o) =>
-               o.projectId === project &&
-               (o.id === a.entity ||
-                 state.requests.some(
-                   (r) => r.orderId === o.id && r.id === a.entity,
-                 )),
-           )),
-     )
-     .slice(-6)
-     .reverse()
-     .map(
-       (a) =>
-         `<div class="activity"><i class="dot"></i><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${esc(a.detail)}</p><small>${date(a.at)}</small></div></div>`,
-     )
-     .join("") || empty("No activity yet")
- }</section></div>`;
+  const k = kpis(state, company, project);
+  const ps = state.projects.filter(p => (!company || p.companyId === company) && (!project || p.id === project));
+  const pending = state.requests.filter(r => attention(r) && (!company || r.companyId === company) && (!project || state.orders.some(o => o.id === r.orderId && o.projectId === project))).length + state.orders.filter(o => amendmentAttention(o) && (!company || o.companyId === company) && (!project || o.projectId === project)).length;
+  const completion = k.utilized ? Math.round((k.paid / k.utilized) * 100) : 0;
+  const paymentProgress = `<div class="coverage-heading"><strong>${completion}%</strong><span>Payments Completed</span></div><div class="coverage-track"><span style="width:${Math.min(100, completion)}%"></span></div>${[['Paid', k.paid], ['Outstanding Payments', k.outstanding], ['On Hold', k.hold], ['Balance Payments Pending', k.balance]].map(([label, value]) => `<div class="stats-line"><span>${label}</span><strong>USD ${fmt(value)}</strong></div>`).join('')}`;
+  const table = (headings, body, footer = '') => `<div class="table-wrap"><table><thead><tr>${headings.map((h, i) => `<th class="${i ? 'right' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody>${footer}</table></div>`;
+  const numbers = values => values.map(v => `<td class="right">${fmt(v)}</td>`).join('');
+  const metrics = x => [x.budget, x.utilized, x.available, x.paid, x.outstanding, x.balance, x.hold];
+  const projectTable = table(['Project / Company', 'Approved Budget', 'Utilized', 'Available', 'Paid', 'Outstanding Payments', 'Balance Payments Pending', 'On Hold'], ps.map(p => {
+    const x = kpis(state, p.companyId, p.id);
+    return `<tr><td><button class="linkbtn" data-action="project" data-id="${p.id}">${esc(p.name)}</button><span class="secondary">${esc(name('companies', p.companyId))}</span></td>${numbers(metrics(x))}</tr>`;
+  }).join(''), `<tfoot><tr class="total-row"><td>Total</td>${numbers(metrics(k))}</tr></tfoot>`);
+  const summary = (items, heading) => table([heading, 'Approved Budget', 'Utilized', 'Available'], items.map(item => {
+    const x = kpis(state, item.companyId, item.projectId);
+    return `<tr><td>${esc(item.name)}</td>${numbers([x.budget, x.utilized, x.available])}</tr>`;
+  }).join(''));
+  const companyTable = summary(state.companies.filter(c => !company || c.id === company).map(c => ({ name: c.name, companyId: c.id, projectId: project })), 'Company');
+  const projectSummary = summary(ps.map(p => ({ name: p.name + ' / ' + name('companies', p.companyId), companyId: p.companyId, projectId: p.id })), 'Project / Company');
+  const currencyTable = table(['Currency', 'Approved Budget', 'Utilized', 'Paid', 'Outstanding Payments', 'On Hold'], currencyStats(state, company, project).map(c => `<tr><td>${esc(c.currency)}</td>${numbers([c.budget, c.utilized, c.paid, c.outstanding, c.hold])}</tr>`).join(''));
+  const categoryTable = table(['Category / Project', 'Approved', 'Utilized', 'Available'], state.budgets.filter(b => (!company || b.companyId === company) && (!project || b.projectId === project)).flatMap(b => b.categories.map(c => {
+    const used = categoryUsed(state, b.id, c.id), amount = c.amount / (b.rate || 1);
+    return `<tr><td>${esc(c.name)}<span class="secondary">${esc(name('projects', b.projectId))}</span></td>${numbers([amount, used, amount - used])}</tr>`;
+  })).join(''));
+  const activity = state.audit.filter(a => (!company || a.companyId === company) && (!project || state.orders.some(o => o.projectId === project && (o.id === a.entity || state.requests.some(r => r.orderId === o.id && r.id === a.entity))))).slice(-6).reverse();
+  return `${pageHeader('Portfolio overview', 'Project dashboard', 'Your budgets, commitments and payments at a glance.', `<button data-action="export">${icon('download')}Export summary</button>`)}${filters()}
+    <section class="dashboard-kpis budget-kpis" aria-label="Budget overview">${[['Total Approved Budget', k.budget, 'budget'], ['Budget Utilized', k.utilized, 'utilized'], ['Available Budget', k.available, 'available']].map(([label, value, key]) => statCard(label, fmt(value), key)).join('')}</section>
+    <section class="dashboard-kpis payment-kpis" aria-label="Payment overview">${[['Paid', k.paid, 'paid'], ['Outstanding Payments', k.outstanding, 'outstanding'], ['On Hold', k.hold, 'hold'], ['Balance Payments Pending', k.balance, 'balance']].map(([label, value, key]) => statCard(label, fmt(value), key, 3)).join('')}</section>
+    <div class="workspace-actions"><div><span class="action-indicator" aria-hidden="true"></span><strong>${pending ? `${pending} task${pending === 1 ? '' : 's'} for you` : 'Your workspace is up to date'}</strong><span>${pending ? 'Review your action queue to continue.' : 'No requests or amendments currently need your action.'}</span></div><div class="actions"><button data-action="queue" data-target="Finance">Finance payments ${icon('arrow')}</button><button class="primary" data-action="queue" data-target="inbox">My Actions ${icon('arrow')}</button></div></div>
+    <section class="panel flush section-gap"><div class="section-title"><div><h2>Project Financial Overview</h2><p class="help">${ps.length} project${ps.length === 1 ? '' : 's'} · consolidated in USD</p></div><span class="unit-label">USD</span></div>${ps.length ? projectTable : empty('No projects in this view', 'Choose another company or project to see its financial position.')}</section>
+    <div class="dashboard-bottom section-gap"><section class="report-stack" aria-label="Financial breakdowns"><div class="section-title"><h2>Explore the details</h2><small>Expand a breakdown</small></div>
+    ${disclosure('Budget Summary by Company', 'Compare approved, utilized and available budgets · USD', companyTable, 'company')}
+    ${disclosure('Budget Summary by Project', 'A focused view of project budget balances · USD', projectSummary, 'project')}
+    ${disclosure('Currency Summary', 'Original currencies and saved exchange rates', currencyTable + '<p class="help">Budget and utilization use their original currencies; payment figures use each payment request’s currency. Saved exchange rates determine consolidated USD totals.</p>', 'currency')}
+    ${disclosure('Payment Status', 'Payment completion and the remaining commitment', paymentProgress, 'payments')}
+    ${disclosure('Budget Categories', 'Review allocations and category balances · USD', categoryTable, 'categories')}
+    </section><section class="panel activity-panel"><div class="section-title"><h2>Recent activity</h2><span class="unit-label">Latest ${activity.length}</span></div>${activity.map(a => `<div class="activity"><i class="dot"></i><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${esc(a.detail)}</p><small>${date(a.at)}</small></div></div>`).join('') || empty('No activity yet')}</section></div>`;
 }
 function orderMatch(o) {
   return (
@@ -502,13 +460,7 @@ function requestsPage() {
               : b.createdAt.localeCompare(a.createdAt),
       ),
     children = (o) => all.filter((r) => r.orderId === o.id),
-    actionable = (o) =>
-      !o.rejectedAt &&
-      o.amendment &&
-      (stageActor(user, o.amendment) ||
-        (o.amendment.status === "Draft" &&
-          o.requestedBy === user.id &&
-          user.role === "Requester"));
+    actionable = amendmentAttention;
   const lists = {
     requests: os.filter(
       (o) => (!from && !to && !statusFilter) || children(o).length,
@@ -523,10 +475,10 @@ function requestsPage() {
     tab === "finance"
       ? requestTable(lists.finance)
       : ordersTable(lists[tab] || lists.requests, tab, all);
-  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with independent approvals and evidence for every payment.", user.role === "Requester" && tab === "requests" ? `<button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
+  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with independent approvals and evidence for every payment.", user.role === "Requester" && tab === "requests" ? `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
     ["requests", "Requests"],
     ["finance", "Finance"],
-    ["balance", "Balance Payments To Be Requested"],
+    ["balance", "Balance to request"],
     ["inbox", "My Actions"],
   ]
     .map(
@@ -581,9 +533,6 @@ function ordersTable(os, view = "requests", all = state.requests) {
 function commitmentsView(os) {
   return ordersTable(os, "balance");
 }
-function empty(t, n = "") {
-  return `<div class="empty"><div class="empty-icon">${icon("requests")}</div><h3>${t}</h3>${n ? `<p>${n}</p>` : ""}</div>`;
-}
 function masterPage() {
   const labels = {
       companies: "Companies",
@@ -613,7 +562,7 @@ function masterPage() {
         .toLowerCase()
         .includes(masterSearch.toLowerCase()),
   );
-  return `${pageHeader("ADMINISTRATION", "Master data", "The shared foundation for accurate budgets, requests and reporting.", `<button class="primary" data-action="newMaster">${icon("plus")}Add ${singular[masterTab]}</button>`)}<div class="tabs">${Object.entries(
+  return `${pageHeader("ADMINISTRATION", "Master data", "The shared foundation for accurate budgets, requests and reporting.", `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newMaster">${icon("plus")}Add ${singular[masterTab]}</button>`)}<div class="tabs">${Object.entries(
     labels,
   )
     .map(
@@ -1173,6 +1122,9 @@ function csvExport() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 document.addEventListener("click", async (e) => {
+  document.querySelectorAll('.profile-menu[open], .demo-actor[open]').forEach(menu => {
+    if (!menu.contains(e.target)) menu.open = false;
+  });
   const b = e.target.closest("button,[data-action]");
   if (!b) return;
   if (b.dataset.action) e.preventDefault();
@@ -1193,11 +1145,11 @@ document.addEventListener("click", async (e) => {
   }
   try {
     if (b.dataset.page) {
+      const mobileNavigation = Boolean(b.closest("#navigationDrawer"));
       page = b.dataset.page;
       render();
-      document
-        .querySelector(`[data-page="${page}"]`)
-        ?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      (mobileNavigation ? $("#pageTitle") : document.querySelector(`[data-page="${page}"]`))?.focus({ preventScroll: true });
       return;
     }
     if (b.dataset.tab) {
@@ -1219,6 +1171,16 @@ document.addEventListener("click", async (e) => {
     }
     const a = b.dataset.action,
       id = b.dataset.id;
+    if (a === 'openNavigation') {
+      $('#navigationDrawer').showModal();
+      b.setAttribute('aria-expanded', 'true');
+      return;
+    }
+    if (a === 'closeNavigation') {
+      $('#navigationDrawer').close();
+      $('[data-action=openNavigation]').focus();
+      return;
+    }
     if (a === "expand") {
       expanded.has(id) ? expanded.delete(id) : expanded.add(id);
       render();
@@ -1282,6 +1244,7 @@ document.addEventListener("click", async (e) => {
       else if (b.dataset.target === "inbox") tab = "inbox";
       else if (b.dataset.target === "approval") approvalOnly = true;
       render();
+      window.scrollTo({ top: 0, behavior: 'instant' });
       return;
     }
     if (a === "demo") useDemo();
@@ -1302,6 +1265,17 @@ document.addEventListener("click", async (e) => {
       state = visibleState(raw, user);
       render();
       toast("Demo data reset");
+    } else if (a === "import") importForm();
+    else if (a === "importCSV" || a === "importXLSX") await importTemplate(a === "importXLSX");
+    else if (a === "confirmImport") {
+      if (!importPreview) throw Error("Validate the file first");
+      b.disabled = true;
+      try {
+        await command({ type: "import.create", data: importPreview });
+        importPreview = null;
+        await closeModal();
+        toast("Import completed");
+      } finally { b.disabled = false; }
     } else if (a === "newOrder") orderForm();
     else if (a === "editOrder") orderForm(id);
     else if (a === "openOrder") await openRecord(id, "order", b.dataset.payment);
@@ -1374,6 +1348,13 @@ document.addEventListener("click", async (e) => {
   }
 });
 document.addEventListener("change", async (e) => {
+  if (e.target.closest('[data-form="import"]')) {
+    importPreview = null;
+    const support = document.querySelector('#importSupporting');
+    if (support) support.hidden = document.querySelector('[name=importKind]').value !== 'orders';
+    const preview = document.querySelector('#importPreview');
+    if (preview) preview.innerHTML = '';
+  }
   const t = e.target;
   try {
     if (t.id === "sortOrder") {
@@ -1552,6 +1533,22 @@ document.addEventListener("submit", async (e) => {
       }
       return;
     }
+    if (kind === "import") {
+      importPreview = null;
+      const preview = f.querySelector('#importPreview');
+      preview.innerHTML = '';
+      const rows = await readImport(fd.get('importFile'), d.importKind);
+      const uploads = fd.getAll('importPDFs').filter(f => f.size);
+      if (uploads.reduce((sum, f) => sum + f.size, 0) > 2000000) throw Error('Combined supporting PDFs must not exceed 2 MB');
+      const files = await Promise.all(uploads.map(readPDF));
+      const payload = { kind: d.importKind, rows, files };
+      await command({ type: 'import.preview', data: payload });
+      importPreview = payload;
+      const headers = importFields[d.importKind];
+      preview.innerHTML = `<p>${rows.length} records validated. Review the values before importing.</p><div class="table-wrap"><table><thead><tr><th>Row</th>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td>${r.line}</td>${headers.map(h => `<td>${esc(r.values[h])}</td>`).join('')}</tr>`).join('')}</tbody></table></div><button type="button" class="primary" data-action="confirmImport">Import ${rows.length} records</button>`;
+      accessible(preview);
+      return;
+    }
     if (kind === "order") {
       const old = id ? state.orders.find((o) => o.id === id) : null;
       if (old) {
@@ -1721,6 +1718,16 @@ $("#modal").addEventListener("cancel", (e) => {
   e.preventDefault();
   closeModal();
 });
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.profile-menu[open], .demo-actor[open]').forEach(menu => {
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+  });
+});
+window.matchMedia('(min-width: 761px)').addEventListener('change', event => {
+  if (event.matches && $('#navigationDrawer')?.open) $('#navigationDrawer').close();
+});
 window.addEventListener("storage", (e) => {
   if (demo && e.key === storeKey && e.newValue) {
     raw = JSON.parse(e.newValue);
@@ -1733,6 +1740,8 @@ setInterval(async () => {
   if (
     !user ||
     $("#modal").open ||
+    $("#navigationDrawer")?.open ||
+    document.querySelector(".profile-menu[open], .demo-actor[open]") ||
     document.activeElement?.matches("input,select,textarea")
   )
     return;
@@ -1754,6 +1763,7 @@ setInterval(async () => {
     }
   }
 }, 30000);
+$("#app").innerHTML = loadingSkeleton();
 (async () => {
   try {
     const c = await api("config");

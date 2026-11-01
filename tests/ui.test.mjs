@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 import { Window } from "happy-dom";
 import * as domain from "../public/domain.js";
 import { demoState } from "../public/demo.js";
+import * as imports from '../public/import-data.js';
+import ExcelJS from 'exceljs';
+import { createUI } from '../public/ui.js';
 const flush = () => new Promise((r) => setTimeout(r, 20));
 async function app(seed, handleFetch) {
   const window = new Window({
@@ -18,6 +21,7 @@ async function app(seed, handleFetch) {
   window.document.body.innerHTML =
     '<div id="app"></div><dialog id="modal"></dialog><div id="toast"></div>';
   window.structuredClone = structuredClone;
+  window.ExcelJS = ExcelJS;
   if (seed)
     window.localStorage.setItem(
       "ss-project-monitoring-demo-v1",
@@ -27,7 +31,7 @@ async function app(seed, handleFetch) {
     ok: true,
     json: async () => ({ configured: false }),
   }));
-  window.__deps = { ...domain, demoState };
+  window.__deps = { ...domain, ...imports, demoState, createUI };
   const source = (
     await readFile(new URL("../public/app.js", import.meta.url), "utf8")
   ).replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, "");
@@ -204,7 +208,8 @@ test("All five pages and document render, scoped role switching works", async ()
   actor.value = "viewer";
   actor.dispatchEvent(new w.Event("change", { bubbles: true }));
   await flush();
-  assert.equal(w.document.querySelectorAll("[data-page]").length, 2);
+  assert.equal(w.document.querySelectorAll(".shell [data-page]").length, 2);
+  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 2);
   click(w, "[data-page=dashboard]");
   assert.match(w.document.body.textContent, /All/);
   const actor2 = w.document.querySelector("#actor");
@@ -538,10 +543,10 @@ test("Responsive styles switch sidebar, form columns and mobile work items at re
       style.textContent = css;
       w.document.head.append(style);
       w.document.body.innerHTML =
-        '<div class="shell"><aside class="sidebar"></aside><main class="main"><div class="grid2"></div><table class="work-table"><tbody><tr><td>Request</td></tr></tbody></table><div class="advanced-filters" hidden></div></main></div>';
+        '<div class="shell"><aside class="sidebar"></aside><main class="main"><div class="grid2"></div><table class="work-table"><tbody><tr><td>Request</td></tr><tr class="children-row"><td>Nested payment requests</td></tr></tbody></table><div class="advanced-filters" hidden></div></main></div>';
       assert.equal(
         w.getComputedStyle(w.document.querySelector(".sidebar")).position,
-        width < 760 ? "static" : "fixed",
+        "fixed",
       );
       assert.equal(
         w.getComputedStyle(w.document.querySelector(".work-table")).display,
@@ -552,13 +557,16 @@ test("Responsive styles switch sidebar, form columns and mobile work items at re
           .display,
         "none",
       );
-      if (width === 390)
+      if (width === 390) {
+        assert.equal(w.getComputedStyle(w.document.querySelector('.shell > .sidebar')).display, 'none');
+        assert.equal(w.getComputedStyle(w.document.querySelector('.children-row > td')).position, 'static');
         assert.equal(
           w
             .getComputedStyle(w.document.querySelector(".grid2"))
             .gridTemplateColumns.replace(/\s/g, ""),
           "minmax(0,1fr)",
         );
+      }
     } finally {
       w.close();
     }
@@ -590,6 +598,8 @@ test("Core text and primary controls meet WCAG AA contrast against their surface
     [color("accent"), color("accent-soft")],
     [color("danger"), color("danger-soft")],
     [color("warning"), color("warning-soft")],
+    [color("success"), color("success-soft")],
+    [color("info"), color("info-soft")],
   ])
     assert.ok(contrast(fg, bg) >= 4.5, fg + " on " + bg);
 });
@@ -747,4 +757,112 @@ test('Main details opened from a payment provide a direct return to that payment
  back.click();await flush();assert.equal(w.document.querySelector('#modalTitle').textContent,'Payment request');assert.match(w.document.querySelector('.detail-number').textContent,/PR-2026-000001/);saved=JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));assert.ok(saved.locks.r0);assert.equal(saved.locks.o1,undefined);
  click(w,'[data-action=close]');await flush();click(w,'[data-action=openOrder][data-id=o1]');await flush();assert.equal(w.document.querySelector('[data-return-payment]'),null);
  }finally{w.close();await w.happyDOM.abort()}
+});
+
+test('CSV and Excel imports preview without saving, confirm creates masters, and changing the file invalidates preview', async () => {
+  for (const format of ['csv', 'xlsx']) {
+    const w = await app();
+    try {
+      click(w, '[data-action=demo]'); click(w, '[data-page=master]');
+      click(w, '[data-master=suppliers]'); click(w, '[data-action=import]');
+      const f = w.document.querySelector('[data-form=import]');
+      const name = `Fictional ${format} import supplier`;
+      let contents = `Name,Email\r\n${name},fictional@example.com\r\n`;
+      if (format === 'xlsx') {
+        const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Import');
+        sheet.addRow(imports.importFields.suppliers); sheet.addRow([name, 'fictional@example.com']);
+        contents = await book.xlsx.writeBuffer();
+      }
+      const transfer = new w.DataTransfer();
+      transfer.items.add(new w.File([contents], `fictional.${format}`));
+      f.elements.importFile.files = transfer.files;
+      const before = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1')).suppliers.length;
+      submit(w, '[data-form=import]');
+      await new Promise(r => setTimeout(r, 100));
+      assert.ok(w.document.querySelector('[data-action=confirmImport]'), f.textContent);
+      assert.equal(JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1')).suppliers.length, before);
+      assert.ok(w.document.querySelector('#importPreview').textContent.includes(name));
+      f.elements.importFile.dispatchEvent(new w.Event('change', { bubbles: true }));
+      assert.equal(w.document.querySelector('[data-action=confirmImport]'), null);
+      submit(w, '[data-form=import]'); await new Promise(r => setTimeout(r, 100));
+      click(w, '[data-action=confirmImport]'); await flush();
+      const saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+      assert.equal(saved.suppliers.length, before + 1);
+      assert.equal(saved.suppliers.at(-1).name, name);
+      assert.equal(w.document.querySelector('#modal').open, false);
+      await actor(w, 'req0'); click(w, '[data-page=requests]'); click(w, '[data-action=import]');
+      assert.deepEqual([...w.document.querySelectorAll('[name=importKind] option')].map(o => o.value), ['orders', 'payments']);
+    } finally { w.close(); await w.happyDOM.abort(); }
+  }
+});
+
+test('The shared header keeps one company switcher, preserves scope across operational pages and scopes project options', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    assert.equal(w.document.querySelectorAll('#company').length, 1);
+    assert.ok(w.document.querySelector('.topbar #company'));
+    change(w, 'company', 'c1');
+    assert.ok([...w.document.querySelectorAll('#project option')].every(o => !o.value || ['p1','p2'].includes(o.value)));
+    click(w, '[data-page=requests]');
+    assert.equal(w.document.querySelector('#company').value, 'c1');
+    assert.equal(w.document.querySelectorAll('#company').length, 1);
+    click(w, '[data-page=master]');
+    assert.equal(w.document.querySelector('#company'), null);
+    assert.match(w.document.querySelector('.header-scope').textContent, /Group administration/);
+    click(w, '[data-page=dashboard]');
+    assert.equal(w.document.querySelector('#company').value, 'c1');
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Mobile drawer opens, closes and navigates with focus; role restrictions apply to both navigations', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    click(w, '[data-action=openNavigation]');
+    assert.equal(w.document.querySelector('#navigationDrawer').open, true);
+    assert.equal(w.document.querySelector('[data-action=openNavigation]').getAttribute('aria-expanded'), 'true');
+    click(w, '[data-action=closeNavigation]'); await flush();
+    assert.equal(w.document.querySelector('#navigationDrawer').open, false);
+    assert.equal(w.document.activeElement.dataset.action, 'openNavigation');
+    click(w, '[data-action=openNavigation]');
+    click(w, '#navigationDrawer [data-page=requests]');
+    assert.equal(w.document.querySelector('#navigationDrawer').open, false);
+    assert.equal(w.document.activeElement.id, 'pageTitle');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Requests');
+    await actor(w, 'viewer');
+    assert.equal(w.document.querySelector('.shell [data-page=master]'), null);
+    assert.equal(w.document.querySelector('#navigationDrawer [data-page=master]'), null);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Dashboard breakdowns use progressive disclosure, preserve the chosen state and retain financial metrics', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    const report = w.document.querySelector('[data-disclosure=currency]');
+    assert.equal(report.open, false);
+    report.open = true; report.dispatchEvent(new w.Event('toggle')); await flush();
+    change(w, 'project', 'p1');
+    assert.equal(w.document.querySelector('[data-disclosure=currency]').open, true);
+    assert.ok(w.document.querySelector('[data-disclosure=categories] table'));
+    assert.match(w.document.querySelector('[data-disclosure=payments]').textContent, /Payments Completed/);
+    assert.equal(w.document.querySelectorAll('[data-kpi]').length, 7);
+    assert.equal(w.document.querySelector('[data-kpi=budget] .dashboard-kpi-value').textContent, 'USD1,600,000.00');
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('User menus close on Escape and outside interaction without losing page state', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    const menu = w.document.querySelector('.profile-menu');
+    menu.open = true;
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(menu.open, false);
+    assert.equal(w.document.activeElement, menu.querySelector('summary'));
+    menu.open = true;
+    w.document.querySelector('#pageTitle').click();
+    assert.equal(menu.open, false);
+  } finally { w.close(); await w.happyDOM.abort(); }
 });

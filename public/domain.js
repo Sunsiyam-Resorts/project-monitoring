@@ -1,3 +1,4 @@
+import { importFields, importCommand } from './import-data.js';
 export const ROLES = [
   "Requester",
   "Reviewer",
@@ -628,6 +629,34 @@ const nextStage = (r) =>
       ? "Approval 2"
       : "Finance";
 export function apply(s, u, a, now = Date.now()) {
+  if (a.type === 'import.create' || a.type === 'import.preview') {
+    const { kind, rows, files = [] } = a.data || {};
+    need(u && u.active !== false, 'Active user required');
+    need(importFields[kind], 'Invalid import type');
+    need(['orders', 'payments'].includes(kind) ? u.role === 'Requester' : u.role === 'Admin', 'Your role cannot import these records');
+    need(Array.isArray(rows) && rows.length > 0 && rows.length <= 100, 'Import between 1 and 100 records');
+    need(Array.isArray(files) && JSON.stringify(files).length <= 2800000, 'Combined supporting PDFs must not exceed 2 MB');
+    const next = structuredClone(s), errors = [];
+    for (const [index, row] of rows.entries()) {
+      try {
+        const cmd = importCommand(next, u, kind, row.values, files);
+        // Payment creation retains its ordinary parent lock contract.
+        const previousLock = cmd.type === 'request.create' ? next.locks?.[cmd.data.orderId] : null;
+        if (cmd.type === 'request.create') apply(next, u, { type: 'lock', id: cmd.data.orderId }, now);
+        apply(next, u, cmd, now);
+        if (cmd.type === 'request.create') {
+          if (previousLock) next.locks[cmd.data.orderId] = previousLock;
+          else apply(next, u, { type: 'unlock', id: cmd.data.orderId }, now);
+        }
+      } catch (error) { errors.push(`Row ${row.line || index + 2}: ${error.message}`); }
+    }
+    need(!errors.length, errors.join('\n'));
+    if (a.type === 'import.create') {
+      audit(next, u, 'import.create', kind, undefined, `${rows.length} records imported`, now);
+      Object.assign(s, next);
+    }
+    return s;
+  }
   migrateState(s, now);
   need(u?.active !== false, "User is inactive");
   const d = a.data || {};

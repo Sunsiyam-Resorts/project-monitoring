@@ -1,12 +1,12 @@
 # PostgreSQL setup and developer handover
 
-The live portal uses PostgreSQL through `pg`. Vercel hosts the application and API; it connects to the database using `DATABASE_URL`. Browser demo data stays in browser storage and never seeds the live database.
+The live portal uses PostgreSQL through `pg`. The self-hosted Node.js server (see [DEPLOYMENT.md](DEPLOYMENT.md)) runs the application and API; it connects to the database using `DATABASE_URL`. Browser demo data stays in browser storage and never seeds the live database.
 
 ## Initial setup
 
 1. Create a PostgreSQL database and application login using your database provider. Use a TLS-enabled connection URL in production; pooled connections are supported. The application login needs permission to create and read/write the four tables below in its configured schema.
 2. Configure the variables listed in [DEPLOYMENT.md](DEPLOYMENT.md): `DATABASE_URL`, `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `AUTH_ENCRYPTION_KEY`, `RESEND_API_KEY` and `MAIL_FROM`. For local work, copy `.env.example` to the ignored `.env` file and fill it locally. Keep credentials out of GitHub.
-3. Run `npm ci` and `npm run dev` locally, or deploy the configured application to Vercel. On the first API request needing storage, `lib/store.mjs` creates its tables. When no workspace exists, it inserts the initial workspace and Admin using a salted password hash. Keep the bootstrap Admin variables configured on later deployments; changing their values does not update an existing account.
+3. Run `npm ci` and `npm run dev` locally, or start the configured application on the server with `npm start`. On the first API request needing storage, `lib/store.mjs` creates its tables. When no workspace exists, it inserts the initial workspace and Admin using a salted password hash. Keep the bootstrap Admin variables configured on later deployments; changing their values does not update an existing account.
 4. Sign in using the configured Admin account. Choose **Scan QR code** or **Enter setup key** to enroll an authenticator, then verify its six-digit code. Both methods configure the same time-based authenticator. Subsequent sign-ins still require password and authenticator verification.
 5. Add master data and users through the Admin screens. Run the live acceptance checks in [DEPLOYMENT.md](DEPLOYMENT.md) before using real records.
 

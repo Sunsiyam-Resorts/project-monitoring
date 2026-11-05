@@ -1,0 +1,20 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-05T04:30:50.240Z",
+        "reason": "Project decision: docs/DESIGN.md records self-hosted Inter/Inter Tight as the portal typefaces"
+      },
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-11-05T04:30:50.700Z",
+        "reason": "Project decision: Arial is the print-only font for the A4 payment request document (@media print)"
+      }
+    ]
+  }
+}

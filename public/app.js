@@ -16,6 +16,7 @@ import {
   visibleState,
   supportingFile,
   kpis,
+  kpiTrend,
   money,
   access,
   roleFor,
@@ -129,7 +130,7 @@ const pageNames = {
 };
 const brand = () =>
   `<div class="brand"><img class="brand-logo" src="/logo.svg" alt="Sun Siyam" width="110" height="88"><span class="brand-label">PROJECT MONITORING</span></div>`;
-const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard,
+const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard, trendChart,
   field, badge, empty, disclosure, loadingSkeleton, themePicker } = createUI({ esc, icon, getThemePreference: () => document.documentElement.dataset.themePreference || 'system', getResolvedTheme: () => document.documentElement.dataset.theme || 'light' });
 const section = (number, title, body, description = "") =>
   `<fieldset class="form-section"><legend><span>${number}</span>${title}</legend>${description ? `<p>${description}</p>` : ""}${body}</fieldset>`;
@@ -175,7 +176,7 @@ function useDemo() {
   try {
     raw = JSON.parse(localStorage.getItem(storeKey));
   } catch {}
-  if (!raw) raw = demoState();
+  if (!raw) raw = demoState({ history: true });
   migrateState(raw);
   localStorage.setItem(storeKey, JSON.stringify(raw));
   user =
@@ -303,15 +304,17 @@ function render() {
     project = "";
   }
   const pending = state.requests.filter(attention).length + state.orders.filter(amendmentAttention).length;
-  const sidebarProps = { brand: brand(), page, admin: user.role === 'Admin', pending };
-  const actor = demo ? `<select id="actor" aria-label="Demo user — role switching for testing only">${raw.users.filter(u => u.active).map(u => `<option value="${u.id}" ${u.id === user.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>` : '';
-  const scope = ['dashboard', 'requests'].includes(page)
-    ? propertySwitcher(state.companies, company)
+  const sidebarProps = { brand: brand(), page, admin: user.role === 'Admin', pending, user };
+  const actorFor = (id) => demo ? { id, html: `<select id="${id}" aria-label="Demo user — role switching for testing only">${raw.users.filter(u => u.active).map(u => `<option value="${u.id}" ${u.id === user.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>` } : null;
+  const operational = ['dashboard', 'requests'].includes(page);
+  const scopeFor = (id) => operational
+    ? propertySwitcher(state.companies, company, id)
     : '<span class="admin-scope">Group administration</span>';
   $("#app").innerHTML = appShell({
-    sidebar: appSidebar(sidebarProps),
-    drawer: appSidebar({ ...sidebarProps, drawer: true }),
-    header: appHeader({ title: pageNames[page], scope, user, actor }),
+    page,
+    sidebar: appSidebar({ ...sidebarProps, scope: scopeFor('company'), actor: actorFor('actor') }),
+    drawer: appSidebar({ ...sidebarProps, scope: scopeFor('drawerCompany'), actor: actorFor('drawerActor'), drawer: true }),
+    header: appHeader(),
     banner: demo ? '<div class="demo-banner"><span><strong>Demo workspace</strong>Sample data · browser-local changes<span class="demo-explanation"> · Role switching is for testing only.</span></span><a href="#" data-action="resetDemo">Reset sample data</a></div>' : '',
     content: page === 'dashboard' ? dashboard() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : settingsPage(),
   });
@@ -319,7 +322,7 @@ function render() {
   restoreDisclosures();
   accessible();
 }
-function filters(dates = false) {
+function filters(dates = false, note = '') {
   const extra = Boolean(from || to || statusFilter || teamFilter);
   return `<div class="filters"><div><label for="project">Project</label><select id="project">${opt(
     state.projects.filter((p) => !company || p.companyId === company),
@@ -347,16 +350,21 @@ function filters(dates = false) {
           "All",
         )}</select></div></div>`
       : ""
-  }<div class="filter-end"><span class="currency-label">Reporting currency <strong>USD</strong></span></div>${company || project || extra ? '<button class="linkbtn" data-action="clearFilters">Clear filters</button>' : ""}</div>`;
+  }<div class="filter-end">${note}<span class="currency-label">Reporting currency <strong>USD</strong></span></div>${company || project || extra ? '<button class="linkbtn" data-action="clearFilters">Clear filters</button>' : ""}</div>`;
 }
 function dashboard() {
   const k = kpis(state, company, project);
+  const trend = kpiTrend(state, company, project);
+  const periodLabel = (t) => new Date(t).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const monthName = (t) => new Date(t).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+  const lastMonth = trend.budget.at(-1)?.start ?? Date.now();
+  const caption = `YTD · ${monthName(trend.budget[0]?.start ?? lastMonth)}–${monthName(lastMonth)} ${new Date(lastMonth).getUTCFullYear()}`;
   const ps = state.projects.filter(p => (!company || p.companyId === company) && (!project || p.id === project));
   const pending = state.requests.filter(r => attention(r) && (!company || r.companyId === company) && (!project || state.orders.some(o => o.id === r.orderId && o.projectId === project))).length + state.orders.filter(o => amendmentAttention(o) && (!company || o.companyId === company) && (!project || o.projectId === project)).length;
   const completion = k.utilized ? Math.round((k.paid / k.utilized) * 100) : 0;
   const paymentProgress = `<div class="coverage-heading"><strong>${completion}%</strong><span>Payments Completed</span></div><div class="coverage-track"><span style="width:${Math.min(100, completion)}%"></span></div>${[['Paid', k.paid], ['Outstanding Payments', k.outstanding], ['On Hold', k.hold], ['Balance Payments Pending', k.balance]].map(([label, value]) => `<div class="stats-line"><span>${label}</span><strong>USD ${fmt(value)}</strong></div>`).join('')}`;
-  const table = (headings, body, footer = '') => `<div class="table-wrap"><table><thead><tr>${headings.map((h, i) => `<th class="${i ? 'right' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody>${footer}</table></div>`;
-  const numbers = values => values.map(v => `<td class="right">${fmt(v)}</td>`).join('');
+  const table = (headings, body, footer = '') => `<div class="table-wrap dashboard-table"><table><thead><tr>${headings.map((h, i) => `<th class="${i ? 'right' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody>${footer}</table></div>`;
+  const numbers = values => values.map(v => Math.abs(v) < 0.005 ? `<td class="right zero">${fmt(0)}</td>` : v < 0 ? `<td class="right"><span class="negative">${fmt(v)}</span></td>` : `<td class="right">${fmt(v)}</td>`).join('');
   const metrics = x => [x.budget, x.utilized, x.available, x.paid, x.outstanding, x.balance, x.hold];
   const projectTable = table(['Project / Company', 'Approved Budget', 'Utilized', 'Available', 'Paid', 'Outstanding Payments', 'Balance Payments Pending', 'On Hold'], ps.map(p => {
     const x = kpis(state, p.companyId, p.id);
@@ -364,10 +372,10 @@ function dashboard() {
   }).join(''), `<tfoot><tr class="total-row"><td>Total</td>${numbers(metrics(k))}</tr></tfoot>`);
   const summary = (items, heading) => table([heading, 'Approved Budget', 'Utilized', 'Available'], items.map(item => {
     const x = kpis(state, item.companyId, item.projectId);
-    return `<tr><td>${esc(item.name)}</td>${numbers([x.budget, x.utilized, x.available])}</tr>`;
+    return `<tr><td>${esc(item.name)}${item.sub ? `<span class="secondary">${esc(item.sub)}</span>` : ''}</td>${numbers([x.budget, x.utilized, x.available])}</tr>`;
   }).join(''));
   const companyTable = summary(state.companies.filter(c => !company || c.id === company).map(c => ({ name: c.name, companyId: c.id, projectId: project })), 'Company');
-  const projectSummary = summary(ps.map(p => ({ name: p.name + ' / ' + name('companies', p.companyId), companyId: p.companyId, projectId: p.id })), 'Project / Company');
+  const projectSummary = summary(ps.map(p => ({ name: p.name, sub: name('companies', p.companyId), companyId: p.companyId, projectId: p.id })), 'Project / Company');
   const currencyTable = table(['Currency', 'Approved Budget', 'Utilized', 'Paid', 'Outstanding Payments', 'On Hold'], currencyStats(state, company, project).map(c => `<tr><td>${esc(c.currency)}</td>${numbers([c.budget, c.utilized, c.paid, c.outstanding, c.hold])}</tr>`).join(''));
   const categoryTable = table(['Category / Project', 'Approved', 'Utilized', 'Available'], state.budgets.filter(b => (!company || b.companyId === company) && (!project || b.projectId === project)).flatMap(b => b.categories.map(c => {
     const used = categoryUsed(state, b.id, c.id), amount = c.amount / (b.rate || 1);
@@ -375,8 +383,8 @@ function dashboard() {
   })).join(''));
   const activity = state.audit.filter(a => (!company || a.companyId === company) && (!project || state.orders.some(o => o.projectId === project && (o.id === a.entity || state.requests.some(r => r.orderId === o.id && r.id === a.entity))))).slice(-6).reverse();
   return `${pageHeader('Portfolio overview', 'Project dashboard', 'Your budgets, commitments and payments at a glance.', `<button data-action="export">${icon('download')}Export summary</button>`)}${filters()}
-    <section class="dashboard-kpis budget-kpis" aria-label="Budget overview">${[['Total Approved Budget', k.budget, 'budget'], ['Budget Utilized', k.utilized, 'utilized'], ['Available Budget', k.available, 'available']].map(([label, value, key]) => statCard(label, fmt(value), key)).join('')}</section>
-    <section class="dashboard-kpis payment-kpis" aria-label="Payment overview">${[['Paid', k.paid, 'paid'], ['Outstanding Payments', k.outstanding, 'outstanding'], ['On Hold', k.hold, 'hold'], ['Balance Payments Pending', k.balance, 'balance']].map(([label, value, key]) => statCard(label, fmt(value), key, 3)).join('')}</section>
+    <section class="dashboard-kpis budget-kpis" aria-label="Budget overview">${[['Total Approved Budget', k.budget, 'budget'], ['Budget Utilized', k.utilized, 'utilized'], ['Available Budget', k.available, 'available']].map(([label, value, key]) => statCard(label, fmt(value), key, 2, trendChart(trend[key], { kind: key === 'utilized' ? 'line' : 'candle', label, fmt, periodLabel, caption, width: 96 }))).join('')}</section>
+    <section class="dashboard-kpis payment-kpis" aria-label="Payment overview">${[['Paid', k.paid, 'paid'], ['Outstanding Payments', k.outstanding, 'outstanding'], ['On Hold', k.hold, 'hold'], ['Balance Payments Pending', k.balance, 'balance']].map(([label, value, key]) => statCard(label, fmt(value), key, 3, trendChart(trend[key], { kind: 'line', label, fmt, periodLabel, caption, width: 56 }))).join('')}</section>
     <div class="workspace-actions"><div><span class="action-indicator" aria-hidden="true"></span><strong>${pending ? `${pending} task${pending === 1 ? '' : 's'} for you` : 'Your workspace is up to date'}</strong><span>${pending ? 'Review your action queue to continue.' : 'No requests or amendments currently need your action.'}</span></div><div class="actions"><button data-action="queue" data-target="Finance">Finance payments ${icon('arrow')}</button><button class="primary" data-action="queue" data-target="inbox">My Actions ${icon('arrow')}</button></div></div>
     <section class="panel flush section-gap"><div class="section-title"><div><h2>Project Financial Overview</h2><p class="help">${ps.length} project${ps.length === 1 ? '' : 's'} · consolidated in USD</p></div><span class="unit-label">USD</span></div>${ps.length ? projectTable : empty('No projects in this view', 'Choose another company or project to see its financial position.')}</section>
     <div class="dashboard-bottom section-gap"><section class="report-stack" aria-label="Financial breakdowns"><div class="section-title"><h2>Explore the details</h2><small>Expand a breakdown</small></div>
@@ -385,7 +393,7 @@ function dashboard() {
     ${disclosure('Currency Summary', 'Original currencies and saved exchange rates', currencyTable + '<p class="help">Budget and utilization use their original currencies; payment figures use each payment request’s currency. Saved exchange rates determine consolidated USD totals.</p>', 'currency')}
     ${disclosure('Payment Status', 'Payment completion and the remaining commitment', paymentProgress, 'payments')}
     ${disclosure('Budget Categories', 'Review allocations and category balances · USD', categoryTable, 'categories')}
-    </section><section class="panel activity-panel"><div class="section-title"><h2>Recent activity</h2><span class="unit-label">Latest ${activity.length}</span></div>${activity.map(a => `<div class="activity"><i class="dot"></i><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${esc(a.detail)}</p><small>${date(a.at)}</small></div></div>`).join('') || empty('No activity yet')}</section></div>`;
+    </section><section class="activity-column" aria-labelledby="activityTitle"><div class="section-title"><h2 id="activityTitle">Recent activity</h2><small>Latest ${activity.length}</small></div><div class="panel activity-panel">${activity.map(a => `<div class="activity"><i class="dot" aria-hidden="true"></i><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${esc(a.detail)}</p><small>${date(a.at)}</small></div></div>`).join('') || empty('No activity yet', 'Approvals, payments and changes in this view will appear here.')}</div></section></div>`;
 }
 function orderMatch(o) {
   return (
@@ -1236,7 +1244,7 @@ document.addEventListener("click", async (e) => {
       renderLogin();
     } else if (a === "resetDemo") {
       await closeModal();
-      raw = demoState();
+      raw = demoState({ history: true });
       localStorage.setItem(storeKey, JSON.stringify(raw));
       user = raw.users[0];
       state = visibleState(raw, user);
@@ -1340,7 +1348,7 @@ document.addEventListener("change", async (e) => {
       $("#sortOrder")?.focus();
       return;
     }
-    if (t.id === "actor") {
+    if (t.id === "actor" || t.id === "drawerActor") {
       await closeModal();
       user = raw.users.find((u) => u.id === t.value);
       sessionStorage.setItem("demo-actor", user.id);
@@ -1353,6 +1361,7 @@ document.addEventListener("change", async (e) => {
     } else if (
       [
         "company",
+        "drawerCompany",
         "project",
         "from",
         "to",
@@ -1360,7 +1369,7 @@ document.addEventListener("change", async (e) => {
         "teamFilter",
       ].includes(t.id)
     ) {
-      if (t.id === "company") {
+      if (t.id === "company" || t.id === "drawerCompany") {
         company = t.value;
         project = "";
       }
@@ -1777,3 +1786,66 @@ document.addEventListener(
   },
   true,
 );
+
+// Dashboard sheet grid parallax: the background barely moves on screen (8% of the
+// scroll speed). It is positioned in the same frame as the page scroll so it never
+// trails the foreground.
+const reduceScrollMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+const setSheetShift = (y) => {
+  const shift = reduceScrollMotion?.matches ? 0 : Math.round(y * 0.92);
+  document.documentElement.style.setProperty("--sheet-shift", `${shift}px`);
+};
+window.addEventListener("scroll", () => setSheetShift(window.scrollY), { passive: true });
+reduceScrollMotion?.addEventListener?.("change", () => setSheetShift(window.scrollY));
+
+// Smooth wheel scrolling for the page. Each wheel step moves a target and the page
+// eases toward it every frame. Keyboard, scrollbar, links, zoom (Ctrl+wheel),
+// horizontal scrolling, inner scroll areas and open dialogs stay native, and
+// reduced-motion users keep instant scrolling.
+(() => {
+  const reduceMotion = reduceScrollMotion;
+  const ease = 0.14;
+  let target = window.scrollY;
+  let current = window.scrollY;
+  let animating = false;
+  const maxScroll = () => document.documentElement.scrollHeight - window.innerHeight;
+  const handledInside = (node, dy) => {
+    for (let el = node instanceof Element ? node : node?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (el.matches("dialog[open], select, textarea, [contenteditable=true]")) return true;
+      const overflowY = getComputedStyle(el).overflowY;
+      if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight + 1) {
+        const canUp = el.scrollTop > 0;
+        const canDown = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+        if ((dy < 0 && canUp) || (dy > 0 && canDown)) return true;
+      }
+    }
+    return false;
+  };
+  const step = () => {
+    current += (target - current) * ease;
+    if (Math.abs(target - current) < 0.5) {
+      current = target;
+      animating = false;
+    }
+    window.scrollTo(0, current);
+    setSheetShift(window.scrollY);
+    if (animating) requestAnimationFrame(step);
+  };
+  window.addEventListener("wheel", (event) => {
+    if (event.defaultPrevented || reduceMotion?.matches || event.ctrlKey || event.shiftKey) return;
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    if (document.querySelector("dialog[open]") || handledInside(event.target, event.deltaY)) return;
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+    if (!animating) current = target = window.scrollY;
+    target = Math.max(0, Math.min(maxScroll(), target + event.deltaY * unit));
+    if (!animating) {
+      animating = true;
+      requestAnimationFrame(step);
+    }
+  }, { passive: false });
+  // Keyboard, scrollbar and link scrolling move the page natively; follow them.
+  window.addEventListener("scroll", () => {
+    if (!animating) current = target = window.scrollY;
+  }, { passive: true });
+})();

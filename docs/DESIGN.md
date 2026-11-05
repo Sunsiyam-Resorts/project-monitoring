@@ -1,3 +1,11 @@
+# Dashboard year-to-date trends — 5 November 2026
+
+Every dashboard tile carries a minimal year-to-date trend, one mark per calendar month: candles for Total Approved Budget and Available Budget, an ink line for Budget Utilized and the four payment tiles. On wide tiles the chart is centred top-to-bottom on the right and the amount scales with its length so it never runs under the chart; on narrower tiles the chart sits top-right above the amount, and on small tablets (761–1023px) the budget tiles stack label, chart and amount. The period appears only in tooltips and accessible summaries. Rising candles are hollow green and falling candles solid red, so direction never depends on colour alone; unchanged months are short grey ticks. The colours were checked with a colour-vision validator: light `#3d9a5f` / `#a8322c`, dark `#4aa86a` / `#d84a40`. Each candle has a tooltip with its month and start/end values, and each chart has an accessible summary. Charts are hidden in print. The demo workspace includes fictional January–September history (orders, payments, holds and budget revisions) so the trends can be previewed.
+
+Figures come from `kpiTrend` in `public/domain.js` (dated commitments and budget revisions only); see SPECIFICATION.md, Dashboard trends. REVIEW-1.md's tile rule was amended to allow the chart and period label.
+
+---
+
 # Navbar theme shortcut and icon refresh — 1 November 2026
 
 The top navbar now has a sun/moon button that switches directly between Light and Dark. Its icon, action label and tooltip follow the current theme; clicking chooses and saves an explicit preference. The Appearance selector still offers System. Theme changes update in place without rebuilding forms, changing business data or losing keyboard focus.
@@ -35,7 +43,7 @@ The audit found duplicate company selection in page filters, a prominent mobile 
 ## Current design system
 
 - Warm neutral application canvas (`#F5F5F0`) and white surfaces. Dark forest/charcoal (`#273D30`) is the single action/selection accent, with a pale tint for selected navigation and available budget.
-- Central tokens cover color, semantic success/info/warning/error states, typography, spacing, input boundaries, focus, shadows, 20px containers, 10px controls and pill navigation. Status text remains explicit; color is supplementary.
+- Central tokens cover color, semantic success/info/warning/error states, typography, spacing, input boundaries, focus, shadows and one corner radius: `--radius` (12px) for every container, control, menu, chip and dialog. Only true circles (avatars, status dots, spinners) are round. Status text remains explicit; color is supplementary.
 - Local Inter handles interface text; Inter Tight handles titles and financial amounts. Supporting labels, section titles and page titles have distinct sizes/weights. Financial amounts retain tabular alignment and original values.
 - Short transitions, visible focus rings, reduced-motion overrides and touch-sized main controls. Checked text/background pairs meet 4.5:1 contrast; this is targeted verification, not a complete WCAG certification.
 

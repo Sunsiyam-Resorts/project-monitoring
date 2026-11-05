@@ -117,6 +117,93 @@ export const canReject = (u, r) =>
   r.status !== "Paid" &&
   r.status !== "Rejected" &&
   ((u.role === "Admin" && access(u, r.companyId)) || stageActor(u, r));
+// Year-to-date monthly trend of the seven dashboard figures, rebuilt only from dated
+// records. One bucket per calendar month (UTC) from 1 January to now; the current
+// month runs to now. Each bucket carries open/close/high/low in USD, and the last
+// close equals the current kpis() figures for the same scope.
+// Sources: budget revisions (each keeps its previous categories, rate and time),
+// order commitment dates, each payment request's final approval time, its payment
+// time, and the audit trail's hold / resume / pay / reject events for that request.
+// Limits: a budget's creation date is not recorded, so it counts from 1 January; an
+// amended order counts at its current value from its commitment date; a request on
+// hold with no recorded hold event counts as held from its latest Finance remark.
+export function kpiTrend(s, company = "", project = "", { now = Date.now() } = {}) {
+  const inScope = (x) => (!company || x.companyId === company) && (!project || x.projectId === project);
+  const bs = s.budgets.filter(inScope);
+  const scoped = s.orders.filter(inScope);
+  const os = scoped.filter((o) => committed(s, o));
+  const live = new Map(scoped.filter((o) => !o.rejectedAt).map((o) => [o.id, o]));
+  const time = (v) => (v ? Date.parse(v) : NaN);
+  const revisionValue = (rev) =>
+    money(rev.categories.reduce((a, c) => a + Number(c.amount), 0) / (rev.rate || 1));
+  const budgetValueAt = (b, t) => {
+    const next = (b.revisions || []).find((rev) => time(rev.at) > t);
+    return next ? revisionValue(next) : budgetAmount(b);
+  };
+  const events = (r) => (s.audit || [])
+    .filter((a) => a.entity === r.id && ["request.hold", "request.resume", "request.pay", "request.reject"].includes(a.action))
+    .map((a) => ({ action: a.action, at: time(a.at) }))
+    .sort((a, b) => a.at - b.at);
+  const requests = s.requests.filter((r) => live.has(r.orderId)).map((r) => {
+    const o = live.get(r.orderId);
+    const log = events(r);
+    const approvedAt = r.finalApprovedAt
+      ? time(r.finalApprovedAt)
+      : approved(r) || r.status === "Rejected"
+        ? Math.max(...(r.approvals || []).map((x) => time(x.at)).filter(Number.isFinite), -Infinity)
+        : NaN;
+    const rejectedAt = r.status === "Rejected"
+      ? (log.filter((e) => e.action === "request.reject").at(-1)?.at ?? -Infinity)
+      : Infinity;
+    const paidAt = r.status === "Paid" && r.payment ? time(r.payment.at || r.payment.date) : Infinity;
+    const holds = log.filter((e) => e.action !== "request.reject");
+    const heldByLog = (t) => holds.filter((e) => e.at <= t).at(-1)?.action === "request.hold";
+    // A request held now but without a recorded hold event: held since its latest remark.
+    const fallbackHold = onHold(r) && !heldByLog(now)
+      ? Math.max(approvedAt, ...(r.remarks || []).map((m) => time(m.at)).filter(Number.isFinite))
+      : Infinity;
+    return {
+      usd: r.amount / (r.rate || o.rate),
+      approvedAt: Number.isFinite(approvedAt) ? approvedAt : Infinity,
+      rejectedAt, paidAt,
+      heldAt: (t) => heldByLog(t) || t >= fallbackHold,
+    };
+  });
+  const values = (t) => {
+    const budget = money(bs.reduce((a, b) => a + budgetValueAt(b, t), 0));
+    const utilized = money(os.filter((o) => time(o.committedAt) <= t).reduce((a, o) => a + totalUSD(s, o), 0));
+    let paid = 0, hold = 0, outstanding = 0;
+    for (const r of requests) {
+      if (!(r.approvedAt <= t) || r.rejectedAt <= t) continue;
+      if (r.paidAt <= t) paid += r.usd;
+      else if (r.heldAt(t)) hold += r.usd;
+      else outstanding += r.usd;
+    }
+    paid = money(paid); hold = money(hold); outstanding = money(outstanding);
+    return {
+      budget, utilized, available: money(budget - utilized),
+      paid, outstanding, hold, balance: money(utilized - paid - outstanding - hold),
+    };
+  };
+  const eventTimes = [
+    ...bs.flatMap((b) => (b.revisions || []).map((rev) => time(rev.at))),
+    ...os.map((o) => time(o.committedAt)),
+    ...requests.flatMap((r) => [r.approvedAt, r.paidAt, r.rejectedAt]),
+    ...(s.audit || []).filter((a) => a.action === "request.hold" || a.action === "request.resume").map((a) => time(a.at)),
+  ].filter(Number.isFinite);
+  const year = new Date(now).getUTCFullYear();
+  const months = new Date(now).getUTCMonth() + 1;
+  const series = { budget: [], utilized: [], available: [], paid: [], outstanding: [], hold: [], balance: [] };
+  for (let i = 0; i < months; i++) {
+    const t0 = Date.UTC(year, i, 1), t1 = i === months - 1 ? now : Date.UTC(year, i + 1, 1);
+    const points = [t0, ...eventTimes.filter((t) => t > t0 && t <= t1), t1].map(values);
+    for (const key of Object.keys(series)) {
+      const v = points.map((p) => p[key]);
+      series[key].push({ start: t0, end: t1, open: v[0], close: v[v.length - 1], high: Math.max(...v), low: Math.min(...v) });
+    }
+  }
+  return series;
+}
 export function kpis(s, company = "", project = "") {
   const os = s.orders.filter(
       (o) =>

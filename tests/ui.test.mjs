@@ -187,7 +187,11 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.match(w.document.body.textContent, /Project dashboard/);
   assert.deepEqual([...w.document.querySelectorAll('.budget-kpis h2')].map(x=>x.textContent), ['Total Approved Budget','Budget Utilized','Available Budget']);
   assert.deepEqual([...w.document.querySelectorAll('.payment-kpis h3')].map(x=>x.textContent), ['Paid','Outstanding Payments','On Hold','Balance Payments Pending']);
+  // REVIEW-1 (amended): tiles add only a year-to-date trend chart, no other text.
   assert.equal(w.document.querySelectorAll('.dashboard-kpis p,.dashboard-kpis small').length, 0);
+  assert.equal(w.document.querySelectorAll('.budget-kpis .kpi-trend-candle').length, 2);
+  assert.equal(w.document.querySelectorAll('.budget-kpis .kpi-trend-line, .payment-kpis .kpi-trend-line').length, 5);
+  assert.ok([...w.document.querySelectorAll('.kpi-trend')].every(svg => /: USD .+ to USD .+, (up|down|unchanged)$/.test(svg.getAttribute('aria-label'))));
   for (const page of ["requests", "master", "users", "settings", "dashboard"]) {
     click(w, "[data-page=" + page + "]");
     assert.ok(w.document.querySelector(".content").textContent.length > 100);
@@ -280,7 +284,8 @@ const submit = (w, form) =>
     .querySelector(form)
     .dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
 test("Filter disclosure, grouped Finance queue, sorting and search reflect real records", async () => {
-  const w = await app();
+  // Uses the fixed sample without the demo's year of history, so counts and order are exact.
+  const w = await app(demoState());
   try {
     click(w, "[data-action=demo]");
     click(w, "[data-action=queue][data-target=Finance]");
@@ -802,12 +807,12 @@ test('CSV and Excel imports preview without saving, confirm creates masters, and
   }
 });
 
-test('The shared header keeps one company switcher, preserves scope across operational pages and scopes project options', async () => {
+test('The sidebar keeps one company switcher, preserves scope across operational pages and scopes project options', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]');
     assert.equal(w.document.querySelectorAll('#company').length, 1);
-    assert.ok(w.document.querySelector('.topbar #company'));
+    assert.ok(w.document.querySelector('.shell > .sidebar .sidebar-scope #company'));
     change(w, 'company', 'c1');
     assert.ok([...w.document.querySelectorAll('#project option')].every(o => !o.value || ['p1','p2'].includes(o.value)));
     click(w, '[data-page=requests]');
@@ -815,7 +820,7 @@ test('The shared header keeps one company switcher, preserves scope across opera
     assert.equal(w.document.querySelectorAll('#company').length, 1);
     click(w, '[data-page=master]');
     assert.equal(w.document.querySelector('#company'), null);
-    assert.match(w.document.querySelector('.header-scope').textContent, /Group administration/);
+    assert.match(w.document.querySelector('.shell > .sidebar .sidebar-scope').textContent, /Group administration/);
     click(w, '[data-page=dashboard]');
     assert.equal(w.document.querySelector('#company').value, 'c1');
   } finally { w.close(); await w.happyDOM.abort(); }
@@ -895,12 +900,12 @@ test('Appearance changes persist across navigation without resetting entered for
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
-test('Navbar theme icon switches themes in place, keeps focus and remembers the choice', async () => {
+test('Sidebar theme icon switches themes in place, keeps focus and remembers the choice', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]');
     const before = w.localStorage.getItem('ss-project-monitoring-demo-v1');
-    const toggle = w.document.querySelector('.topbar [data-theme-toggle]');
+    const toggle = w.document.querySelector('.shell > .sidebar [data-theme-toggle]');
     assert.ok(toggle);
     assert.equal(toggle.getAttribute('aria-label'), 'Switch to dark theme');
     toggle.focus();

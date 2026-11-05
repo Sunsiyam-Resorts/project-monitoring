@@ -4,6 +4,8 @@ import {
   apply,
   visibleState,
   kpis,
+  kpiTrend,
+  budgetAmount,
   money,
   migrateState,
   remainingToRequest,
@@ -870,4 +872,51 @@ test('Held cross-currency requests remain visible in currency stats and never ov
   assert.equal(cur.paid,462600);
   assert.equal(cur.outstanding,0);
   assert.equal(cur.hold,0);
+});
+
+test("KPI trend is a year-to-date monthly series rebuilt from commitment dates and budget revisions", () => {
+  const s = demoState();
+  const at = Date.parse("2026-11-05T12:00:00Z");
+  const trend = kpiTrend(s, "", "", { now: at });
+  const k = kpis(s);
+  assert.equal(trend.budget[0].start, Date.UTC(2026, 0, 1));
+  assert.equal(trend.budget.at(-1).end, at);
+  for (const key of ["budget", "utilized", "available"]) {
+    assert.equal(trend[key].length, 11);
+    assert.equal(trend[key].at(-1).close, k[key]);
+    trend[key].forEach((c) => assert.ok(c.low <= Math.min(c.open, c.close) && c.high >= Math.max(c.open, c.close)));
+  }
+  // Commitments only ever add to utilized and take from available.
+  trend.utilized.forEach((c) => assert.ok(c.close >= c.open));
+  trend.available.forEach((c, i) => assert.equal(c.close, money(trend.budget[i].close - trend.utilized[i].close)));
+  assert.equal(trend.utilized[0].open, 0);
+  // A budget revision appears in the month it was recorded, at the previous value before it.
+  const b = s.budgets[0];
+  const before = budgetAmount(b);
+  b.revisions = [{ at: "2026-10-28T09:00:00Z", currency: b.currency, rate: b.rate, categories: b.categories.map((c) => ({ ...c, amount: c.amount / 2 })) }];
+  const revised = kpiTrend(s, b.companyId, b.projectId, { now: at });
+  const month = revised.budget[9];
+  assert.equal(month.start, Date.UTC(2026, 9, 1));
+  assert.equal(month.open, money(before / 2));
+  assert.equal(month.close, before);
+  // The October commitments appear in the October candle.
+  assert.ok(trend.utilized[9].close > trend.utilized[9].open);
+  assert.equal(revised.budget[0].open, money(before / 2));
+  assert.ok(revised.budget.filter((c) => c.close > c.open).length === 1);
+});
+
+test("KPI trends over the demo's year of history end at the current figures for every tile", () => {
+  const s = demoState({ history: true });
+  const at = Date.parse("2026-11-05T12:00:00Z");
+  for (const [company, project] of [["", ""], ["c1", ""], ["c2", "p3"], ["c3", "p4"]]) {
+    const trend = kpiTrend(s, company, project, { now: at });
+    const k = kpis(s, company, project);
+    for (const key of ["budget", "utilized", "available", "paid", "outstanding", "hold", "balance"]) {
+      assert.equal(trend[key].at(-1).close, k[key], company + project + " " + key);
+    }
+  }
+  const all = kpiTrend(s, "", "", { now: at });
+  assert.ok(all.budget.some((c) => c.close > c.open) && all.budget.some((c) => c.close < c.open));
+  assert.ok(all.paid.every((c) => c.close >= c.open));
+  assert.ok(all.hold.some((c) => c.close < c.open), "a released hold appears as a fall");
 });

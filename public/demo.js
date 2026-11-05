@@ -1,5 +1,7 @@
 import { emptyState, migrateState } from "./domain.js";
-export function demoState() {
+// demoState() is the fixed sample used by the workflow tests; the demo workspace
+// asks for demoState({ history: true }), which adds a fictional year of activity.
+export function demoState({ history = false } = {}) {
   const s = emptyState();
   s.companies = [
     { id: "c1", name: "Sun Siyam Olhuveli" },
@@ -280,6 +282,91 @@ export function demoState() {
     detail: r.number,
   }));
   s.sequence = 4;
+  if (history) addSampleHistory(s, pdf);
   s.version = 1;
   return migrateState(s);
+}
+
+// Fictional year-to-date history so the dashboard trends have something to show:
+// nine settled or in-progress orders committed January–September, their payment
+// requests (paid, held and released, still held, awaiting payment, or not yet
+// requested), dated budget revisions, and the matching audit events. Current
+// approved budgets are unchanged; every order stays within its category budget.
+function addSampleHistory(s, pdf) {
+  const day = (iso) => iso + "T08:00:00Z";
+  // Budgets: each revision stores the categories in force before it.
+  const before = (b, amounts) => ({
+    currency: "USD",
+    rate: 1,
+    categories: b.categories.map((c, i) => ({ ...c, amount: amounts[i] })),
+  });
+  const [b0, , b2, b3] = s.budgets;
+  b0.revisions = [{ at: day("2026-04-10"), by: "abuney", reason: "Sample: phase 2 scope approved", ...before(b0, [800000, 350000, 250000]) }];
+  b2.revisions = [
+    { at: day("2026-03-05"), by: "abuney", reason: "Sample: additional villas approved", ...before(b2, [380000, 190000, 250000]) },
+    { at: day("2026-07-08"), by: "abuney", reason: "Sample: furniture scope reduced", ...before(b2, [480000, 220000, 250000]) },
+  ];
+  b3.revisions = [{ at: day("2026-06-02"), by: "abuney", reason: "Sample: expansion budget increase", ...before(b3, [600000, 200000, 300000]) }];
+
+  // [id, project index, category prefix, team, total USD, created, committed, children]
+  // children: [percent, final approval, paid, holds as [hold, resume?] pairs]
+  const orders = [
+    ["h1", 0, "civil", "Purchasing", 240000, "2026-01-08", "2026-01-20", [[40, "2026-02-05", "2026-02-12"], [60, "2026-04-08", "2026-04-20"]]],
+    ["h2", 2, "civil", "Planning", 150000, "2026-02-03", "2026-02-18", [[50, "2026-03-09", "2026-03-15"], [50, "2026-05-12", "2026-05-22"]]],
+    ["h3", 3, "fit", "Purchasing", 200000, "2026-03-10", "2026-03-24", [[30, "2026-04-22", "2026-04-30"], [40, "2026-07-02", "2026-08-18", [["2026-07-10", "2026-08-05"]]], [30, "2026-09-20", null]]],
+    ["h4", 1, "mep", "Planning", 90000, "2026-04-02", "2026-04-14", [[100, "2026-05-20", "2026-05-30"]]],
+    ["h5", 0, "mep", "Purchasing", 180000, "2026-05-06", "2026-05-19", [[50, "2026-06-16", "2026-06-25"], [50, "2026-08-25", null, [["2026-09-03"]]]]],
+    ["h6", 2, "fit", "Planning", 120000, "2026-06-04", "2026-06-16", [[60, "2026-07-20", "2026-07-28"]]],
+    ["h7", 3, "mep", "Purchasing", 160000, "2026-07-07", "2026-07-21", [[50, "2026-08-30", "2026-09-10"]]],
+    ["h8", 1, "civil", "Purchasing", 110000, "2026-08-03", "2026-08-12", [[40, "2026-09-28", null]]],
+    ["h9", 0, "fit", "Planning", 140000, "2026-09-02", "2026-09-15", [[30, "2026-09-25", "2026-10-03"]]],
+  ];
+  const suppliers = ["s1", "s3", "s2"];
+  const history = [];
+  const requests = [];
+  orders.forEach(([id, pi, cat, team, total, created, commit, children], n) => {
+    const p = s.projects[pi];
+    const requester = team === "Purchasing" ? "req0" : "req1";
+    s.orders.push({
+      id, companyId: p.companyId, projectId: p.id, budgetId: "b" + pi,
+      supplierId: suppliers[n % 3], team, currency: "USD", rate: 1, total,
+      po: "DEMO-PO-" + (2001 + n), invoice: "DEMO-INV-" + (2001 + n),
+      description: "Sample " + (cat === "civil" ? "civil works" : cat === "mep" ? "MEP works" : "furniture and finishes") + " package",
+      allocations: [{ categoryId: cat + pi, amount: total }],
+      requestedBy: requester, committedAt: day(commit), createdAt: day(created), files: [pdf],
+    });
+    children.forEach(([percent, approvedOn, paidOn, holds = []], c) => {
+      const rid = id + "r" + c;
+      const amount = Math.round(total * percent) / 100;
+      const stages = team === "Purchasing" ? ["Reviewer", "Approval 1", "Approval 2"] : ["Approval 1"];
+      const stillHeld = holds.length && holds.at(-1).length === 1;
+      const r = {
+        id: rid, orderId: id, companyId: p.companyId, team, amount, percent,
+        terms: percent === 100 ? "Full payment on delivery" : percent + "% instalment",
+        date: approvedOn, status: paidOn ? "Paid" : stillHeld ? "On Hold" : "Finance",
+        requestedBy: requester, createdAt: day(approvedOn), finalApprovedAt: day(approvedOn),
+        approvals: stages.map((stage) => ({ stage, by: team + (stage === "Approval 2" ? " Final Approver" : stage === "Reviewer" ? " Reviewer" : " Approver"), at: day(approvedOn) })),
+        history: [], remarks: [],
+      };
+      for (const [hold, resume] of holds) {
+        r.remarks.push({ by: "Finance Officer", at: day(hold), text: "Sample: held pending supplier documents." });
+        history.push({ at: day(hold), action: "request.hold", entity: rid, companyId: p.companyId, detail: "Sample hold" });
+        if (resume) history.push({ at: day(resume), action: "request.resume", entity: rid, companyId: p.companyId, detail: "Sample release" });
+      }
+      if (paidOn) {
+        r.payment = { amount, date: paidOn, type: "Transfer", file: pdf, by: "Finance Officer", at: day(paidOn) };
+        history.push({ at: day(paidOn), action: "request.pay", entity: rid, companyId: p.companyId, detail: "Sample payment" });
+      }
+      requests.push(r);
+    });
+  });
+  // History requests follow the existing four in issue order.
+  requests.forEach((r, i) => { r.number = "PR-2026-" + String(5 + i).padStart(6, "0"); });
+  s.requests.push(...requests);
+  s.sequence = 4 + requests.length;
+  // Older audit events come first so Recent activity still shows the latest samples.
+  s.audit = [
+    ...history.sort((a, b) => a.at.localeCompare(b.at)).map((a, i) => ({ id: "h-audit-" + i, user: "Finance Officer", ...a })),
+    ...s.audit,
+  ];
 }

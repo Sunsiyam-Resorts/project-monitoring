@@ -13,7 +13,7 @@ This release implements the approved dashboard, Requests and workflow review in 
 
 ## Working screens
 
-Dashboard has three equal-width primary tiles in one desktop row: Total Approved Budget, Budget Utilized, Available Budget. Four equal-width secondary tiles form the next row: Paid, Outstanding Payments, On Hold, Balance Payments Pending. Tiles show only headings and currency amounts, with responsive wrapping on smaller screens.
+Dashboard has three equal-width primary tiles in one desktop row: Total Approved Budget, Budget Utilized, Available Budget. Four equal-width secondary tiles form the next row: Paid, Outstanding Payments, On Hold, Balance Payments Pending. Tiles show only headings and currency amounts, with responsive wrapping on smaller screens. Amended 5 November 2026: every tile also shows a minimal year-to-date trend chart beside its amount (candles for Total Approved Budget and Available Budget, a line for Budget Utilized and each payment tile). No other text is added to the tiles. See SPECIFICATION.md, Dashboard trends.
 
 Requests has exactly four tabs: Requests, Finance, Balance Payments To Be Requested, My Actions. Parent rows expand with +/− into independently numbered child requests. New Request appears only on Requests and creates the parent plus its first child draft in one transaction. Amount and percentage work both ways. Subsequent children reuse the parent, default to today's Maldives date and original currency, and allow another currency.
 

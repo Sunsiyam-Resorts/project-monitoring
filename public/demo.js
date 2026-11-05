@@ -287,80 +287,122 @@ export function demoState({ history = false } = {}) {
   return migrateState(s);
 }
 
-// Fictional year-to-date history so the dashboard trends have something to show:
-// nine settled or in-progress orders committed January–September, their payment
-// requests (paid, held and released, still held, awaiting payment, or not yet
-// requested), dated budget revisions, and the matching audit events. Current
-// approved budgets are unchanged; every order stays within its category budget.
+// Fictional year-to-date history so the dashboard trends have something to show.
+// Deterministic (fixed seed), so every load and every reset gives the same data:
+// 4–6 orders committed each month January–October across all projects and
+// categories, one to three payment requests per order (approved, paid, held and
+// released, still held, awaiting payment, or not yet requested), three or four
+// dated budget revisions per budget, and the matching audit events. Final approved
+// budgets are unchanged and every category stays below 90% of its budget.
 function addSampleHistory(s, pdf) {
-  const day = (iso) => iso + "T08:00:00Z";
-  // Budgets: each revision stores the categories in force before it.
-  const before = (b, amounts) => ({
-    currency: "USD",
-    rate: 1,
-    categories: b.categories.map((c, i) => ({ ...c, amount: amounts[i] })),
-  });
-  const [b0, , b2, b3] = s.budgets;
-  b0.revisions = [{ at: day("2026-04-10"), by: "abuney", reason: "Sample: phase 2 scope approved", ...before(b0, [800000, 350000, 250000]) }];
-  b2.revisions = [
-    { at: day("2026-03-05"), by: "abuney", reason: "Sample: additional villas approved", ...before(b2, [380000, 190000, 250000]) },
-    { at: day("2026-07-08"), by: "abuney", reason: "Sample: furniture scope reduced", ...before(b2, [480000, 220000, 250000]) },
-  ];
-  b3.revisions = [{ at: day("2026-06-02"), by: "abuney", reason: "Sample: expansion budget increase", ...before(b3, [600000, 200000, 300000]) }];
+  let seed = 20260105;
+  const rand = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const between = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
+  const DAY = 86400000;
+  const LAST = Date.UTC(2026, 10, 4); // nothing after 4 Nov 2026
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  const at = (t) => iso(t) + "T08:00:00Z";
 
-  // [id, project index, category prefix, team, total USD, created, committed, children]
-  // children: [percent, final approval, paid, holds as [hold, resume?] pairs]
-  const orders = [
-    ["h1", 0, "civil", "Purchasing", 240000, "2026-01-08", "2026-01-20", [[40, "2026-02-05", "2026-02-12"], [60, "2026-04-08", "2026-04-20"]]],
-    ["h2", 2, "civil", "Planning", 150000, "2026-02-03", "2026-02-18", [[50, "2026-03-09", "2026-03-15"], [50, "2026-05-12", "2026-05-22"]]],
-    ["h3", 3, "fit", "Purchasing", 200000, "2026-03-10", "2026-03-24", [[30, "2026-04-22", "2026-04-30"], [40, "2026-07-02", "2026-08-18", [["2026-07-10", "2026-08-05"]]], [30, "2026-09-20", null]]],
-    ["h4", 1, "mep", "Planning", 90000, "2026-04-02", "2026-04-14", [[100, "2026-05-20", "2026-05-30"]]],
-    ["h5", 0, "mep", "Purchasing", 180000, "2026-05-06", "2026-05-19", [[50, "2026-06-16", "2026-06-25"], [50, "2026-08-25", null, [["2026-09-03"]]]]],
-    ["h6", 2, "fit", "Planning", 120000, "2026-06-04", "2026-06-16", [[60, "2026-07-20", "2026-07-28"]]],
-    ["h7", 3, "mep", "Purchasing", 160000, "2026-07-07", "2026-07-21", [[50, "2026-08-30", "2026-09-10"]]],
-    ["h8", 1, "civil", "Purchasing", 110000, "2026-08-03", "2026-08-12", [[40, "2026-09-28", null]]],
-    ["h9", 0, "fit", "Planning", 140000, "2026-09-02", "2026-09-15", [[30, "2026-09-25", "2026-10-03"]]],
-  ];
-  const suppliers = ["s1", "s3", "s2"];
+  // Budgets: three or four revisions each; each revision stores the categories in
+  // force before it. Values wander up and down and end at today's approved budget.
+  s.budgets.forEach((b, bi) => {
+    const months = [1, 3, 5, 7, 9].filter(() => rand() < 0.8).slice(0, 4);
+    if (months.length < 3) months.splice(0, months.length, 2, 5, 8);
+    let factors = months.map(() => 0.8 + rand() * 0.3);
+    b.revisions = months.map((m, i) => ({
+      at: at(Date.UTC(2026, m, between(3, 25))),
+      by: "abuney",
+      reason: "Sample: " + pick(["scope change approved", "phase re-estimate", "supplier quotations received", "value engineering savings", "board-approved variation"]),
+      currency: "USD",
+      rate: 1,
+      categories: b.categories.map((c) => ({ ...c, amount: Math.round((c.amount * factors[i]) / 1000) * 1000 })),
+    }));
+  });
+
+  // Category headroom, counting the original sample orders (committed or not).
+  const cap = new Map();
+  s.budgets.forEach((b) => b.categories.forEach((c) => cap.set(c.id, c.amount * 0.9)));
+  for (const o of s.orders) for (const a of o.allocations) cap.set(a.categoryId, cap.get(a.categoryId) - a.amount / (o.rate || 1));
+
+  const suppliers = ["s1", "s2", "s3"];
+  const reasons = ["Sample: held pending supplier documents.", "Sample: awaiting bank confirmation.", "Sample: invoice query raised with supplier.", "Sample: delivery inspection outstanding."];
   const history = [];
   const requests = [];
-  orders.forEach(([id, pi, cat, team, total, created, commit, children], n) => {
-    const p = s.projects[pi];
-    const requester = team === "Purchasing" ? "req0" : "req1";
-    s.orders.push({
-      id, companyId: p.companyId, projectId: p.id, budgetId: "b" + pi,
-      supplierId: suppliers[n % 3], team, currency: "USD", rate: 1, total,
-      po: "DEMO-PO-" + (2001 + n), invoice: "DEMO-INV-" + (2001 + n),
-      description: "Sample " + (cat === "civil" ? "civil works" : cat === "mep" ? "MEP works" : "furniture and finishes") + " package",
-      allocations: [{ categoryId: cat + pi, amount: total }],
-      requestedBy: requester, committedAt: day(commit), createdAt: day(created), files: [pdf],
-    });
-    children.forEach(([percent, approvedOn, paidOn, holds = []], c) => {
-      const rid = id + "r" + c;
-      const amount = Math.round(total * percent) / 100;
-      const stages = team === "Purchasing" ? ["Reviewer", "Approval 1", "Approval 2"] : ["Approval 1"];
-      const stillHeld = holds.length && holds.at(-1).length === 1;
-      const r = {
-        id: rid, orderId: id, companyId: p.companyId, team, amount, percent,
-        terms: percent === 100 ? "Full payment on delivery" : percent + "% instalment",
-        date: approvedOn, status: paidOn ? "Paid" : stillHeld ? "On Hold" : "Finance",
-        requestedBy: requester, createdAt: day(approvedOn), finalApprovedAt: day(approvedOn),
-        approvals: stages.map((stage) => ({ stage, by: team + (stage === "Approval 2" ? " Final Approver" : stage === "Reviewer" ? " Reviewer" : " Approver"), at: day(approvedOn) })),
-        history: [], remarks: [],
-      };
-      for (const [hold, resume] of holds) {
-        r.remarks.push({ by: "Finance Officer", at: day(hold), text: "Sample: held pending supplier documents." });
-        history.push({ at: day(hold), action: "request.hold", entity: rid, companyId: p.companyId, detail: "Sample hold" });
-        if (resume) history.push({ at: day(resume), action: "request.resume", entity: rid, companyId: p.companyId, detail: "Sample release" });
-      }
-      if (paidOn) {
-        r.payment = { amount, date: paidOn, type: "Transfer", file: pdf, by: "Finance Officer", at: day(paidOn) };
-        history.push({ at: day(paidOn), action: "request.pay", entity: rid, companyId: p.companyId, detail: "Sample payment" });
-      }
-      requests.push(r);
-    });
-  });
+  let n = 0;
+  for (let month = 0; month <= 9; month++) {
+    const count = between(4, 6);
+    for (let k = 0; k < count; k++) {
+      const pi = between(0, 3);
+      const p = s.projects[pi];
+      const cat = pick(["civil", "mep", "fit"]) + pi;
+      const total = between(3, 16) * 5000;
+      if (cap.get(cat) < total) continue;
+      cap.set(cat, cap.get(cat) - total);
+      const team = rand() < 0.6 ? "Purchasing" : "Planning";
+      const requester = team === "Purchasing" ? "req0" : "req1";
+      const committed = Date.UTC(2026, month, between(2, 26));
+      const created = committed - between(5, 14) * DAY;
+      const id = "h" + ++n;
+      s.orders.push({
+        id, companyId: p.companyId, projectId: p.id, budgetId: "b" + pi,
+        supplierId: pick(suppliers), team, currency: "USD", rate: 1, total,
+        po: "DEMO-PO-" + (2000 + n), invoice: "DEMO-INV-" + (2000 + n),
+        description: "Sample " + (cat.startsWith("civil") ? "civil works" : cat.startsWith("mep") ? "MEP works" : "furniture and finishes") + " package " + n,
+        allocations: [{ categoryId: cat, amount: total }],
+        requestedBy: requester, committedAt: at(committed), createdAt: at(created), files: [pdf],
+      });
+      // Instalments: deposit / progress / final, sometimes leaving value unrequested.
+      const plan = pick([[100], [50, 50], [40, 60], [30, 40, 30], [30, 70], [40, 30], [50]]);
+      let approvedOn = committed + between(5, 25) * DAY;
+      plan.forEach((percent, c) => {
+        if (approvedOn > LAST) return;
+        const rid = id + "r" + c;
+        const amount = Math.round(total * percent) / 100;
+        const stages = team === "Purchasing" ? ["Reviewer", "Approval 1", "Approval 2"] : ["Approval 1"];
+        const r = {
+          id: rid, orderId: id, companyId: p.companyId, team, amount, percent,
+          terms: percent === 100 ? "Full payment on delivery" : percent + "% instalment",
+          date: iso(approvedOn), status: "Finance", requestedBy: requester,
+          createdAt: at(approvedOn - 3 * DAY), finalApprovedAt: at(approvedOn),
+          approvals: stages.map((stage) => ({ stage, by: team + (stage === "Approval 2" ? " Final Approver" : stage === "Reviewer" ? " Reviewer" : " Approver"), at: at(approvedOn) })),
+          history: [], remarks: [],
+        };
+        let ready = approvedOn;
+        if (rand() < 0.18) {
+          const hold = approvedOn + between(2, 8) * DAY;
+          if (hold <= LAST) {
+            const reason = pick(reasons);
+            r.remarks.push({ by: "Finance Officer", at: at(hold), text: reason });
+            history.push({ at: at(hold), action: "request.hold", entity: rid, companyId: p.companyId, detail: reason });
+            const resume = hold + between(7, 35) * DAY;
+            if (resume <= LAST) {
+              history.push({ at: at(resume), action: "request.resume", entity: rid, companyId: p.companyId, detail: "Sample: hold released" });
+              ready = resume;
+            } else {
+              r.status = "On Hold";
+              ready = Infinity;
+            }
+          }
+        }
+        const paidOn = ready + between(4, 24) * DAY;
+        if (r.status === "Finance" && paidOn <= LAST) {
+          r.status = "Paid";
+          r.payment = { amount, date: iso(paidOn), type: pick(["Transfer", "TT", "Cheque"]), file: pdf, by: "Finance Officer", at: at(paidOn) };
+          history.push({ at: at(paidOn), action: "request.pay", entity: rid, companyId: p.companyId, detail: "Sample payment" });
+        }
+        requests.push(r);
+        approvedOn = paidOn + between(10, 45) * DAY;
+      });
+    }
+  }
   // History requests follow the existing four in issue order.
+  requests.sort((a, b) => a.finalApprovedAt.localeCompare(b.finalApprovedAt));
   requests.forEach((r, i) => { r.number = "PR-2026-" + String(5 + i).padStart(6, "0"); });
   s.requests.push(...requests);
   s.sequence = 4 + requests.length;

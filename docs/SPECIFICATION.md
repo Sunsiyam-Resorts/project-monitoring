@@ -1,5 +1,7 @@
 # Approved workflow — first review release
 
+**Revision 2 (November 2026) supersedes everything below where they differ.** The Purchasing and Planning teams and every approval stage are removed: a submitted payment request goes straight to Finance. Roles are Requester, Finance, Viewer and Admin. Finance has full operational access except User Manager and Settings: it maintains companies, projects, approved budgets (with revisions), suppliers and currencies, imports records, raises orders and payment requests, approves amendments, rejects orders, releases locks and deletes recorded payments. Nobody acts on a request or amendment they raised themselves, so a Finance user's own request is processed by another Finance user or Admin. Projects carry tasks (name, status To do / In progress / Done, optional owner and due date); a project's progress is the share of its tasks that are Done, and only Finance and Admin change tasks. The Projects page lists projects with their progress; each project page shows that project's budget, payments, progress, tasks, breakdowns and activity. Existing data migrates once: requests and amendments waiting at Reviewer, Approval 1 or Approval 2 move to Finance (committing their order if needed), Reviewer and Approver accounts become Viewer, and each change is audited.
+
 The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). It supersedes the earlier testing-release rules below where they differ, including Planning approvals, financial calculations, amendments, payment deletion, numbering and currencies.
 
 ## Temporary Admin data population access
@@ -12,7 +14,7 @@ Admin additions to an existing order preserve its original requester; `createdBy
 
 ## Repository and scope
 
-Only `Sunsiyam-Resorts/project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Physical project progress and milestones are deferred.
+Only `Sunsiyam-Resorts/project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Project progress is tracked from project tasks (Revision 2).
 
 ## Master structure
 
@@ -26,9 +28,8 @@ Each child payment request has a permanent generated number, request date, perce
 
 ## Approval and correction
 
-Purchasing: Requester → Reviewer (Checked By) → Approver Level 1 → Approver Level 2 → Finance.
+All payment requests: Requester → Finance → Paid (Revision 2).
 
-Planning: Requester → Reviewer → Approver Level 1 → Finance.
 
 Every child follows the complete workflow. No approvals carry from its parent or siblings. Reviewer and approver actions require matching team, company access and approval level. Users cannot approve their own requests.
 
@@ -58,7 +59,7 @@ Company access grants visibility; Finance role grants payment processing. Any Fi
 
 ## Access and login
 
-Single role per user: Requester, Reviewer, Approver, Finance, Viewer, Admin. Users have explicit company access or full group access. Full group users can inspect all companies and projects; role still controls actions. Admin manages all configuration. Master data, User Manager and Settings are Admin-only in this release. Requesters see and create their team's requests within company access; they can edit their own drafts only. Group scope updates automatically when new companies are added.
+Single role per user: Requester, Finance, Viewer, Admin. Users have explicit company access or full group access. Full group users can inspect all companies and projects; role still controls actions. Admin manages all configuration. Master data, User Manager and Settings are Admin-only in this release. Requesters see and create their team's requests within company access; they can edit their own drafts only. Group scope updates automatically when new companies are added.
 
 Admin creates username, email and initial password (minimum 12 characters). Sign-in requires password plus mandatory authenticator TOTP. First sign-in enrols TOTP after successful password verification. Email OTP resets password without removing TOTP. Sessions are revoked on password reset, Admin user changes and logout. Recovery from a lost authenticator needs an operational policy before wider rollout; there is no insecure bypass button.
 
@@ -68,13 +69,15 @@ ERP single sign-on: users signed in to the ERP open the portal from the ERP side
 
 Opening a parent or child obtains an exclusive 10-minute lock. Another user cannot open the same record while the lock is active. Closing releases it. Expiry handles abandoned sessions; Admin can unlock and that override is audited. Separate siblings have separate locks. All mutations are serialized by PostgreSQL row-level transaction locking, including permanent sequence allocation and duplicate validation.
 
-Audit tracks actor, timestamp, action, entity, company and relevant reason/details. Earlier budget revisions and request stage actions remain. The database administrator can edit storage outside the application; this is an application audit trail, not an externally sealed ledger.
+Audit tracks actor, timestamp, action, entity, company and relevant reason/details. Admin reads it on its own Audit Log page in the sidebar (newest first, searchable, read-only). Earlier budget revisions and request stage actions remain. The database administrator can edit storage outside the application; this is an application audit trail, not an externally sealed ledger.
 
 ## Pages and documents
 
 Dashboard: all defined financial and workflow KPIs, company/project scope, group view, project comparisons, category balances, recent activity and export.
 
-Requests: all parent and child records, My action queue and Not received by Finance; date/company/project/team/status filters. Date and status apply to payment lists; commitment tab is the current full position.
+Dashboard trends: year-to-date, one point per calendar month (UTC) from 1 January to today; the current month runs to today, and the last value always equals the figure shown. Total Approved Budget, Budget Utilized and Available Budget share one main card with a combined chart on a zero-based scale: approved budget and utilized as lines, available as the band between them, with a legend and month labels. Paid, Outstanding Payments, On Hold and Balance Payments Pending each show a single line beside the figure. The period is given in each chart's tooltip and accessible summary, not as tile text. Trends follow the selected company and project, and are rebuilt only from dated records: order commitment dates, dated budget revisions, each payment request's final approval and payment times, and the audit trail's hold, release, payment and rejection events; Available = Approved Budget − Budget Utilized and Balance Payments Pending = Budget Utilized − all approved payment requests at each date. A budget's creation date is not recorded, so a budget counts from 1 January; an order amended after commitment counts at its current value from its commitment date; a request on hold with no recorded hold event counts as held from its latest Finance remark. No figures are estimated.
+
+Requests: all parent and child records, My action queue and Not received by Finance; date/company/project/status filters. Date and status apply to payment lists; commitment tab is the current full position.
 
 Master Data, User Manager, Admin Settings. Settings allow number format changes using {YYYY} and {SEQ}; sequence is never editable/resettable.
 

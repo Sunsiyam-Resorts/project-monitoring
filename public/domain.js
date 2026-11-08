@@ -1,19 +1,20 @@
 import { importFields, importCommand } from './import-data.js';
 import { randomId } from './ids.js';
 export { randomId };
+// One role per user. Finance reviews and pays every payment request directly; there are
+// no approval teams or approval levels.
 export const ROLES = [
   "Requester",
-  "Reviewer",
-  "Approver",
   "Finance",
   "Viewer",
   "Admin",
 ];
+// Retired approval stages and roles, kept only so migration can recognise older data.
+export const RETIRED_STAGES = ["Reviewer", "Approval 1", "Approval 2"];
+export const RETIRED_ROLES = ["Reviewer", "Approver"];
+export const TASK_STATUSES = ["To do", "In progress", "Done"];
 export const STAGES = [
   "Draft",
-  "Reviewer",
-  "Approval 1",
-  "Approval 2",
   "Finance",
   "On Hold",
   "Documents Required",
@@ -40,9 +41,10 @@ export const today = (now = Date.now()) =>
   }).format(new Date(now));
 export function emptyState() {
   return {
-    version: 2,
+    version: 3,
     companies: [],
     projects: [],
+    tasks: [],
     budgets: [],
     suppliers: [],
     currencies: [
@@ -65,21 +67,34 @@ export function emptyState() {
 }
 export const access = (u, c) =>
   !!u && (u.groupAccess || (u.companies || []).includes(c));
-export const canCreateRequests = (u) => !!u && u.active !== false && ["Requester", "Admin"].includes(u.role);
+// Finance and Admin have full operational access (everything except users and settings).
+export const isFinanceAdmin = (u) => !!u && u.active !== false && ["Finance", "Admin"].includes(u.role);
+export const canCreateRequests = (u) => !!u && u.active !== false && ["Requester", "Finance", "Admin"].includes(u.role);
 export const canManageRequest = (u, r) => canCreateRequests(u) && access(u, r.companyId) &&
-  (u.role === "Admin" || (u.id === r.requestedBy && u.team === r.team));
-export function roleFor(u, r, role, level) {
-  return (
-    u.role === role &&
-    access(u, r.companyId) &&
-    u.id !== r.requestedBy &&
-    (role === "Finance" || u.team === r.team) &&
-    (role !== "Reviewer" || r.team === "Purchasing") &&
-    (role !== "Approver" || u.approvalLevel === level)
-  );
+  (isFinanceAdmin(u) || u.id === r.requestedBy);
+export function roleFor(u, r, role) {
+  return u.role === role && access(u, r.companyId) && u.id !== r.requestedBy;
 }
-export const firstStage = (team) =>
-  team === "Planning" ? "Approval 1" : "Reviewer";
+// Who may act on a request or amendment waiting for Finance: Finance or Admin with access to
+// the company, never on a record they requested themselves (separation of duties).
+export const financeActor = (u, r) =>
+  isFinanceAdmin(u) && access(u, r.companyId) && u.id !== r.requestedBy;
+export const canEditTasks = (u, companyId) => isFinanceAdmin(u) && access(u, companyId);
+// Project progress is the share of its tasks that are Done; null when it has no tasks.
+export function projectProgress(s, projectId, now = Date.now()) {
+  const ts = (s.tasks || []).filter((t) => t.projectId === projectId);
+  const done = ts.filter((t) => t.status === "Done").length;
+  const inProgress = ts.filter((t) => t.status === "In progress").length;
+  const day = today(now);
+  return {
+    total: ts.length,
+    done,
+    inProgress,
+    todo: ts.length - done - inProgress,
+    overdue: ts.filter((t) => t.status !== "Done" && t.due && t.due < day).length,
+    pct: ts.length ? Math.round((done / ts.length) * 100) : null,
+  };
+}
 export const approved = (r) =>
   ["Finance", "On Hold", "Documents Required", "Paid"].includes(r.status);
 const onHold = (r) => r.status === "On Hold" ||
@@ -105,18 +120,99 @@ export const reservation = (s, o, exclude) =>
   );
 export const remainingToRequest = (s, o) => money(o.total - reservation(s, o));
 export function stageActor(u, r) {
-  return r.status === "Reviewer"
-    ? roleFor(u, r, "Reviewer")
-    : r.status === "Approval 1"
-      ? roleFor(u, r, "Approver", 1)
-      : r.status === "Approval 2"
-        ? roleFor(u, r, "Approver", 2)
-        : ["Finance", "On Hold"].includes(r.status) && roleFor(u, r, "Finance");
+  return ["Finance", "On Hold"].includes(r.status) && financeActor(u, r);
 }
 export const canReject = (u, r) =>
   r.status !== "Paid" &&
   r.status !== "Rejected" &&
   ((u.role === "Admin" && access(u, r.companyId)) || stageActor(u, r));
+// Year-to-date monthly trend of the seven dashboard figures, rebuilt only from dated
+// records. One bucket per calendar month (UTC) from 1 January to now; the current
+// month runs to now. Each bucket carries open/close/high/low in USD, and the last
+// close equals the current kpis() figures for the same scope.
+// Sources: budget revisions (each keeps its previous categories, rate and time),
+// order commitment dates, each payment request's final approval time, its payment
+// time, and the audit trail's hold / resume / pay / reject events for that request.
+// Limits: a budget's creation date is not recorded, so it counts from 1 January; an
+// amended order counts at its current value from its commitment date; a request on
+// hold with no recorded hold event counts as held from its latest Finance remark.
+export function kpiTrend(s, company = "", project = "", { now = Date.now() } = {}) {
+  const inScope = (x) => (!company || x.companyId === company) && (!project || x.projectId === project);
+  const bs = s.budgets.filter(inScope);
+  const scoped = s.orders.filter(inScope);
+  const os = scoped.filter((o) => committed(s, o));
+  const live = new Map(scoped.filter((o) => !o.rejectedAt).map((o) => [o.id, o]));
+  const time = (v) => (v ? Date.parse(v) : NaN);
+  const revisionValue = (rev) =>
+    money(rev.categories.reduce((a, c) => a + Number(c.amount), 0) / (rev.rate || 1));
+  const budgetValueAt = (b, t) => {
+    const next = (b.revisions || []).find((rev) => time(rev.at) > t);
+    return next ? revisionValue(next) : budgetAmount(b);
+  };
+  const events = (r) => (s.audit || [])
+    .filter((a) => a.entity === r.id && ["request.hold", "request.resume", "request.pay", "request.reject"].includes(a.action))
+    .map((a) => ({ action: a.action, at: time(a.at) }))
+    .sort((a, b) => a.at - b.at);
+  const requests = s.requests.filter((r) => live.has(r.orderId)).map((r) => {
+    const o = live.get(r.orderId);
+    const log = events(r);
+    const approvedAt = r.finalApprovedAt
+      ? time(r.finalApprovedAt)
+      : approved(r) || r.status === "Rejected"
+        ? Math.max(...(r.approvals || []).map((x) => time(x.at)).filter(Number.isFinite), -Infinity)
+        : NaN;
+    const rejectedAt = r.status === "Rejected"
+      ? (log.filter((e) => e.action === "request.reject").at(-1)?.at ?? -Infinity)
+      : Infinity;
+    const paidAt = r.status === "Paid" && r.payment ? time(r.payment.at || r.payment.date) : Infinity;
+    const holds = log.filter((e) => e.action !== "request.reject");
+    const heldByLog = (t) => holds.filter((e) => e.at <= t).at(-1)?.action === "request.hold";
+    // A request held now but without a recorded hold event: held since its latest remark.
+    const fallbackHold = onHold(r) && !heldByLog(now)
+      ? Math.max(approvedAt, ...(r.remarks || []).map((m) => time(m.at)).filter(Number.isFinite))
+      : Infinity;
+    return {
+      usd: r.amount / (r.rate || o.rate),
+      approvedAt: Number.isFinite(approvedAt) ? approvedAt : Infinity,
+      rejectedAt, paidAt,
+      heldAt: (t) => heldByLog(t) || t >= fallbackHold,
+    };
+  });
+  const values = (t) => {
+    const budget = money(bs.reduce((a, b) => a + budgetValueAt(b, t), 0));
+    const utilized = money(os.filter((o) => time(o.committedAt) <= t).reduce((a, o) => a + totalUSD(s, o), 0));
+    let paid = 0, hold = 0, outstanding = 0;
+    for (const r of requests) {
+      if (!(r.approvedAt <= t) || r.rejectedAt <= t) continue;
+      if (r.paidAt <= t) paid += r.usd;
+      else if (r.heldAt(t)) hold += r.usd;
+      else outstanding += r.usd;
+    }
+    paid = money(paid); hold = money(hold); outstanding = money(outstanding);
+    return {
+      budget, utilized, available: money(budget - utilized),
+      paid, outstanding, hold, balance: money(utilized - paid - outstanding - hold),
+    };
+  };
+  const eventTimes = [
+    ...bs.flatMap((b) => (b.revisions || []).map((rev) => time(rev.at))),
+    ...os.map((o) => time(o.committedAt)),
+    ...requests.flatMap((r) => [r.approvedAt, r.paidAt, r.rejectedAt]),
+    ...(s.audit || []).filter((a) => a.action === "request.hold" || a.action === "request.resume").map((a) => time(a.at)),
+  ].filter(Number.isFinite);
+  const year = new Date(now).getUTCFullYear();
+  const months = new Date(now).getUTCMonth() + 1;
+  const series = { budget: [], utilized: [], available: [], paid: [], outstanding: [], hold: [], balance: [] };
+  for (let i = 0; i < months; i++) {
+    const t0 = Date.UTC(year, i, 1), t1 = i === months - 1 ? now : Date.UTC(year, i + 1, 1);
+    const points = [t0, ...eventTimes.filter((t) => t > t0 && t <= t1), t1].map(values);
+    for (const key of Object.keys(series)) {
+      const v = points.map((p) => p[key]);
+      series[key].push({ start: t0, end: t1, open: v[0], close: v[v.length - 1], high: Math.max(...v), low: Math.min(...v) });
+    }
+  }
+  return series;
+}
 export function kpis(s, company = "", project = "") {
   const os = s.orders.filter(
       (o) =>
@@ -165,7 +261,7 @@ export function kpis(s, company = "", project = "") {
     approval: s.requests.filter(
       (r) =>
         ids.has(r.orderId) &&
-        ["Reviewer", "Approval 1", "Approval 2"].includes(r.status),
+        RETIRED_STAGES.includes(r.status),
     ).length,
     projects: new Set(bs.map((b) => b.projectId)).size,
     orders: os.length,
@@ -277,7 +373,8 @@ function issue(s, o, kind, now) {
 }
 export function migrateState(s, now = Date.now()) {
   if (
-    s.version >= 2 &&
+    s.version >= 3 &&
+    Array.isArray(s.tasks) &&
     s.counters &&
     s.orders.every((o) => o.number) &&
     s.requests.every((r) => r.currency)
@@ -330,17 +427,16 @@ export function migrateState(s, now = Date.now()) {
       r.payment.files ||= r.payment.file ? [r.payment.file] : [];
       delete r.payment.file;
     }
-    if (r.team === "Planning" && r.status === "Reviewer") {
-      r.status = "Approval 1";
-      audit(
-        s,
-        { id: "system", name: "System" },
-        "Planning workflow migrated",
-        r.id,
-        r.companyId,
-        "Reviewer stage removed; awaiting Planning approver",
-        now,
-      );
+    // Approval stages are retired: anything waiting for an approver now waits for Finance.
+    if (RETIRED_STAGES.includes(r.status)) {
+      const from = r.status;
+      r.status = "Finance";
+      r.finalApprovedAt ||= new Date(now).toISOString();
+      if (o && !o.committedAt) {
+        o.committedAt = r.finalApprovedAt;
+        o.commitmentRequestId = r.id;
+      }
+      audit(s, SYSTEM, "workflow.migrated", r.id, r.companyId, `Approval workflow removed; moved from ${from} to Finance`, now);
     }
     const key = `${r.companyId}:${o.projectId}:payment`;
     s.counters[key] = Math.max(
@@ -348,19 +444,37 @@ export function migrateState(s, now = Date.now()) {
       Number(r.number?.match(/(\d+)$/)?.[1]) || 0,
     );
   }
-  s.version = 2;
+  for (const o of s.orders)
+    if (o.amendment && RETIRED_STAGES.includes(o.amendment.status)) {
+      const from = o.amendment.status;
+      o.amendment.status = "Finance";
+      audit(s, SYSTEM, "workflow.migrated", o.id, o.companyId, `Approval workflow removed; amendment moved from ${from} to Finance`, now);
+    }
+  for (const u of s.users) {
+    if (RETIRED_ROLES.includes(u.role)) {
+      const from = u.role;
+      u.role = "Viewer";
+      audit(s, SYSTEM, "user.migrated", u.id, undefined, `${u.username}: ${from} role retired; now Viewer`, now);
+    }
+    delete u.team;
+    delete u.approvalLevel;
+  }
+  s.tasks ||= [];
+  s.version = 3;
   return s;
 }
+const SYSTEM = { id: "system", name: "System" };
 export function visibleState(s, u) {
   const out = structuredClone(s);
-  for (const k of ["companies", "projects", "budgets", "orders", "requests"])
+  out.tasks ||= [];
+  for (const k of ["companies", "projects", "tasks", "budgets", "orders", "requests"])
     out[k] = out[k].filter((c) =>
       access(u, k === "companies" ? c.id : c.companyId),
     );
   out.audit = out.audit.filter(
     (c) =>
       (!c.companyId || access(u, c.companyId)) &&
-      (u.role === "Admin" || c.companyId),
+      (isFinanceAdmin(u) || c.companyId),
   );
   out.users = out.users.map(
     ({
@@ -369,8 +483,6 @@ export function visibleState(s, u) {
       username,
       email,
       role,
-      team,
-      approvalLevel,
       companies,
       groupAccess,
       active,
@@ -380,8 +492,6 @@ export function visibleState(s, u) {
       username,
       ...(u.role === "Admin" ? { email } : {}),
       role,
-      team,
-      approvalLevel,
       companies,
       groupAccess,
       active,
@@ -476,10 +586,8 @@ export function supportingFile(s, u, { id, kind, index = 0, version, side = "dat
   return file;
 }
 function validateOrder(s, u, d, exclude) {
-  need(canCreateRequests(u), "Requester or Admin role required");
+  need(canCreateRequests(u), "Requester, Finance or Admin role required");
   need(access(u, d.companyId), "Company access required");
-  need(["Planning", "Purchasing"].includes(d.team), "Select Planning or Purchasing team");
-  need(u.role === "Admin" || u.team === d.team, "Your team must match the request");
   need(
     s.projects.some((p) => p.id === d.projectId && p.companyId === d.companyId),
     "Select a valid project",
@@ -527,7 +635,7 @@ function validateOrder(s, u, d, exclude) {
         o.companyId === d.companyId &&
         norm(o.po) === norm(d.po),
     ),
-    "Duplicate PO number in this company (Planning and Purchasing combined)",
+    "Duplicate PO number in this company",
   );
   if (text(d.invoice))
     need(
@@ -545,7 +653,6 @@ function validateOrder(s, u, d, exclude) {
     projectId: d.projectId,
     budgetId: d.budgetId,
     supplierId: d.supplierId,
-    team: d.team,
     currency: d.currency,
     rate: c.rate,
     total: money(d.total),
@@ -611,7 +718,6 @@ function createPayment(s, u, o, d, now) {
     id: randomId(),
     orderId: o.id,
     companyId: o.companyId,
-    team: o.team,
     number: issue(s, o, "payment", now),
     status: "Draft",
     requestedBy: o.requestedBy,
@@ -629,24 +735,18 @@ function orderSnapshot(o) {
   const { amendment, amendments, amendmentAttempts, ...details } = o;
   return structuredClone(details);
 }
-const nextStage = (r) =>
-  r.status === "Reviewer"
-    ? "Approval 1"
-    : r.status === "Approval 1" && r.team === "Purchasing"
-      ? "Approval 2"
-      : "Finance";
 export function apply(s, u, a, now = Date.now()) {
   if (a.type === 'import.create' || a.type === 'import.preview') {
     const { kind, rows, files = [] } = a.data || {};
     need(u && u.active !== false, 'Active user required');
     need(importFields[kind], 'Invalid import type');
-    need(['orders', 'payments'].includes(kind) ? canCreateRequests(u) : u.role === 'Admin', 'Your role cannot import these records');
+    need(['orders', 'payments'].includes(kind) ? canCreateRequests(u) : isFinanceAdmin(u), 'Your role cannot import these records');
     need(Array.isArray(rows) && rows.length > 0 && rows.length <= 100, 'Import between 1 and 100 records');
     need(Array.isArray(files) && JSON.stringify(files).length <= 2800000, 'Combined supporting PDFs must not exceed 2 MB');
     const next = structuredClone(s), errors = [];
     for (const [index, row] of rows.entries()) {
       try {
-        const cmd = importCommand(next, u, kind, row.values, files, a.data.team);
+        const cmd = importCommand(next, u, kind, row.values, files);
         // Payment creation retains its ordinary parent lock contract.
         const previousLock = cmd.type === 'request.create' ? next.locks?.[cmd.data.orderId] : null;
         if (cmd.type === 'request.create') apply(next, u, { type: 'lock', id: cmd.data.orderId }, now);
@@ -686,8 +786,8 @@ export function apply(s, u, a, now = Date.now()) {
       };
     } else {
       need(
-        !l || l.userId === u.id || u.role === "Admin",
-        "Only Admin can release another user’s lock",
+        !l || l.userId === u.id || isFinanceAdmin(u),
+        "Only Finance or Admin can release another user’s lock",
       );
       delete s.locks[a.id];
       if (l && l.userId !== u.id)
@@ -719,7 +819,7 @@ export function apply(s, u, a, now = Date.now()) {
     checkLock(s, u, o.id, now);
     need(
       !o.rejectedAt && canManageRequest(u, o),
-      "Only the original requester or Admin can amend this request",
+      "Only the original requester, Finance or Admin can amend this request",
     );
     need(
       !o.amendment || ["Rejected", "Draft"].includes(o.amendment.status),
@@ -727,10 +827,10 @@ export function apply(s, u, a, now = Date.now()) {
     );
     const next = validateOrder(s, u, d, o.id);
     need(
-      ["companyId", "projectId", "team", "currency"].every(
+      ["companyId", "projectId", "currency"].every(
         (k) => next[k] === o[k],
       ),
-      "Company, project, team and order currency cannot change after numbering",
+      "Company, project and order currency cannot change after numbering",
     );
     next.rate = o.rate;
     need(
@@ -747,8 +847,7 @@ export function apply(s, u, a, now = Date.now()) {
       previous: orderSnapshot(o),
       data: next,
       reason: text(d.reason),
-      status: firstStage(o.team),
-      team: o.team,
+      status: "Finance",
       companyId: o.companyId,
       requestedBy: u.id,
       approvals: [],
@@ -768,9 +867,9 @@ export function apply(s, u, a, now = Date.now()) {
       "Unknown amendment action",
     );
     need(
-      (stageActor(u, m) && !["Finance", "On Hold"].includes(m.status)) ||
-        (action === "reject" && u.role === "Admin"),
-      "You cannot review this amendment stage",
+      (m.status === "Finance" && financeActor(u, m)) ||
+        (action === "reject" && u.role === "Admin" && m.status === "Finance"),
+      "You cannot review this amendment",
     );
     need(action === "approve" || text(d.reason), "Reason is required");
     m.history.push({
@@ -782,10 +881,9 @@ export function apply(s, u, a, now = Date.now()) {
       reason: text(d.reason),
     });
     if (action === "approve") {
-      need(stageActor(u, m), "You cannot approve this amendment");
+      need(financeActor(u, m), "You cannot approve this amendment");
       m.approvals.push({ stage: m.status, by: u.name, userId: u.id, at });
-      const next = nextStage(m);
-      if (next === "Finance") {
+      {
         need(
           m.data.total + 0.005 >= reservation(s, o),
           "Reject conflicting payment requests before reducing the order total",
@@ -804,7 +902,7 @@ export function apply(s, u, a, now = Date.now()) {
         });
         Object.assign(o, m.data);
         delete o.amendment;
-      } else m.status = next;
+      }
     } else if (action === "return") {
       m.status = "Draft";
       m.approvals = [];
@@ -818,7 +916,7 @@ export function apply(s, u, a, now = Date.now()) {
   } else if (a.type === "order.reject") {
     const o = findOrder(s, a.id, u);
     checkLock(s, u, o.id, now);
-    need(u.role === "Admin", "Admin required");
+    need(isFinanceAdmin(u), "Finance or Admin required");
     need(!o.rejectedAt, "Request already rejected");
     need(text(d.reason), "Reason is required");
     need(
@@ -836,7 +934,7 @@ export function apply(s, u, a, now = Date.now()) {
     const o = findOrder(s, d.orderId, u);
     need(
       canManageRequest(u, o),
-      "Only the order requester or Admin can create a payment request",
+      "Only the order requester, Finance or Admin can create a payment request",
     );
     checkLock(s, u, o.id, now);
     const r = createPayment(s, u, o, d, now);
@@ -853,7 +951,7 @@ export function apply(s, u, a, now = Date.now()) {
     if (action === "edit" || action === "submit") {
       need(
         r.status === "Draft" && canManageRequest(u, r),
-        "Only requester or Admin can edit or submit a draft",
+        "Only the requester, Finance or Admin can edit or submit a draft",
       );
       if (action === "edit") Object.assign(r, paymentData(s, o, d, r.id));
       else {
@@ -862,21 +960,22 @@ export function apply(s, u, a, now = Date.now()) {
           reservation(s, o) <= o.total + 0.005,
           "Payment requests exceed order balance",
         );
-        r.status = firstStage(r.team);
+        // Submitted requests go straight to Finance. The first submitted request of an
+        // order commits the order to its budget.
+        r.status = "Finance";
         r.approvals = [];
-        delete r.finalApprovedAt;
+        r.finalApprovedAt = at;
+        if (!o.committedAt) {
+          o.committedAt = at;
+          o.commitmentRequestId = r.id;
+        }
       }
-    } else if (["approve", "return", "reject"].includes(action)) {
+    } else if (["return", "reject"].includes(action)) {
       need(
         action === "reject" ? canReject(u, r) : stageActor(u, r),
         "You cannot review this stage",
       );
-      need(
-        action !== "approve" ||
-          ["Reviewer", "Approval 1", "Approval 2"].includes(r.status),
-        "Approval stage required",
-      );
-      need(action === "approve" || text(d.reason), "Reason is required");
+      need(text(d.reason), "Reason is required");
       r.history.push({
         stage: r.status,
         action,
@@ -885,27 +984,15 @@ export function apply(s, u, a, now = Date.now()) {
         at,
         reason: text(d.reason),
       });
-      if (action === "approve") {
-        r.approvals.push({ stage: r.status, by: u.name, userId: u.id, at });
-        r.status = nextStage(r);
-        if (r.status === "Finance") {
-          r.finalApprovedAt = at;
-          if (!o.committedAt) {
-            o.committedAt = at;
-            o.commitmentRequestId = r.id;
-          }
-        }
-      } else {
-        r.status = action === "return" ? "Draft" : "Rejected";
-        r.approvals = [];
-        delete r.finalApprovedAt;
-        delete r.documentRequest;
-        detail = text(d.reason);
-      }
+      r.status = action === "return" ? "Draft" : "Rejected";
+      r.approvals = [];
+      delete r.finalApprovedAt;
+      delete r.documentRequest;
+      detail = text(d.reason);
     } else if (action === "documents") {
       need(
-        roleFor(u, r, "Finance") && ["Finance", "On Hold"].includes(r.status),
-        "Finance role and approved request required",
+        financeActor(u, r) && ["Finance", "On Hold"].includes(r.status),
+        "Finance role and submitted request required",
       );
       need(text(d.reason), "Specify the additional documents required");
       r.documentRequest = {
@@ -934,7 +1021,7 @@ export function apply(s, u, a, now = Date.now()) {
       r.status = r.documentRequest.returnStatus;
       delete r.documentRequest;
     } else if (action === "deletePayment") {
-      need(u.role === "Admin", "Only Admin can delete a payment");
+      need(isFinanceAdmin(u), "Only Finance or Admin can delete a payment");
       need(r.status === "Paid" && r.payment, "Paid request required");
       need(text(d.reason), "Reason is required");
       delete r.payment;
@@ -950,8 +1037,8 @@ export function apply(s, u, a, now = Date.now()) {
       detail = text(d.reason);
     } else if (["remark", "hold", "resume", "pay"].includes(action)) {
       need(
-        roleFor(u, r, "Finance") && ["Finance", "On Hold"].includes(r.status),
-        "Finance role and approved request required",
+        financeActor(u, r) && ["Finance", "On Hold"].includes(r.status),
+        "Finance role and submitted request required",
       );
       if (action === "remark" || action === "hold") {
         need(text(d.reason), "Reason or remark required");
@@ -988,7 +1075,7 @@ export function apply(s, u, a, now = Date.now()) {
       }
     } else fail("Unknown request action");
   } else if (a.type === "master.save") {
-    need(u.role === "Admin", "Admin required");
+    need(isFinanceAdmin(u), "Finance or Admin required");
     const kind = d.kind;
     need(
       ["companies", "projects", "budgets", "suppliers", "currencies"].includes(
@@ -1127,18 +1214,6 @@ export function apply(s, u, a, now = Date.now()) {
       (x.companies || []).every((c) => s.companies.some((y) => y.id === c)),
       "Invalid company access",
     );
-    if (["Requester", "Reviewer", "Approver"].includes(x.role))
-      need(["Planning", "Purchasing"].includes(x.team), "Assign team");
-    need(
-      !(x.role === "Reviewer" && x.team === "Planning"),
-      "Planning has no Reviewer role",
-    );
-    if (x.role === "Approver")
-      need(
-        [1, 2].includes(Number(x.approvalLevel)) &&
-          (x.team !== "Planning" || Number(x.approvalLevel) === 1),
-        "Invalid approval level",
-      );
     const prev = s.users.find((y) => y.id === x.id);
     const user = {
       ...(prev || {}),
@@ -1147,8 +1222,6 @@ export function apply(s, u, a, now = Date.now()) {
       username: text(x.username),
       email: text(x.email).toLowerCase(),
       role: x.role,
-      team: x.team || "",
-      approvalLevel: Number(x.approvalLevel) || 1,
       companies: x.companies || [],
       groupAccess: !!x.groupAccess,
       active: x.active !== false,
@@ -1158,10 +1231,52 @@ export function apply(s, u, a, now = Date.now()) {
         s.users.some((y) => y.id !== user.id && y.role === "Admin" && y.active),
         "Keep at least one active Admin",
       );
-    if (prev) Object.assign(prev, user);
-    else s.users.push(user);
+    delete user.team;
+    delete user.approvalLevel;
+    if (prev) {
+      delete prev.team;
+      delete prev.approvalLevel;
+      Object.assign(prev, user);
+    } else s.users.push(user);
     entity = user.id;
     detail = `${user.username}: ${user.role}`;
+  } else if (a.type === "task.save") {
+    const x = d.record || {};
+    const prev = x.id ? s.tasks.find((t) => t.id === x.id) : null;
+    need(!x.id || prev, "Task not found");
+    const p = s.projects.find((p) => p.id === (prev ? prev.projectId : x.projectId));
+    need(p, "Select a valid project");
+    need(canEditTasks(u, p.companyId), "Only Finance or Admin can change project tasks");
+    const taskName = text(x.name);
+    need(taskName && taskName.length <= 120, "Task name required (up to 120 characters)");
+    need(TASK_STATUSES.includes(x.status), "Select a task status");
+    const due = text(x.due);
+    need(!due || (/^\d{4}-\d{2}-\d{2}$/.test(due) && !Number.isNaN(Date.parse(due))), "Enter a valid due date");
+    const owner = text(x.owner).slice(0, 80);
+    const task = {
+      ...(prev || { id: randomId(), createdAt: at, createdBy: u.id }),
+      companyId: p.companyId,
+      projectId: p.id,
+      name: taskName,
+      status: x.status,
+      due,
+      owner,
+      updatedAt: at,
+    };
+    if (task.status === "Done") task.completedAt = prev?.status === "Done" ? prev.completedAt : at;
+    else delete task.completedAt;
+    if (prev) s.tasks[s.tasks.indexOf(prev)] = task;
+    else s.tasks.push(task);
+    entity = task.id;
+    company = p.companyId;
+    detail = `${p.name}: ${task.name} · ${task.status}`;
+  } else if (a.type === "task.delete") {
+    const t = s.tasks.find((t) => t.id === a.id);
+    need(t, "Task not found");
+    need(canEditTasks(u, t.companyId), "Only Finance or Admin can change project tasks");
+    s.tasks.splice(s.tasks.indexOf(t), 1);
+    company = t.companyId;
+    detail = `${s.projects.find((p) => p.id === t.projectId)?.name || "Project"}: ${t.name}`;
   } else if (a.type === "settings.save") {
     need(u.role === "Admin", "Admin required");
     for (const key of ["orderFormat", "numberFormat"]) {

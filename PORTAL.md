@@ -1,6 +1,6 @@
 # Sun Siyam Project Monitoring Portal
 
-First testing release for the agreed finance, Purchasing and Planning workflow. The existing README is preserved.
+Testing release for the Finance payment workflow (Revision 2: no approval teams; Finance maintains budgets) with project tasks and progress. The existing README is preserved.
 
 ## Run
 
@@ -18,9 +18,10 @@ For live login, copy `.env.example` to `.env`, configure PostgreSQL and the init
 ## Included
 
 - Dashboard: group/company/project scope, USD KPIs, project and category comparisons, CSV export and recent activity.
-- Requests: main orders, individual payment requests, personal action queue, date/company/project/team/status filters, and committed balances not yet received by Finance.
+- Projects: every project with its task progress; each project page shows its budget, payments, progress, tasks, breakdowns and activity. Finance and Admin add and update tasks.
+- Requests: main orders, individual payment requests, personal action queue, date/company/project/status filters, and committed balances not yet received by Finance.
 - Master Data: companies, projects, approved USD budgets and category revisions, shared suppliers, currencies.
-- User Manager: one role, team, approval level, company/group access, activation and initial passwords.
+- User Manager: one role (Requester, Finance, Viewer or Admin), company/group access, activation and initial passwords.
 - Settings: permanent payment sequence with configurable display format, 10-minute locks, Admin unlock and full audit trail.
 - Per-payment printable A4 document, separate approvals and separate payment PDFs.
 - Persistent Node.js API, PostgreSQL storage, cookie sessions, scrypt password hashing, encrypted TOTP keys, rate limiting, email password reset, server-side permissions and transactional workflow updates.

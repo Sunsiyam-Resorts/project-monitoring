@@ -102,34 +102,28 @@ test("Existing enrolled accounts do not show an enrollment key or QR code", asyn
     assert.ok(w.document.querySelector('[name="code"]'));
   } finally { w.close(); await w.happyDOM.abort(); }
 });
-test("Printed requests include supporting references and prior decisions; Planning omits Reviewer", async () => {
-  for (const team of ["Purchasing", "Planning"]) {
-    const seed = demoState(), o = seed.orders[0], r = seed.requests[0];
-    o.team = r.team = team;
-    o.files[0].name = "order-evidence.pdf";
-    r.files = [{ ...o.files[0], name: "additional-evidence.pdf" }];
-    r.payment.files = [{ ...r.payment.files[0], name: "settlement-evidence.pdf" }];
-    r.history = [
-      { stage: "Reviewer", action: "approve", by: "Purchasing reviewer", at: r.createdAt },
-      { stage: "Approval 1", action: "return", by: "First approver", at: r.createdAt, reason: "Correct <terms>" },
-      { stage: "Approval 1", action: "approve", by: "First approver", at: r.createdAt },
-    ];
-    const w = await app(seed);
-    try {
-      click(w, "[data-action=demo]");
-      click(w, "[data-page=requests]");
-      click(w, "[data-action=expand][data-id=o1]");
-      click(w, "[data-action=openRequest][data-id=r0]");
-      await flush();
-      click(w, "[data-action=document]");
-      const print = w.document.querySelector(".printdoc");
-      for (const label of ["order-evidence.pdf", "additional-evidence.pdf", "settlement-evidence.pdf", "Review history", "Correct <terms>", o.number])
-        assert.ok(print.textContent.includes(label), label);
-      assert.equal(print.querySelector("terms"), null);
-      assert.equal(print.textContent.includes("Purchasing reviewer"), team === "Purchasing");
-      if (team === "Planning") assert.doesNotMatch(print.textContent, /Reviewer|Checked by|Approval 2/);
-    } finally { w.close(); await w.happyDOM.abort(); }
-  }
+test("Printed requests include supporting references, prior decisions and the Finance submission", async () => {
+  const seed = demoState(), o = seed.orders[0], r = seed.requests[0];
+  o.files[0].name = "order-evidence.pdf";
+  r.files = [{ ...o.files[0], name: "additional-evidence.pdf" }];
+  r.payment.files = [{ ...r.payment.files[0], name: "settlement-evidence.pdf" }];
+  r.history = [
+    { stage: "Finance", action: "return", by: "Finance Officer", at: r.createdAt, reason: "Correct <terms>" },
+  ];
+  const w = await app(seed);
+  try {
+    click(w, "[data-action=demo]");
+    click(w, "[data-page=requests]");
+    click(w, "[data-action=expand][data-id=o1]");
+    click(w, "[data-action=openRequest][data-id=r0]");
+    await flush();
+    click(w, "[data-action=document]");
+    const print = w.document.querySelector(".printdoc");
+    for (const label of ["order-evidence.pdf", "additional-evidence.pdf", "settlement-evidence.pdf", "Review history", "Correct <terms>", "Submitted to Finance", o.number])
+      assert.ok(print.textContent.includes(label), label);
+    assert.equal(print.querySelector("terms"), null);
+    assert.doesNotMatch(print.textContent, /Team|Checked by|Approval 2/);
+  } finally { w.close(); await w.happyDOM.abort(); }
 });
 
 test("Budget history uses each version's saved currency and exchange rate", async () => {
@@ -186,9 +180,21 @@ test("All five pages and document render, scoped role switching works", async ()
   click(w, "[data-action=demo]");
   assert.match(w.document.body.textContent, /Project dashboard/);
   assert.deepEqual([...w.document.querySelectorAll('.budget-kpis h2')].map(x=>x.textContent), ['Total Approved Budget','Budget Utilized','Available Budget']);
-  assert.deepEqual([...w.document.querySelectorAll('.payment-kpis h3')].map(x=>x.textContent), ['Paid','Outstanding Payments','On Hold','Balance Payments Pending']);
+  assert.deepEqual([...w.document.querySelectorAll('.payment-overview h3')].map(x=>x.textContent), ['Paid','Outstanding Payments','On Hold','Balance Payments Pending']);
+  // REVIEW-1 (amended): tiles add only a year-to-date trend chart, no other text.
   assert.equal(w.document.querySelectorAll('.dashboard-kpis p,.dashboard-kpis small').length, 0);
-  for (const page of ["requests", "master", "users", "settings", "dashboard"]) {
+  // One main card: three figures above one combined chart; four payment trend lines.
+  assert.equal(w.document.querySelectorAll('.budget-overview .dashboard-kpi').length, 3);
+  assert.equal(w.document.querySelectorAll('.budget-overview .kpi-trend-overview').length, 1);
+  assert.match(w.document.querySelector('.kpi-trend-overview').getAttribute('aria-label'), /approved budget USD .+; utilized USD .+; available USD .+/);
+  assert.equal(w.document.querySelectorAll('.payment-overview .kpi-trend-payments').length, 1);
+  assert.equal(w.document.querySelectorAll('.payment-overview .pay-line').length, 4);
+  assert.match(w.document.querySelector('.kpi-trend-payments').getAttribute('aria-label'), /Paid USD .+; Outstanding Payments USD .+; On Hold USD .+; Balance Payments Pending USD .+/);
+  // Shortcuts: Finance payments and Projects (My Actions is no longer a shortcut).
+  assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-target=Finance]'));
+  assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-page=projects]'));
+  assert.equal(w.document.querySelector('.kpi-side > .workspace-actions [data-target=inbox]'), null);
+  for (const page of ["projects", "requests", "master", "users", "audit", "settings", "dashboard"]) {
     click(w, "[data-page=" + page + "]");
     assert.ok(w.document.querySelector(".content").textContent.length > 100);
   }
@@ -214,8 +220,13 @@ test("All five pages and document render, scoped role switching works", async ()
   actor.value = "viewer";
   actor.dispatchEvent(new w.Event("change", { bubbles: true }));
   await flush();
-  assert.equal(w.document.querySelectorAll(".shell [data-page]").length, 2);
-  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 2);
+  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "requests"]);
+  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 3);
+  const actorF = w.document.querySelector("#actor");
+  actorF.value = "fin";
+  actorF.dispatchEvent(new w.Event("change", { bubbles: true }));
+  await flush();
+  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "requests", "master", "audit"]);
   click(w, "[data-page=dashboard]");
   assert.match(w.document.body.textContent, /All/);
   const actor2 = w.document.querySelector("#actor");
@@ -280,7 +291,8 @@ const submit = (w, form) =>
     .querySelector(form)
     .dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
 test("Filter disclosure, grouped Finance queue, sorting and search reflect real records", async () => {
-  const w = await app();
+  // Uses the fixed sample without the demo's year of history, so counts and order are exact.
+  const w = await app(demoState());
   try {
     click(w, "[data-action=demo]");
     click(w, "[data-action=queue][data-target=Finance]");
@@ -362,6 +374,23 @@ test("Every master form, user form and login state has persistent accessible lab
     assert.ok(w.document.querySelector("[name=password]").labels.length);
     click(w, "[data-action=close]");
     await flush();
+    // The audit log has its own admin page; Settings no longer lists it.
+    click(w, ".shell > .sidebar [data-page=audit]");
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Audit Log");
+    const auditRows = () => w.document.querySelectorAll(".audit-table tbody tr").length;
+    assert.ok(auditRows() > 0 && auditRows() <= 20);
+    const auditUsers = [...w.document.querySelectorAll("#auditUser option")].map((o) => o.value).filter(Boolean);
+    assert.ok(auditUsers.length);
+    change(w, "auditUser", auditUsers[0]);
+    assert.ok([...w.document.querySelectorAll(".audit-table tbody tr td:nth-child(3)")].every((td) => td.textContent === auditUsers[0]));
+    click(w, "[data-action=auditClear]");
+    if (w.document.querySelector("[data-action=auditGo][data-n='2']")) {
+      click(w, "[data-action=auditGo][data-n='2']");
+      assert.equal(w.document.querySelector(".pager .current").textContent, "2");
+    }
+    assert.ok(w.document.querySelector("#auditSearch").getAttribute("aria-label"));
+    click(w, ".shell > .sidebar [data-page=settings]");
+    assert.doesNotMatch(w.document.querySelector(".content").textContent, /Audit trail/);
     click(w, "[data-action=logout]");
     await flush();
     click(w, "[data-action=resetPassword]");
@@ -377,10 +406,11 @@ test("Every master form, user form and login state has persistent accessible lab
     await w.happyDOM.abort();
   }
 });
-test("Presentation retains full Purchasing approval workflow and return-to-requester behaviour", async () => {
+test("Submitting goes straight to Finance, and a Finance return goes back to the requester", async () => {
   const seed = demoState();
   seed.requests[0].status = "Draft";
   seed.requests[0].approvals = [];
+  delete seed.requests[0].finalApprovedAt;
   delete seed.requests[0].payment;
   delete seed.orders[0].committedAt;
   const w = await app(seed);
@@ -389,65 +419,36 @@ test("Presentation retains full Purchasing approval workflow and return-to-reque
     await actor(w, "req0");
     click(w, "[data-page=requests]");
     click(w, "[data-tab=inbox]");
-    var expand = w.document.querySelector(
-      '[data-action=expand][aria-expanded="false"]',
-    );
+    var expand = w.document.querySelector('[data-action=expand][aria-expanded="false"]');
     if (expand) expand.click();
-    click(w, "[data-action=openRequest]");
+    click(w, "[data-action=openRequest][data-id=r0]");
     await flush();
+    assert.match(w.document.querySelector("[data-action=submit]").textContent, /Submit to Finance/);
     click(w, "[data-action=submit]");
     await flush();
-    assert.match(
-      w.document.querySelector("#modal").textContent,
-      /Awaiting the next stage|Reviewer/,
-    );
+    assert.equal(w.document.querySelector("[aria-current=step] strong").textContent, "Finance");
+    assert.equal(w.document.querySelector("[data-action=approve]"), null);
     click(w, "[data-action=close]");
     await flush();
-    await actor(w, "rev0");
-    click(w, "[data-tab=inbox]");
-    var expand = w.document.querySelector(
-      '[data-action=expand][aria-expanded="false"]',
-    );
-    if (expand) expand.click();
-    click(w, "[data-action=openRequest]");
+    await actor(w, "fin");
+    click(w, "[data-tab=finance]");
+    click(w, "[data-action=openRequest][data-id=r0]");
     await flush();
-    assert.ok(w.document.querySelector("[data-action=approve]"));
-    click(w, "[data-action=approve]");
-    await flush();
-    assert.equal(
-      w.document.querySelector("[aria-current=step] strong").textContent,
-      "Approval 1",
-    );
-    click(w, "[data-action=close]");
-    await flush();
-    await actor(w, "app0");
-    click(w, "[data-tab=inbox]");
-    var expand = w.document.querySelector(
-      '[data-action=expand][aria-expanded="false"]',
-    );
-    if (expand) expand.click();
-    click(w, "[data-action=openRequest]");
-    await flush();
+    assert.ok(w.document.querySelector("[data-action=pay]"));
     click(w, "[data-action=return]");
-    w.document.querySelector("[name=reason]").value =
-      "Clarify the advance terms";
+    w.document.querySelector("[name=reason]").value = "Clarify the advance terms";
     submit(w, "[data-form=reason]");
     await flush();
     assert.match(w.document.querySelector("#modal").textContent, /Draft/);
-    const saved = JSON.parse(
-      w.localStorage.getItem("ss-project-monitoring-demo-v1"),
-    );
+    const saved = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
     assert.equal(saved.requests[0].status, "Draft");
-    assert.deepEqual(saved.requests[0].approvals, []);
-    assert.equal(
-      saved.requests[0].history.at(-1).reason,
-      "Clarify the advance terms",
-    );
+    assert.equal(saved.requests[0].history.at(-1).reason, "Clarify the advance terms");
   } finally {
     w.close();
     await w.happyDOM.abort();
   }
 });
+
 test("Validation errors remain inside the form and submitted draft details are not editable", async () => {
   const seed = demoState();
   seed.requests[0].status = "Draft";
@@ -692,7 +693,7 @@ test("Combined form creates the parent and first child with one submission and k
     assert.equal(o.files.length, 1);
     assert.match(
       w.document.querySelector("#modal").textContent,
-      /Submit for approval/,
+      /Submit to Finance/,
     );
   } finally {
     w.close();
@@ -747,7 +748,7 @@ test("Finance supporting request and requester multi-file return preserve approv
       w.document.querySelector("#modal").textContent,
     );
     assert.equal(r.files.length, 2);
-    assert.equal(r.approvals.length, 3);
+    assert.ok(r.finalApprovedAt);
   } finally {
     w.close();
     await w.happyDOM.abort();
@@ -802,12 +803,12 @@ test('CSV and Excel imports preview without saving, confirm creates masters, and
   }
 });
 
-test('The shared header keeps one company switcher, preserves scope across operational pages and scopes project options', async () => {
+test('The sidebar keeps one company switcher, preserves scope across operational pages and scopes project options', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]');
     assert.equal(w.document.querySelectorAll('#company').length, 1);
-    assert.ok(w.document.querySelector('.topbar #company'));
+    assert.ok(w.document.querySelector('.shell > .sidebar .sidebar-scope #company'));
     change(w, 'company', 'c1');
     assert.ok([...w.document.querySelectorAll('#project option')].every(o => !o.value || ['p1','p2'].includes(o.value)));
     click(w, '[data-page=requests]');
@@ -815,7 +816,7 @@ test('The shared header keeps one company switcher, preserves scope across opera
     assert.equal(w.document.querySelectorAll('#company').length, 1);
     click(w, '[data-page=master]');
     assert.equal(w.document.querySelector('#company'), null);
-    assert.match(w.document.querySelector('.header-scope').textContent, /Group administration/);
+    assert.match(w.document.querySelector('.shell > .sidebar .sidebar-scope').textContent, /Group administration/);
     click(w, '[data-page=dashboard]');
     assert.equal(w.document.querySelector('#company').value, 'c1');
   } finally { w.close(); await w.happyDOM.abort(); }
@@ -854,7 +855,7 @@ test('Dashboard breakdowns use progressive disclosure, preserve the chosen state
     assert.ok(w.document.querySelector('[data-disclosure=categories] table'));
     assert.match(w.document.querySelector('[data-disclosure=payments]').textContent, /Payments Completed/);
     assert.equal(w.document.querySelectorAll('[data-kpi]').length, 7);
-    assert.equal(w.document.querySelector('[data-kpi=budget] .dashboard-kpi-value').textContent, 'USD1,600,000.00');
+    assert.equal(w.document.querySelector('[data-kpi=budget] .dashboard-kpi-value').textContent, '1,600,000.00');
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
@@ -895,12 +896,12 @@ test('Appearance changes persist across navigation without resetting entered for
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
-test('Navbar theme icon switches themes in place, keeps focus and remembers the choice', async () => {
+test('Sidebar theme icon switches themes in place, keeps focus and remembers the choice', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]');
     const before = w.localStorage.getItem('ss-project-monitoring-demo-v1');
-    const toggle = w.document.querySelector('.topbar [data-theme-toggle]');
+    const toggle = w.document.querySelector('.shell > .sidebar [data-theme-toggle]');
     assert.ok(toggle);
     assert.equal(toggle.getAttribute('aria-label'), 'Switch to dark theme');
     toggle.focus();
@@ -958,48 +959,138 @@ test('Approved budgets can be created and revised when crypto.randomUUID is unav
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
-test('Admin can create and submit requests for either team and add further independent payments', async () => {
-  for (const team of ['Planning', 'Purchasing']) {
-    const w = await app();
-    try {
-      click(w, '[data-action=demo]'); click(w, '[data-page=requests]');
-      assert.ok(w.document.querySelector('[data-action=import]'));
-      click(w, '[data-action=newOrder]');
-      let f = w.document.querySelector('[data-form=order]');
-      f.elements.team.value = team;
-      change(w, 'formCompany', 'c1'); change(w, 'formProject', 'p1'); change(w, 'formBudget', 'b0');
-      for (const [key, value] of Object.entries({ supplierId: 's1', po: 'ADMIN-POPULATION-PO', invoice: 'ADMIN-POPULATION-INV', total: '1000', description: 'Fictional Admin data entry', allocation_civil0: '1000', firstpercent: '30', firstamount: '300', firstterms: 'Advance' }))
-        f.elements[key].value = value;
-      const transfer = new w.DataTransfer();
-      transfer.items.add(new w.File(['%PDF-1.4\nFictional evidence'], 'sample.pdf', { type: 'application/pdf' }));
-      f.elements.files.files = transfer.files;
-      submit(w, '[data-form=order]'); await new Promise(r => setTimeout(r, 80));
-      let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-      const order = saved.orders.at(-1), child = saved.requests.at(-1);
-      assert.equal(order.team, team, w.document.querySelector('#toast').textContent);
-      assert.equal(order.requestedBy, 'admin');
-      assert.equal(child.status, 'Draft');
-      assert.ok(w.document.querySelector('[data-action=submit]'));
-      click(w, '[data-action=submit]'); await flush();
-      saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-      assert.equal(saved.requests.at(-1).status, team === 'Planning' ? 'Approval 1' : 'Reviewer');
-      assert.equal(saved.orders.at(-1).committedAt, undefined);
-      click(w, '[data-action=close]'); await flush();
-      click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
-      click(w, '[data-action=newPayment]');
-      f = w.document.querySelector('[data-form=payment]');
-      f.elements.percent.value = '20'; f.elements.amount.value = '200';
-      submit(w, '[data-form=payment]'); await flush();
-      saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-      assert.equal(saved.requests.at(-1).amount, 200, w.document.querySelector('#toast').textContent);
-      assert.equal(saved.requests.at(-1).status, 'Draft');
-      assert.deepEqual(saved.requests.at(-1).approvals, []);
-      click(w, '[data-action=close]'); await flush();
-      click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
-      click(w, '[data-action=editOrder]');
-      f = w.document.querySelector('[data-form=order]');
-      assert.equal(f.elements.team.value, team, JSON.stringify({ savedTeam: saved.orders.at(-1).team, select: f.elements.team.outerHTML }));
-      assert.equal(f.elements.team.disabled, true);
-    } finally { w.close(); await w.happyDOM.abort(); }
-  }
+test('Admin can create and submit requests to Finance and add further independent payments', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]'); click(w, '[data-page=requests]');
+    assert.ok(w.document.querySelector('[data-action=import]'));
+    click(w, '[data-action=newOrder]');
+    let f = w.document.querySelector('[data-form=order]');
+    assert.equal(f.elements.team, undefined);
+    change(w, 'formCompany', 'c1'); change(w, 'formProject', 'p1'); change(w, 'formBudget', 'b0');
+    for (const [key, value] of Object.entries({ supplierId: 's1', po: 'ADMIN-POPULATION-PO', invoice: 'ADMIN-POPULATION-INV', total: '1000', description: 'Fictional Admin data entry', allocation_civil0: '1000', firstpercent: '30', firstamount: '300', firstterms: 'Advance' }))
+      f.elements[key].value = value;
+    const transfer = new w.DataTransfer();
+    transfer.items.add(new w.File(['%PDF-1.4\nFictional evidence'], 'sample.pdf', { type: 'application/pdf' }));
+    f.elements.files.files = transfer.files;
+    submit(w, '[data-form=order]'); await new Promise(r => setTimeout(r, 80));
+    let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    const order = saved.orders.at(-1), child = saved.requests.at(-1);
+    assert.equal(order.po, 'ADMIN-POPULATION-PO', w.document.querySelector('#toast').textContent);
+    assert.equal(order.requestedBy, 'admin');
+    assert.equal(child.status, 'Draft');
+    click(w, '[data-action=submit]'); await flush();
+    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    assert.equal(saved.requests.at(-1).status, 'Finance');
+    assert.ok(saved.orders.at(-1).committedAt);
+    click(w, '[data-action=close]'); await flush();
+    click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
+    click(w, '[data-action=newPayment]');
+    f = w.document.querySelector('[data-form=payment]');
+    f.elements.percent.value = '20'; f.elements.amount.value = '200';
+    submit(w, '[data-form=payment]'); await flush();
+    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    assert.equal(saved.requests.at(-1).amount, 200, w.document.querySelector('#toast').textContent);
+    assert.equal(saved.requests.at(-1).status, 'Draft');
+    assert.deepEqual(saved.requests.at(-1).approvals, []);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test('Projects list and project pages show task progress; only Finance and Admin edit tasks', async () => {
+  const w = await app();
+  try {
+    click(w, '[data-action=demo]');
+    await actor(w, 'fin');
+    click(w, '.kpi-side > .workspace-actions [data-page=projects]');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Projects');
+    const cards = [...w.document.querySelectorAll('.project-card')];
+    assert.equal(cards.length, 4);
+    assert.equal(cards[0].querySelector('.project-pct').textContent, '47%');
+    assert.match(cards[0].querySelector('.project-foot').textContent, /8 of 17 done/);
+    // Anywhere on the card opens the project, not only the title.
+    cards[1].querySelector('.project-foot').click();
+    await flush();
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Villa Refurbishment');
+    click(w, '[data-action=backProjects]');
+    assert.ok(w.document.querySelector('[data-action=newProject]'));
+    const search = w.document.querySelector('#projectSearch');
+    search.value = 'villa';
+    search.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await flush();
+    assert.equal(w.document.querySelectorAll('.project-card').length, 2);
+    const search2 = w.document.querySelector('#projectSearch');
+    search2.value = '';
+    search2.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await flush();
+    click(w, '[data-action=openProject][data-id=p1]');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Tropical Maldives Project');
+    assert.ok(w.document.querySelector('.kpi-layout .budget-overview .kpi-trend-overview'));
+    assert.ok(w.document.querySelector('.kpi-side > .progress-card'));
+    assert.ok(w.document.querySelector('.kpi-side > .payment-overview'));
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^47%$/);
+    assert.equal(w.document.querySelectorAll('.task-row').length, 17);
+    assert.ok(w.document.querySelector('.explore-card [data-disclosure=payments]'));
+    // Add a task through the form.
+    click(w, '[data-action=newTask]');
+    const f = w.document.querySelector('[data-form=task]');
+    f.elements.name.value = 'Commissioning';
+    f.elements.status.value = 'Done';
+    submit(w, '[data-form=task]');
+    await flush();
+    assert.equal(w.document.querySelectorAll('.task-row').length, 18);
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^50%$/);
+    // Inline status change saves straight away.
+    const select = w.document.querySelector('.task-status');
+    select.value = 'Done';
+    select.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await flush();
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^56%$/);
+    let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    assert.equal(saved.tasks.filter((t) => t.projectId === 'p1' && t.status === 'Done').length, 10);
+    assert.ok(saved.audit.some((a) => a.action === 'task.save' && a.user === 'Finance Officer'));
+    // Delete with an in-page confirmation.
+    const added = saved.tasks.find((t) => t.name === 'Commissioning');
+    click(w, `[data-action=deleteTask][data-id="${added.id}"]`);
+    submit(w, '[data-form=taskDelete]');
+    await flush();
+    assert.equal(w.document.querySelectorAll('.task-row').length, 17);
+    // Payment requests from the project page: a new request is preset to this project, and
+    // an order with value left to request takes a further payment request directly.
+    click(w, '[data-action=projectOrder]');
+    const of = w.document.querySelector('[data-form=order]');
+    assert.equal(of.elements.companyId.value, 'c1');
+    assert.equal(of.elements.projectId.value, 'p1');
+    assert.equal(of.elements.budgetId.value, 'b0');
+    assert.ok(of.querySelector('[name=allocation_civil0]'));
+    click(w, '[data-action=close]');
+    await flush();
+    const before = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1')).requests.length;
+    const payButton = w.document.querySelector('[data-action=projectPayment]');
+    const orderId = payButton.dataset.id;
+    payButton.click();
+    await flush();
+    const pf = w.document.querySelector('[data-form=payment]');
+    assert.equal(pf.dataset.order, orderId);
+    pf.elements.percent.value = '1';
+    pf.elements.amount.value = '';
+    pf.elements.percent.dispatchEvent(new w.Event('input', { bubbles: true }));
+    submit(w, '[data-form=payment]');
+    await flush();
+    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    assert.equal(saved.requests.length, before + 1, w.document.querySelector('#modal').textContent.slice(0, 300));
+    assert.equal(saved.requests.at(-1).orderId, orderId);
+    assert.equal(saved.requests.at(-1).status, 'Draft');
+    click(w, '[data-action=close]');
+    await flush();
+    click(w, '[data-action=backProjects]');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Projects');
+    // A Viewer sees progress but no task controls.
+    await actor(w, 'viewer');
+    click(w, '[data-page=projects]');
+    assert.equal(w.document.querySelector('[data-action=newProject]'), null);
+    click(w, '[data-action=openProject][data-id=p1]');
+    assert.equal(w.document.querySelectorAll('.task-row').length, 17);
+    assert.equal(w.document.querySelector('.task-status,[data-action=newTask],[data-action=editTask],[data-action=deleteTask]'), null);
+    assert.ok(w.document.querySelector('.task-badge'));
+  } finally { w.close(); await w.happyDOM.abort(); }
 });

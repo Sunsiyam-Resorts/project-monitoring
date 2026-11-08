@@ -13,7 +13,7 @@ This release implements the approved dashboard, Requests and workflow review in 
 
 ## Working screens
 
-Dashboard has three equal-width primary tiles in one desktop row: Total Approved Budget, Budget Utilized, Available Budget. Four equal-width secondary tiles form the next row: Paid, Outstanding Payments, On Hold, Balance Payments Pending. Tiles show only headings and currency amounts, with responsive wrapping on smaller screens.
+Dashboard has three equal-width primary tiles in one desktop row: Total Approved Budget, Budget Utilized, Available Budget. Four equal-width secondary tiles form the next row: Paid, Outstanding Payments, On Hold, Balance Payments Pending. Tiles show only headings and currency amounts, with responsive wrapping on smaller screens. Amended 5 November 2026: the three primary figures sit side by side in one main card above a combined year-to-date chart (approved budget and utilized as lines, available as the band between them, with a legend and month labels); the four secondary figures share one payment card to the right of the main card (below it on narrower screens), above one combined year-to-date chart with a line per figure; each label carries its line colour as the key. Below it, a separate card holds two square shortcut buttons: Finance payments and My Actions. No other text is added to the tiles. See SPECIFICATION.md, Dashboard trends.
 
 Requests has exactly four tabs: Requests, Finance, Balance Payments To Be Requested, My Actions. Parent rows expand with +/− into independently numbered child requests. New Request appears only on Requests and creates the parent plus its first child draft in one transaction. Amount and percentage work both ways. Subsequent children reuse the parent, default to today's Maldives date and original currency, and allow another currency.
 
@@ -29,7 +29,7 @@ Shared parent changes are proposals with independent team approval. Current deta
 
 Company, project, team and original order currency remain fixed after numbering, preserving access, scoped references and frozen child conversions. Supplier, PO, invoice, description, budget/category allocations, total and supporting can be amended. Payment amounts and percentages recorded at creation do not silently change when a parent is amended.
 
-Purchasing: Requester → Reviewer → Approver 1 → Approver 2 → Finance. Planning: Requester → Approver 1 → Finance. Every child is approved independently. Parent amendments follow the same team approval route.
+Revision 2 (November 2026): the teams and approval stages are removed. Every payment request goes Requester → Finance → Paid, and parent amendments are approved by Finance. See SPECIFICATION.md, Revision 2.
 
 ## Master data, currency and numbering
 
@@ -41,7 +41,7 @@ Budgets can use any configured currency; category amounts use that budget curren
 
 Workspace schema version 2 is migrated under the existing PostgreSQL transaction. It assigns missing company/project short codes and parent references, preserves issued child references, budgets, documents, users, audit and existing sequences, initializes scoped counters from issued references, and adds explicit payment currency/reservation fields. Existing budgets default to USD. Legacy single payment evidence becomes a files array.
 
-Legacy Planning children awaiting Reviewer move to Approval 1 with an audit event. No existing Reviewer user gains Approver permission. Admin must explicitly reassign any legacy Planning Reviewer accounts; the server prohibits Planning Reviewer assignments. Generated company/project codes can be reviewed and adjusted in Master Data; issued references remain permanent. Legacy reference formats are replaced with the new scoped defaults for future issues.
+Revision 2 migration: requests and amendments awaiting Reviewer, Approval 1 or Approval 2 move to Finance with an audit event; Reviewer and Approver accounts become Viewer, also audited. Admin re-roles them explicitly.
 
 ## Verification
 

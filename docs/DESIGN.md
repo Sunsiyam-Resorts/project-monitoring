@@ -1,3 +1,29 @@
+# Main budget card — 5 November 2026
+
+Total Approved Budget, Budget Utilized and Available Budget now share one main card: three equal figure columns separated by thin dividers, above one full-width year-to-date chart. The chart is zero-based; approved budget is a grey line, utilized an ink line, and available the soft green band between them, with a small legend, month labels, and a per-month tooltip giving all three values. The figures are sections of the card, so the earlier per-card frosted tint on Available Budget is not used here. The available area between the approved and utilized lines is shaded with diagonal ink hatching (an HTML layer masked to the band so the hatching stays at 45° however the chart stretches), not a colour fill. Paid, Outstanding Payments, On Hold and Balance Payments Pending share one payment card to the right of the main card: four figures (2×2, or one row when the card is full width) over one combined chart, one line each — Paid in ink, Outstanding blue #2a78d6, On Hold orange #eb6834, Balance aqua #1baf7a (dark: #3987e5, #d95926, #199e70; validated for colour-vision deficiency). Each label carries its line colour, so the figures are the legend. Below the payment card, a separate card holds two square shortcut buttons, Finance payments and Projects, labelled in large extra-bold type with a small arrow in the bottom-right corner; there is no other text. Under 1100px everything stacks in one column. On the Dashboard the filter row is one horizontal line: the reporting currency on the left, then on the right the Project filter (no visible label; its blank option reads "All projects", and there is no Clear filters link) followed by Export summary, all centred on the same axis at the same height.
+
+---
+
+# Apple system font — 5 November 2026
+
+Interface and display text now use Apple's system font (SF Pro Text / SF Pro Display via `-apple-system`) on Apple devices. SF Pro is licensed for Apple platforms only, so it is not self-hosted; other platforms fall back to the self-hosted Inter and Inter Tight, the closest open match. Print keeps its existing font.
+
+---
+
+# Dashboard figures, motion and scrollbars — 5 November 2026
+
+Tile amounts no longer repeat the "USD" prefix, and their decimals render at half size on the same baseline; the filter row states the reporting currency once, and chart tooltips and accessible summaries still name it. Amounts are larger (up to 46px for budget tiles, 34px for payment tiles) and every tile in a row uses the same size, set by the row's longest figure so none runs under its chart. Figures roll digit by digit (odometer) on first view and when filters change; table rows animate individually (leaving rows slide out right, new rows rise into place, remaining rows and the table height ease), and trend charts wipe in from left to right on first view and whenever their data changes, all with the smooth-scroll ease-out and skipped under reduced motion. Scrollbars are slim (8px), rounded and theme-coloured; Firefox uses its thin native scrollbar in the same colours.
+
+---
+
+# Dashboard year-to-date trends — 5 November 2026
+
+Every dashboard tile carries a minimal year-to-date trend, one mark per calendar month: candles for Total Approved Budget and Available Budget, an ink line for Budget Utilized and the four payment tiles. On wide tiles the chart is centred top-to-bottom on the right and the amount scales with its length so it never runs under the chart; on narrower tiles the chart sits top-right above the amount, and on small tablets (761–1023px) the budget tiles stack label, chart and amount. The period appears only in tooltips and accessible summaries. Rising candles are hollow green and falling candles solid red, so direction never depends on colour alone; unchanged months are left blank. The colours were checked with a colour-vision validator: light `#3d9a5f` / `#a8322c`, dark `#4aa86a` / `#d84a40`. Each candle has a tooltip with its month and start/end values, and each chart has an accessible summary. Charts are hidden in print. The demo workspace includes a generated, fixed-seed fictional history for January–October (about 40 orders and 70 payment requests, with holds, releases, payments and budget revisions) so the trends can be previewed; `demoState()` without history remains the test fixture.
+
+Figures come from `kpiTrend` in `public/domain.js` (dated commitments and budget revisions only); see SPECIFICATION.md, Dashboard trends. REVIEW-1.md's tile rule was amended to allow the chart and period label.
+
+---
+
 # Navbar theme shortcut and icon refresh — 1 November 2026
 
 The top navbar now has a sun/moon button that switches directly between Light and Dark. Its icon, action label and tooltip follow the current theme; clicking chooses and saves an explicit preference. The Appearance selector still offers System. Theme changes update in place without rebuilding forms, changing business data or losing keyboard focus.
@@ -32,10 +58,15 @@ The application is a static vanilla JavaScript frontend, one shared stylesheet, 
 
 The audit found duplicate company selection in page filters, a prominent mobile navigation strip, repeated dashboard summaries with equal visual weight, sharp containers, heavy table headings and inconsistent action grouping. The implementation updates the shared foundations and shell first, then dashboard disclosure and all existing page surfaces. Existing CSV/XLSX import work is retained.
 
+
+## Dashboard lower section
+
+Explore the details and Recent activity follow the KPI cards: one glass card each, aligned to the main card and the right-hand column above (one column under 1100px), a quiet title row inside the card, hairline-divided rows and display-weight figures. Each breakdown row shows its title and description, a headline figure (companies, projects, currencies, percentage paid of utilized, categories) and a chevron; the table opens inside the row on a faint wash. Activity is a dated ledger, newest first: the day as the figure with month, year and time beneath, then a readable action name (stored audit codes such as request.pay are shown as "Payment recorded") and the user and detail.
+
 ## Current design system
 
 - Warm neutral application canvas (`#F5F5F0`) and white surfaces. Dark forest/charcoal (`#273D30`) is the single action/selection accent, with a pale tint for selected navigation and available budget.
-- Central tokens cover color, semantic success/info/warning/error states, typography, spacing, input boundaries, focus, shadows, 20px containers, 10px controls and pill navigation. Status text remains explicit; color is supplementary.
+- Central tokens cover color, semantic success/info/warning/error states, typography, spacing, input boundaries, focus, shadows and one corner radius: `--radius` (12px) for every container, control, menu, chip and dialog. Only true circles (avatars, status dots, spinners) are round. Status text remains explicit; color is supplementary.
 - Local Inter handles interface text; Inter Tight handles titles and financial amounts. Supporting labels, section titles and page titles have distinct sizes/weights. Financial amounts retain tabular alignment and original values.
 - Short transitions, visible focus rings, reduced-motion overrides and touch-sized main controls. Checked text/background pairs meet 4.5:1 contrast; this is targeted verification, not a complete WCAG certification.
 
@@ -50,7 +81,7 @@ Mobile navigation uses a native modal drawer with focus containment, Escape supp
 ## Page changes
 
 - Dashboard retains all seven budget/payment figures. Secondary payments share one surface; the full project financial overview is visible immediately below. Company/project summaries, currencies, category balances and payment-completion details are expandable. Disclosure choices survive filtering and refreshes within the session. My Actions includes existing child and amendment tasks.
-- Requests retains all four views, expansion of parent/child records, search, date/team/status filters, sorting, import, financial details and independent approvals. The balance tab uses the concise label Balance to request. Mobile requests use labelled work items; other tables scroll inside focusable regions.
+- Requests retains all four views, expansion of parent/child records, search, date/status filters, sorting, import, financial details and independent approvals. The balance tab uses the concise label Balance to request. Mobile requests use labelled work items; other tables scroll inside focusable regions.
 - Master Data, User Manager and Settings use the same tabs, search, table, surface and action styles. Existing master revisions, roles, numbering configuration, locks and audit remain available.
 - Forms keep grouped fields, persistent labels, required markers, input values on validation failure, inline errors, PDF controls and sticky footer actions. Detail views keep their amounts prominent and retain the original approval progress, history, supporting files and available actions.
 - Login, TOTP enrolment and password reset share the updated surfaces and typography. Authentication contracts and required factors are unchanged. Printable requests retain their print-specific A4 layout and monochrome styling.
@@ -84,7 +115,7 @@ Cards and table containers use 4px corners, thin token-based borders and a soft 
 ## Screen changes
 
 - Dashboard: a single portfolio ledger for approved/available budget, a three-value commitment/payment strip, compact operational totals and actionable queue links. Project comparisons and category balances remain. Payment coverage uses a linear actual-payment proportion rather than a decorative ring.
-- Requests: counted views, company/project scope, progressive date/status/team filters, search and date/number/USD-amount sorting. The Finance shortcut includes held requests, consistent with its KPI. The original Finance commitment view remains intact.
+- Requests: counted views, company/project scope, progressive date/status filters, search and date/number/USD-amount sorting. The Finance shortcut includes held requests, consistent with its KPI. The original Finance commitment view remains intact.
 - Main request detail: full order and remaining-to-request amounts, core context, category allocations, downloadable evidence and independently approved children.
 - Payment detail: requested instalment and terms first, approval progress, evidence entry points, a dedicated role-aware decision area, payment supporting and remarks. Category/review history is progressively disclosed. All original actions and permission checks remain.
 - Forms: numbered, semantic fieldsets for account/order/budget/payment context. Persistent labels, linked hints, native validity plus inline error feedback, allocation readout and visible in-flight action state. Footer actions remain accessible in longer dialogs.
@@ -126,3 +157,12 @@ Font provenance and SHA-256 digests are recorded in `public/fonts/README.md`. Fo
 Requests now groups independently approved payments under expandable order rows. Dashboard labels and totals follow REVIEW-1.md, with consolidated USD figures and original-currency statistics. The identity remains black and white.
 
 The dashboard summary uses two aligned desktop rows: three equal budget tiles and four equal payment tiles. Headings and amounts stand alone without explanatory copy. On Hold is a separate payment bucket, excluded from Outstanding Payments.
+
+## Projects
+
+- The sidebar lists Dashboard, Projects, Requests. Finance also sees Master Data and Audit Log; User Manager and Settings stay Admin-only.
+- Projects list: a quiet card per project in the company scope, with search. The project name with company and code beneath it, the progress percentage at the top right, the task progress bar, then one line: tasks done (and any overdue) on the left, available budget on the right. The whole card opens the project; its title button is the keyboard stop and shows the card's focus ring.
+- Progress bar: Done is a solid segment in the trend-line ink, In progress uses the same 45° hatch as the main card's available area, and the empty track is To do. Counts and labels always accompany it, never colour alone.
+- Project page: an "All projects" back link and the project name, then the Dashboard's KPI layout for that project. The budget card sits on the left; on the right a Project progress card (tinted glass, like the shortcuts card) sits above the payment card. Below: a Tasks card (inline status select, Edit and Delete for Finance and Admin; a read-only status label otherwise), a Requests card (each order with its total and what is left to request; New request opens the request form preset to this project, and each order with value left has a Payment request button for whoever may raise one), an Explore the details card (budget categories, payment requests) and Recent activity for this project.
+
+- Every workspace page (not only the Dashboard) carries the faint spreadsheet-cell grid behind its content, with the same slow parallax as the page scrolls and the same smooth wheel scrolling. Reduced motion keeps the grid still; reduced transparency and print hide it.

@@ -12,14 +12,17 @@ import {
   canManageRequest,
   randomId,
   currencyStats,
-  firstStage,
+  financeActor,
+  isFinanceAdmin,
+  canEditTasks,
+  projectProgress,
+  TASK_STATUSES,
   visibleState,
   supportingFile,
   kpis,
   kpiTrend,
   money,
   access,
-  roleFor,
   budgetAmount,
   categoryUsed,
   warnings,
@@ -43,7 +46,7 @@ function importForm() {
   importPreview = null;
   const kinds = page === 'master' ? [masterTab] : ['orders', 'payments'];
   const labels = { companies: 'Companies', projects: 'Projects', suppliers: 'Suppliers', currencies: 'Currencies', budgets: 'Approved budgets', orders: 'New requests with first payment', payments: 'Additional payment requests' };
-  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts with independent approvals.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${user.role === "Admin" ? field("Team for new requests", `<select name="team">${opt(["Planning", "Purchasing"].map(id => ({ id, name: id })))}</select>`) : ""}${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
+  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts; each payment request is submitted to Finance separately.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
 }
 async function importTemplate(excel) {
   const kind = document.querySelector('[name=importKind]').value, headers = importFields[kind];
@@ -102,7 +105,6 @@ let state,
   to = "",
   search = "",
   statusFilter = "",
-  teamFilter = "",
   selected = null,
   returnPaymentId = null,
   loginStep = "password",
@@ -114,12 +116,17 @@ let state,
 const expanded = new Set();
 let sortOrder = "date-desc",
   masterSearch = "",
+  auditSearch = "",
+  auditFilter = { action: "", user: "", company: "", from: "", to: "" },
+  auditPageNo = 1,
   userSearch = "",
   filtersExpanded = false,
   toastTimer,
   focusReturn = null,
   labelSequence = 0,
   approvalOnly = false,
+  projectId = "",
+  projectSearch = "",
   financeOnly = false;
 const pageNames = {
   dashboard: "Dashboard",
@@ -130,7 +137,7 @@ const pageNames = {
 };
 const brand = () =>
   `<div class="brand"><img class="brand-logo" src="/logo.svg" alt="Sun Siyam" width="110" height="88"><span class="brand-label">PROJECT MONITORING</span></div>`;
-const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard, trendChart,
+const { appShell, appSidebar, appHeader, propertySwitcher, pageHeader, statCard, trendChart, budgetChart, paymentChart, figureLength,
   field, badge, empty, disclosure, loadingSkeleton, themePicker } = createUI({ esc, icon, getThemePreference: () => document.documentElement.dataset.themePreference || 'system', getResolvedTheme: () => document.documentElement.dataset.theme || 'light' });
 const section = (number, title, body, description = "") =>
   `<fieldset class="form-section"><legend><span>${number}</span>${title}</legend>${description ? `<p>${description}</p>` : ""}${body}</fieldset>`;
@@ -176,7 +183,9 @@ function useDemo() {
   try {
     raw = JSON.parse(localStorage.getItem(storeKey));
   } catch {}
-  if (!raw) raw = demoState({ history: true });
+  // A demo saved from older sample data (for example before project tasks) is replaced
+  // with the current sample, so new demo content always shows up.
+  if (!raw || raw.sampleVersion !== demoState().sampleVersion) raw = demoState({ history: true });
   migrateState(raw);
   localStorage.setItem(storeKey, JSON.stringify(raw));
   user =
@@ -294,6 +303,132 @@ function restoreDisclosures() {
     el.addEventListener('toggle', () => disclosureState.set(key, el.open));
   });
 }
+// Motion. Same feel as the smooth page scroll: a strong ease-out over ~0.65–0.9s.
+// Reduced-motion users get instant updates. Nothing here changes text content,
+// so figures stay exactly as rendered for tests and assistive technology.
+const MOTION_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const reduceMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+const motionOff = () => !!reduceMotionQuery?.matches;
+// KPI figures roll digit by digit (odometer) from the last shown value to the new one;
+// on first view they roll up from zeros. Each digit keeps its real character as
+// (transparent) text; the rolling 0–9 strip is drawn by CSS ::before.
+const shownFigures = new Map();
+function flipNumbers() {
+  document.querySelectorAll(".dashboard-kpi[data-kpi] .dashboard-kpi-value").forEach((el) => {
+    const key = el.closest("[data-kpi]").dataset.kpi;
+    const next = el.textContent;
+    if (!next.trim()) return;
+    const prev = shownFigures.get(key) ?? next.replace(/\d/g, "0");
+    shownFigures.set(key, next);
+    if (prev === next || motionOff()) return;
+    const from = prev.length >= next.length ? prev.slice(prev.length - next.length) : " ".repeat(next.length - prev.length) + prev;
+    const wrap = document.createElement("span");
+    wrap.className = "odo-number";
+    // Decimals roll in their own half-size group on the same baseline.
+    const dot = next.indexOf(".");
+    const decimals = document.createElement("span");
+    decimals.className = "odo-dec";
+    [...next].forEach((ch, i) => {
+      const cell = document.createElement("span");
+      cell.textContent = ch;
+      if (/\d/.test(ch)) {
+        cell.className = "odo";
+        cell.style.setProperty("--d", /\d/.test(from[i]) ? from[i] : "0");
+        cell.style.setProperty("--i", String(i));
+        cell.dataset.to = ch;
+      }
+      (dot >= 0 && i >= dot ? decimals : wrap).append(cell);
+    });
+    if (decimals.childNodes.length) wrap.append(decimals);
+    el.replaceChildren(wrap);
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      wrap.querySelectorAll(".odo").forEach((cell) => cell.style.setProperty("--d", cell.dataset.to))));
+  });
+}
+// Trend charts wipe in from left to right on first view and whenever their data
+// changes (for example after a filter change); unchanged charts do not replay.
+const shownCharts = new Map();
+function revealCharts() {
+  document.querySelectorAll(".dashboard-kpis .kpi-trend").forEach((svg, i) => {
+    const key = svg.closest("[data-kpi]")?.dataset.kpi || svg.closest("[data-chart]")?.dataset.chart;
+    const drawn = svg.innerHTML;
+    const changed = shownCharts.get(key) !== drawn;
+    shownCharts.set(key, drawn);
+    if (!changed || motionOff() || !svg.animate) return;
+    (svg.closest(".overview-plot") || svg).animate([{ clipPath: "inset(-8px 100% -8px -8px)" }, { clipPath: "inset(-8px -8px -8px -8px)" }],
+      { duration: 2200, delay: Math.min(i, 6) * 120, easing: MOTION_EASE, fill: "backwards" });
+  });
+}
+// Table rows animate as separate items between renders of the same page: rows that
+// stay glide to their new position, rows that leave slide out to the right, and
+// new rows rise from below into place.
+const topTables = () => [...document.querySelectorAll(".content table")].filter((t) => !t.parentElement.closest("table"));
+const tableKey = (t, i) => (document.querySelector(".main")?.dataset.view || "") + ":" +
+  (t.closest("[data-disclosure]")?.dataset.disclosure || t.closest("section[aria-label], .panel")?.querySelector("h2")?.textContent || i);
+const rowKey = (tr) => tr.dataset.rowKey || tr.cells[0]?.textContent.trim().replace(/\s+/g, " ");
+function snapshotTables() {
+  const snap = new Map();
+  if (motionOff()) return snap;
+  topTables().forEach((t, i) => {
+    const rows = new Map();
+    for (const tr of [...(t.tBodies[0]?.rows || []), ...(t.tFoot?.rows || [])]) {
+      const k = (tr.parentElement.tagName === "TFOOT" ? "tfoot:" : "") + rowKey(tr);
+      const rect = tr.getBoundingClientRect();
+      if (!k || rows.has(k) || !rect.height) continue;
+      rows.set(k, { tr, rect, widths: [...tr.cells].map((c) => c.getBoundingClientRect().width) });
+    }
+    const wrap = t.closest(".table-wrap");
+    snap.set(tableKey(t, i), { rows, wrapClass: wrap?.className || "table-wrap", height: wrap?.getBoundingClientRect().height || 0 });
+  });
+  return snap;
+}
+function ghostRow(old, wrapClass) {
+  const r = old.rect;
+  if (r.bottom < 0 || r.top > window.innerHeight) return;
+  const wrap = document.createElement("div");
+  wrap.className = wrapClass + " row-ghost";
+  wrap.setAttribute("aria-hidden", "true");
+  Object.assign(wrap.style, { position: "fixed", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+  const table = document.createElement("table");
+  const body = document.createElement("tbody");
+  [...old.tr.cells].forEach((c, i) => { c.style.width = old.widths[i] + "px"; });
+  body.append(old.tr);
+  table.append(body);
+  wrap.append(table);
+  document.body.append(wrap);
+  const done = () => wrap.remove();
+  wrap.animate([{ transform: "none", opacity: 1 }, { transform: `translateX(${Math.round(Math.min(r.width * 0.6, 520))}px)`, opacity: 0 }],
+    { duration: 600, easing: MOTION_EASE, fill: "forwards" }).finished.then(done, done);
+}
+function animateTables(snap) {
+  if (!snap?.size || motionOff()) return;
+  topTables().forEach((t, i) => {
+    const before = snap.get(tableKey(t, i));
+    if (!before) return;
+    const kept = new Set();
+    let entering = 0;
+    // The table eases from its old height to the new one so content below never jumps.
+    const wrap = t.closest(".table-wrap");
+    const height = wrap?.getBoundingClientRect().height || 0;
+    if (wrap?.animate && before.height && Math.abs(before.height - height) > 1) {
+      wrap.animate([{ height: before.height + "px", overflow: "hidden" }, { height: height + "px", overflow: "hidden" }], { duration: 650, easing: MOTION_EASE });
+    }
+    for (const tr of [...(t.tBodies[0]?.rows || []), ...(t.tFoot?.rows || [])]) {
+      if (!tr.animate) return;
+      const k = (tr.parentElement.tagName === "TFOOT" ? "tfoot:" : "") + rowKey(tr);
+      const old = k && before.rows.get(k);
+      if (old) {
+        kept.add(k);
+        const dy = old.rect.top - tr.getBoundingClientRect().top;
+        if (Math.abs(dy) > 1) tr.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 650, easing: MOTION_EASE });
+      } else {
+        tr.animate([{ transform: "translateY(28px)", opacity: 0 }, { transform: "none", opacity: 1 }],
+          { duration: 650, delay: Math.min(entering++, 12) * 40, easing: MOTION_EASE, fill: "backwards" });
+      }
+    }
+    before.rows.forEach((old, k) => { if (!kept.has(k)) ghostRow(old, before.wrapClass); });
+  });
+}
 function render() {
   if (!user) {
     renderLogin();
@@ -304,38 +439,41 @@ function render() {
     project = "";
   }
   const pending = state.requests.filter(attention).length + state.orders.filter(amendmentAttention).length;
-  const sidebarProps = { brand: brand(), page, admin: user.role === 'Admin', pending, user };
+  const sidebarProps = { brand: brand(), page, admin: user.role === 'Admin', manage: isFinanceAdmin(user), pending, user };
   const actorFor = (id) => demo ? { id, html: `<select id="${id}" aria-label="Demo user — role switching for testing only">${raw.users.filter(u => u.active).map(u => `<option value="${u.id}" ${u.id === user.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>` } : null;
-  const operational = ['dashboard', 'requests'].includes(page);
+  const operational = ['dashboard', 'projects', 'project', 'requests'].includes(page);
   const scopeFor = (id) => operational
     ? propertySwitcher(state.companies, company, id)
     : '<span class="admin-scope">Group administration</span>';
+  const tableSnapshot = snapshotTables();
   $("#app").innerHTML = appShell({
     page,
     sidebar: appSidebar({ ...sidebarProps, scope: scopeFor('company'), actor: actorFor('actor') }),
     drawer: appSidebar({ ...sidebarProps, scope: scopeFor('drawerCompany'), actor: actorFor('drawerActor'), drawer: true }),
     header: appHeader(),
     banner: demo ? '<div class="demo-banner"><span><strong>Demo workspace</strong>Sample data · browser-local changes<span class="demo-explanation"> · Role switching is for testing only.</span></span><a href="#" data-action="resetDemo">Reset sample data</a></div>' : '',
-    content: page === 'dashboard' ? dashboard() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : settingsPage(),
+    content: page === 'dashboard' ? dashboard() : page === 'projects' ? projectsPage() : page === 'project' ? projectPage() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : page === 'audit' ? auditPage() : settingsPage(),
   });
   $('#navigationDrawer').addEventListener('close', () => $('[data-action=openNavigation]')?.setAttribute('aria-expanded', 'false'));
   restoreDisclosures();
   accessible();
+  flipNumbers();
+  revealCharts();
+  animateTables(tableSnapshot);
 }
-function filters(dates = false, note = '') {
-  const extra = Boolean(from || to || statusFilter || teamFilter);
-  return `<div class="filters"><div><label for="project">Project</label><select id="project">${opt(
+// compact (Dashboard): the Project label is for screen readers only, the blank option reads
+// 'All projects', and there is no Clear filters link.
+function filters(dates = false, note = '', actions = '', compact = false) {
+  const extra = Boolean(from || to || statusFilter);
+  return `<div class="filters"><div><label for="project"${compact ? ' class="sr-only"' : ""}>Project</label><select id="project">${opt(
     state.projects.filter((p) => !company || p.companyId === company),
     project,
-    "All",
+    compact ? "All projects" : "All",
   )}</select></div>${
     dates
       ? `<button data-action="toggleFilters" aria-expanded="${filtersExpanded}" aria-controls="extraFilters">${icon("filter")}Filters${extra ? '<span class="count">Active</span>' : ""}</button><div class="advanced-filters wide" id="extraFilters" ${filtersExpanded ? "" : "hidden"}><div><label for="from">Request date · From</label><input id="from" type="date" value="${from}"></div><div><label for="to">To</label><input id="to" type="date" value="${to}"></div><div><label for="statusFilter">Status</label><select id="statusFilter">${opt(
           [
             "Draft",
-            "Reviewer",
-            "Approval 1",
-            "Approval 2",
             "Finance",
             "On Hold",
             "Paid",
@@ -344,23 +482,106 @@ function filters(dates = false, note = '') {
           ].map((x) => ({ id: x, name: x })),
           statusFilter,
           "All",
-        )}</select></div><div><label for="teamFilter">Team</label><select id="teamFilter">${opt(
-          ["Planning", "Purchasing"].map((x) => ({ id: x, name: x })),
-          teamFilter,
-          "All",
         )}</select></div></div>`
       : ""
-  }<div class="filter-end">${note}<span class="currency-label">Reporting currency <strong>USD</strong></span></div>${company || project || extra ? '<button class="linkbtn" data-action="clearFilters">Clear filters</button>' : ""}</div>`;
+  }<div class="filter-end">${note}<span class="currency-label">Reporting currency <strong>USD</strong></span></div>${!compact && (company || project || extra) ? '<button class="linkbtn" data-action="clearFilters">Clear filters</button>' : ""}${actions}</div>`;
 }
-function dashboard() {
-  const k = kpis(state, company, project);
-  const trend = kpiTrend(state, company, project);
+// The budget card (three figures over the YTD chart) and, on the right, the payment card
+// (four figures over one combined chart). Shared by the Dashboard and each project page;
+// `before` / `after` add cards above or below the payment card in the right-hand column.
+function overview(c, p, { before = '', after = '' } = {}) {
+  const k = kpis(state, c, p);
+  const trend = kpiTrend(state, c, p);
   const periodLabel = (t) => new Date(t).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
   const monthName = (t) => new Date(t).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
   const lastMonth = trend.budget.at(-1)?.start ?? Date.now();
   const caption = `YTD · ${monthName(trend.budget[0]?.start ?? lastMonth)}–${monthName(lastMonth)} ${new Date(lastMonth).getUTCFullYear()}`;
+  const paymentSeries = [['paid', 'Paid'], ['outstanding', 'Outstanding Payments'], ['hold', 'On Hold'], ['balance', 'Balance Payments Pending']];
+  return `<div class="kpi-layout"><section class="dashboard-kpis budget-kpis budget-overview" aria-label="Budget overview" style="--row-len:${Math.max(...[k.budget, k.utilized, k.available].map(v => figureLength(fmt(v))))}"><div class="overview-figures">${[['Total Approved Budget', k.budget, 'budget'], ['Budget Utilized', k.utilized, 'utilized'], ['Available Budget', k.available, 'available']].map(([label, value, key]) => statCard(label, fmt(value), key, 2)).join('')}</div>${budgetChart(trend, { fmt, periodLabel, monthLabel: monthName, caption })}</section>
+    <div class="kpi-side">${before}<section class="dashboard-kpis budget-kpis payment-overview" aria-label="Payment overview" style="--row-len:${Math.max(...[k.paid, k.outstanding, k.hold, k.balance].map(v => figureLength(fmt(v))))}"><div class="overview-figures">${paymentSeries.map(([key, label]) => statCard(label, fmt(k[key]), key, 3)).join('')}</div>${paymentChart(trend, paymentSeries, { fmt, periodLabel, monthLabel: monthName, caption })}</section>${after}</div></div>`;
+}
+// Recent activity: a dated ledger, newest first.
+function activityCard(activity, note = 'Approvals, payments and changes in this view will appear here.') {
+  return `<section class="panel activity-card" aria-labelledby="activityTitle"><header class="card-head"><h2 id="activityTitle">Recent activity</h2><small>Latest ${activity.length}</small></header>${activity.length ? `<ol class="activity-list">${activity.map(x => { const d = new Date(x.at); return `<li class="activity-entry"><time datetime="${esc(x.at)}"><b>${String(d.getDate()).padStart(2, '0')}</b><small>${d.toLocaleString('en-GB', { month: 'short' })} ${d.getFullYear()}</small><small>${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</small></time><div><strong>${esc(actionLabel(x.action))}</strong><p>${esc(x.user)}${x.detail ? ' · ' + esc(x.detail) : ''}</p></div></li>`; }).join('')}</ol>` : empty('No activity yet', note)}</section>`;
+}
+// Task progress bar: Done (solid) then In progress (hatched); the rest of the track is To do.
+function progressBar(g, label = '') {
+  const pct = (n) => (g.total ? (n / g.total) * 100 : 0).toFixed(2);
+  return `<span class="progress-track" role="img" aria-label="${esc(label || (g.total ? `${g.done} done, ${g.inProgress} in progress, ${g.todo} to do` : 'No tasks yet'))}"><i class="done" style="width:${pct(g.done)}%"></i><i class="doing" style="width:${pct(g.inProgress)}%"></i></span>`;
+}
+const TASK_ORDER = { "In progress": 0, "To do": 1, Done: 2 };
+const shortDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+// Projects: every visible project as a card with its task progress and budget position.
+function projectsPage() {
+  const q = projectSearch.trim().toLowerCase();
+  const all = state.projects.filter((p) => !company || p.companyId === company);
+  const ps = all.filter((p) => !q || [p.name, p.code, name('companies', p.companyId)].join(' ').toLowerCase().includes(q));
+  const cards = ps.map((p) => {
+    const g = projectProgress(state, p.id), k = kpis(state, p.companyId, p.id);
+    // The whole card opens the project; the title button is its keyboard stop.
+    return `<article class="panel project-card" data-action="openProject" data-id="${p.id}"><div class="project-card-head"><div><h2><button class="project-link" data-action="openProject" data-id="${p.id}">${esc(p.name)}</button></h2><p>${esc(name('companies', p.companyId))}${p.code ? ' · ' + esc(p.code) : ''}</p></div><b class="project-pct">${g.pct === null ? '—' : `${g.pct}<span>%</span>`}</b></div>${progressBar(g)}<div class="project-foot"><span>${g.total ? `${g.done} of ${g.total} done` : 'No tasks yet'}${g.overdue ? ` · <span class="project-late">${icon('clock')}${g.overdue} overdue</span>` : ''}</span><span><strong>${fmt(k.available)}</strong> available</span></div></article>`;
+  }).join('');
+  return `${pageHeader('PORTFOLIO', 'Projects', 'Progress from each project’s tasks, beside its budget position.', isFinanceAdmin(user) ? `<button class="primary" data-action="newProject">${icon('plus')}Add project</button>` : '')}<div class="list-toolbar"><div class="searchbox">${icon('search')}<input id="projectSearch" value="${esc(projectSearch)}" aria-label="Search projects" placeholder="Search project, code or company"></div><small>${ps.length} of ${all.length} projects · budgets in USD</small></div>${ps.length ? `<div class="project-grid">${cards}</div>` : `<section class="panel">${empty(all.length ? 'No matching projects' : 'No projects in this view', all.length ? 'Try a different name, code or company.' : 'Choose another company to see its projects.')}</section>`}`;
+}
+// One project: the Dashboard's overview for this project, its progress, tasks and details.
+function projectPage() {
+  const p = state.projects.find((x) => x.id === projectId);
+  if (!p) {
+    page = 'projects';
+    return projectsPage();
+  }
+  const g = projectProgress(state, p.id);
+  const canEdit = canEditTasks(user, p.companyId);
+  const day = today();
+  const ts = state.tasks.filter((t) => t.projectId === p.id).sort((x, y) => TASK_ORDER[x.status] - TASK_ORDER[y.status] || (x.due || '9999').localeCompare(y.due || '9999') || x.name.localeCompare(y.name));
+  const progressCard = `<section class="panel progress-card" aria-labelledby="progressTitle"><header class="progress-head"><h2 id="progressTitle">Project progress</h2><small>${g.total ? `${g.done} of ${g.total} tasks done` : 'No tasks yet'}</small></header><div class="progress-figure"><b>${g.pct === null ? '—' : g.pct}</b>${g.pct === null ? '' : '<span>%</span>'}</div>${progressBar(g)}<dl class="progress-counts"><div><dt><i class="key done" aria-hidden="true"></i>Done</dt><dd>${g.done}</dd></div><div><dt><i class="key doing" aria-hidden="true"></i>In progress</dt><dd>${g.inProgress}</dd></div><div><dt><i class="key todo" aria-hidden="true"></i>To do</dt><dd>${g.todo}</dd></div></dl>${g.overdue ? `<p class="project-flag">${icon('clock')}${g.overdue} overdue ${g.overdue === 1 ? 'task' : 'tasks'}</p>` : ''}</section>`;
+  const taskRow = (t) => {
+    const late = t.status !== 'Done' && t.due && t.due < day;
+    const key = t.status.toLowerCase().replace(' ', '-');
+    return `<li class="task-row" data-status="${key}">${canEdit ? `<select class="task-status" data-task="${t.id}" aria-label="Status of ${esc(t.name)}">${TASK_STATUSES.map((x) => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>` : `<span class="task-badge" data-status="${key}">${t.status === 'Done' ? icon('check') : ''}${esc(t.status)}</span>`}<div class="task-main"><strong>${esc(t.name)}</strong><p>${esc(t.owner || 'No owner')}${t.due ? ` · Due ${shortDate(t.due)}` : ''}${late ? ` · <span class="task-overdue">${icon('clock')}Overdue</span>` : ''}</p></div>${canEdit ? `<div class="task-actions"><button class="linkbtn" data-action="editTask" data-id="${t.id}" aria-label="Edit ${esc(t.name)}">Edit</button><button class="linkbtn danger-link" data-action="deleteTask" data-id="${t.id}" aria-label="Delete ${esc(t.name)}">Delete</button></div>` : ''}</li>`;
+  };
+  const tasksCard = `<section class="panel task-card" aria-labelledby="tasksTitle"><header class="card-head"><h2 id="tasksTitle">Tasks</h2>${canEdit ? `<button class="primary" data-action="newTask" data-id="${p.id}">${icon('plus')}Add task</button>` : `<small>${ts.length} ${ts.length === 1 ? 'task' : 'tasks'}</small>`}</header>${ts.length ? `<ol class="task-list">${ts.map(taskRow).join('')}</ol>` : empty('No tasks yet', canEdit ? 'Add the first task to start tracking progress.' : 'Finance adds tasks to track this project’s progress.')}</section>`;
+  const table = (headings, body) => `<div class="table-wrap dashboard-table"><table><thead><tr>${headings.map((h, i) => `<th class="${i ? 'right' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const budgets = state.budgets.filter((b) => b.projectId === p.id);
+  const categoryRows = budgets.flatMap((b) => b.categories.map((c) => ({ b, c })));
+  const orders = state.orders.filter((o) => o.projectId === p.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+  const orderIds = new Set(orders.map((o) => o.id));
+  const requests = state.requests.filter((r) => orderIds.has(r.orderId)).sort((x, y) => (y.createdAt || '').localeCompare(x.createdAt || ''));
+  const categoryTable = table(['Category', 'Approved', 'Utilized', 'Available'], categoryRows.map(({ b, c }) => {
+    const used = categoryUsed(state, b.id, c.id), amount = c.amount / (b.rate || 1);
+    return `<tr><td>${esc(c.name)}<span class="secondary">${esc(b.name)}</span></td><td class="right">${fmt(amount)}</td><td class="right">${fmt(used)}</td><td class="right">${fmt(amount - used)}</td></tr>`;
+  }).join(''));
+  // Requests: each order with what is left to request and, for whoever may raise one, a
+  // button that opens the payment request form for that order.
+  const canRaise = canCreateRequests(user) && access(user, p.companyId);
+  const requestRow = (o) => {
+    const left = o.rejectedAt ? 0 : remainingToRequest(state, o);
+    const can = canRaise && !o.rejectedAt && left > 0.005 && canManageRequest(user, o);
+    const count = state.requests.filter((r) => r.orderId === o.id).length;
+    return `<li class="request-row"><div class="request-main"><button class="linkbtn" data-action="openOrder" data-id="${o.id}">${esc(o.number)}</button><p>${esc(name('suppliers', o.supplierId))} · ${esc(o.po)} · ${count} ${count === 1 ? 'payment' : 'payments'}</p></div><div class="request-figures"><strong>${o.currency} ${fmt(o.total)}</strong><small>${o.rejectedAt ? 'Rejected' : left > 0.005 ? `${o.currency} ${fmt(left)} left to request` : 'Fully requested'}</small></div>${can ? `<button data-action="projectPayment" data-id="${o.id}" aria-label="Create payment request for ${esc(o.number)}">${icon('plus')}Payment request</button>` : '<span class="request-spacer" aria-hidden="true"></span>'}</li>`;
+  };
+  const requestsCard = `<section class="panel requests-card" aria-labelledby="requestsTitle"><header class="card-head"><h2 id="requestsTitle">Requests</h2>${canRaise ? `<button class="primary" data-action="projectOrder" data-id="${p.id}">${icon('plus')}New request</button>` : `<small>${orders.length} ${orders.length === 1 ? 'request' : 'requests'}</small>`}</header>${orders.length ? `<ol class="request-list">${orders.map(requestRow).join('')}</ol>` : empty('No requests yet', canRaise ? 'Raise the first request for this project; it includes its first payment request.' : 'Requests raised for this project will appear here.')}</section>`;
+  const requestTable = table(['Payment request', 'Amount', 'Status'], requests.map((r) => `<tr><td><button class="linkbtn" data-action="openRequest" data-id="${r.id}">${esc(r.number)}</button><span class="secondary">${esc(r.date || '')}</span></td><td class="right">${r.currency} ${fmt(r.amount)}</td><td class="right">${badge(r.status)}</td></tr>`).join(''));
+  const word = (n, one, many) => n === 1 ? one : many;
+  const exploreCard = `<section class="panel explore-card" aria-labelledby="exploreTitle"><header class="card-head"><h2 id="exploreTitle">Explore the details</h2><small>Expand a breakdown</small></header>
+    ${disclosure('Budget Categories', 'Allocations and category balances · USD', categoryRows.length ? categoryTable : empty('No budget yet', 'Finance adds this project’s approved budget in Master Data.'), 'categories', categoryRows.length, word(categoryRows.length, 'category', 'categories'))}
+    ${disclosure('Payment Requests', 'Every payment request and where it stands', requests.length ? requestTable : empty('No payment requests yet'), 'payments', requests.length, word(requests.length, 'payment', 'payments'))}
+    </section>`;
+  const taskIds = new Set(state.tasks.filter((t) => t.projectId === p.id).map((t) => t.id));
+  const requestIds = new Set(requests.map((r) => r.id));
+  const activity = state.audit.filter((x) => orderIds.has(x.entity) || requestIds.has(x.entity) || taskIds.has(x.entity) || (x.action === 'task.delete' && x.companyId === p.companyId && (x.detail || '').startsWith(p.name + ':'))).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 6);
+  return `<button class="back-link" data-action="backProjects"><span class="pager-back">${icon('chevron')}</span>All projects</button>${pageHeader(`${name('companies', p.companyId)}${p.code ? ' · ' + p.code : ''}`, p.name, 'Budget, payments and progress for this project.', isFinanceAdmin(user) ? `<button data-action="editProject" data-id="${p.id}">Edit project</button>` : '')}
+    ${overview(p.companyId, p.id, { before: progressCard })}
+    <div class="dashboard-bottom section-gap"><div class="project-main">${tasksCard}${requestsCard}${exploreCard}</div>${activityCard(activity, 'Task changes, requests and payments for this project will appear here.')}</div>`;
+}
+function taskForm(projectIdFor, id) {
+  const t = id ? state.tasks.find((x) => x.id === id) : null;
+  const p = state.projects.find((x) => x.id === (t?.projectId || projectIdFor));
+  showModal(t ? 'Edit task' : 'Add task', `<form data-form="task" data-id="${id || ''}" data-project="${p.id}">${section('01', 'Task', `<div class="grid2">${field('Task name', input('name', t?.name, 'text', 'required maxlength="120"'), true)}${field('Status', `<select name="status">${TASK_STATUSES.map((x) => `<option ${x === (t?.status || 'To do') ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}${field('Due date · optional', input('due', t?.due, 'date'))}${field('Owner · optional', input('owner', t?.owner, 'text', 'maxlength="80"'), true)}</div>`)}${footer(t ? 'Save task' : 'Add task', `${esc(p.name)} · progress counts the tasks marked Done.`)}</form>`);
+}
+function dashboard() {
+  const k = kpis(state, company, project);
   const ps = state.projects.filter(p => (!company || p.companyId === company) && (!project || p.id === project));
-  const pending = state.requests.filter(r => attention(r) && (!company || r.companyId === company) && (!project || state.orders.some(o => o.id === r.orderId && o.projectId === project))).length + state.orders.filter(o => amendmentAttention(o) && (!company || o.companyId === company) && (!project || o.projectId === project)).length;
   const completion = k.utilized ? Math.round((k.paid / k.utilized) * 100) : 0;
   const paymentProgress = `<div class="coverage-heading"><strong>${completion}%</strong><span>Payments Completed</span></div><div class="coverage-track"><span style="width:${Math.min(100, completion)}%"></span></div>${[['Paid', k.paid], ['Outstanding Payments', k.outstanding], ['On Hold', k.hold], ['Balance Payments Pending', k.balance]].map(([label, value]) => `<div class="stats-line"><span>${label}</span><strong>USD ${fmt(value)}</strong></div>`).join('')}`;
   const table = (headings, body, footer = '') => `<div class="table-wrap dashboard-table"><table><thead><tr>${headings.map((h, i) => `<th class="${i ? 'right' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody>${footer}</table></div>`;
@@ -368,38 +589,50 @@ function dashboard() {
   const metrics = x => [x.budget, x.utilized, x.available, x.paid, x.outstanding, x.balance, x.hold];
   const projectTable = table(['Project / Company', 'Approved Budget', 'Utilized', 'Available', 'Paid', 'Outstanding Payments', 'Balance Payments Pending', 'On Hold'], ps.map(p => {
     const x = kpis(state, p.companyId, p.id);
-    return `<tr><td><button class="linkbtn" data-action="project" data-id="${p.id}">${esc(p.name)}</button><span class="secondary">${esc(name('companies', p.companyId))}</span></td>${numbers(metrics(x))}</tr>`;
+    return `<tr><td><button class="linkbtn" data-action="openProject" data-id="${p.id}">${esc(p.name)}</button><span class="secondary">${esc(name('companies', p.companyId))}</span></td>${numbers(metrics(x))}</tr>`;
   }).join(''), `<tfoot><tr class="total-row"><td>Total</td>${numbers(metrics(k))}</tr></tfoot>`);
   const summary = (items, heading) => table([heading, 'Approved Budget', 'Utilized', 'Available'], items.map(item => {
     const x = kpis(state, item.companyId, item.projectId);
     return `<tr><td>${esc(item.name)}${item.sub ? `<span class="secondary">${esc(item.sub)}</span>` : ''}</td>${numbers([x.budget, x.utilized, x.available])}</tr>`;
   }).join(''));
+  const word = (n, one, many) => n === 1 ? one : many;
+  const companyCount = state.companies.filter(c => !company || c.id === company).length;
+  const currencies = currencyStats(state, company, project);
   const companyTable = summary(state.companies.filter(c => !company || c.id === company).map(c => ({ name: c.name, companyId: c.id, projectId: project })), 'Company');
   const projectSummary = summary(ps.map(p => ({ name: p.name, sub: name('companies', p.companyId), companyId: p.companyId, projectId: p.id })), 'Project / Company');
-  const currencyTable = table(['Currency', 'Approved Budget', 'Utilized', 'Paid', 'Outstanding Payments', 'On Hold'], currencyStats(state, company, project).map(c => `<tr><td>${esc(c.currency)}</td>${numbers([c.budget, c.utilized, c.paid, c.outstanding, c.hold])}</tr>`).join(''));
-  const categoryTable = table(['Category / Project', 'Approved', 'Utilized', 'Available'], state.budgets.filter(b => (!company || b.companyId === company) && (!project || b.projectId === project)).flatMap(b => b.categories.map(c => {
+  const currencyTable = table(['Currency', 'Approved Budget', 'Utilized', 'Paid', 'Outstanding Payments', 'On Hold'], currencies.map(c => `<tr><td>${esc(c.currency)}</td>${numbers([c.budget, c.utilized, c.paid, c.outstanding, c.hold])}</tr>`).join(''));
+  const categoryRows = state.budgets.filter(b => (!company || b.companyId === company) && (!project || b.projectId === project)).flatMap(b => b.categories.map(c => ({ b, c })));
+  const categoryTable = table(['Category / Project', 'Approved', 'Utilized', 'Available'], categoryRows.map(({ b, c }) => {
     const used = categoryUsed(state, b.id, c.id), amount = c.amount / (b.rate || 1);
     return `<tr><td>${esc(c.name)}<span class="secondary">${esc(name('projects', b.projectId))}</span></td>${numbers([amount, used, amount - used])}</tr>`;
-  })).join(''));
-  const activity = state.audit.filter(a => (!company || a.companyId === company) && (!project || state.orders.some(o => o.projectId === project && (o.id === a.entity || state.requests.some(r => r.orderId === o.id && r.id === a.entity))))).slice(-6).reverse();
-  return `${pageHeader('Portfolio overview', 'Project dashboard', 'Your budgets, commitments and payments at a glance.', `<button data-action="export">${icon('download')}Export summary</button>`)}${filters()}
-    <section class="dashboard-kpis budget-kpis" aria-label="Budget overview">${[['Total Approved Budget', k.budget, 'budget'], ['Budget Utilized', k.utilized, 'utilized'], ['Available Budget', k.available, 'available']].map(([label, value, key]) => statCard(label, fmt(value), key, 2, trendChart(trend[key], { kind: key === 'utilized' ? 'line' : 'candle', label, fmt, periodLabel, caption, width: 96 }))).join('')}</section>
-    <section class="dashboard-kpis payment-kpis" aria-label="Payment overview">${[['Paid', k.paid, 'paid'], ['Outstanding Payments', k.outstanding, 'outstanding'], ['On Hold', k.hold, 'hold'], ['Balance Payments Pending', k.balance, 'balance']].map(([label, value, key]) => statCard(label, fmt(value), key, 3, trendChart(trend[key], { kind: 'line', label, fmt, periodLabel, caption, width: 56 }))).join('')}</section>
-    <div class="workspace-actions"><div><span class="action-indicator" aria-hidden="true"></span><strong>${pending ? `${pending} task${pending === 1 ? '' : 's'} for you` : 'Your workspace is up to date'}</strong><span>${pending ? 'Review your action queue to continue.' : 'No requests or amendments currently need your action.'}</span></div><div class="actions"><button data-action="queue" data-target="Finance">Finance payments ${icon('arrow')}</button><button class="primary" data-action="queue" data-target="inbox">My Actions ${icon('arrow')}</button></div></div>
+  }).join(''));
+  const activity = state.audit.filter(a => (!company || a.companyId === company) && (!project || state.orders.some(o => o.projectId === project && (o.id === a.entity || state.requests.some(r => r.orderId === o.id && r.id === a.entity))))).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 6);
+  return `${pageHeader('Portfolio overview', 'Project dashboard', 'Your budgets, commitments and payments at a glance.')}${filters(false, '', `<button class="filter-action" data-action="export">${icon('download')}Export summary</button>`, true)}
+    ${overview(company, project, { after: `<section class="panel workspace-actions" aria-label="Shortcuts"><button class="action-tile" data-action="queue" data-target="Finance">Finance payments${icon('arrow')}</button><button class="action-tile primary" data-page="projects">Projects${icon('arrow')}</button></section>` })}
     <section class="panel flush section-gap"><div class="section-title"><div><h2>Project Financial Overview</h2><p class="help">${ps.length} project${ps.length === 1 ? '' : 's'} · consolidated in USD</p></div><span class="unit-label">USD</span></div>${ps.length ? projectTable : empty('No projects in this view', 'Choose another company or project to see its financial position.')}</section>
-    <div class="dashboard-bottom section-gap"><section class="report-stack" aria-label="Financial breakdowns"><div class="section-title"><h2>Explore the details</h2><small>Expand a breakdown</small></div>
-    ${disclosure('Budget Summary by Company', 'Compare approved, utilized and available budgets · USD', companyTable, 'company')}
-    ${disclosure('Budget Summary by Project', 'A focused view of project budget balances · USD', projectSummary, 'project')}
-    ${disclosure('Currency Summary', 'Original currencies and saved exchange rates', currencyTable + '<p class="help">Budget and utilization use their original currencies; payment figures use each payment request’s currency. Saved exchange rates determine consolidated USD totals.</p>', 'currency')}
-    ${disclosure('Payment Status', 'Payment completion and the remaining commitment', paymentProgress, 'payments')}
-    ${disclosure('Budget Categories', 'Review allocations and category balances · USD', categoryTable, 'categories')}
-    </section><section class="activity-column" aria-labelledby="activityTitle"><div class="section-title"><h2 id="activityTitle">Recent activity</h2><small>Latest ${activity.length}</small></div><div class="panel activity-panel">${activity.map(a => `<div class="activity"><i class="dot" aria-hidden="true"></i><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${esc(a.detail)}</p><small>${date(a.at)}</small></div></div>`).join('') || empty('No activity yet', 'Approvals, payments and changes in this view will appear here.')}</div></section></div>`;
+    <div class="dashboard-bottom section-gap"><section class="panel explore-card" aria-labelledby="exploreTitle"><header class="card-head"><h2 id="exploreTitle">Explore the details</h2><small>Expand a breakdown</small></header>
+    ${disclosure('Budget Summary by Company', 'Compare approved, utilized and available budgets · USD', companyTable, 'company', companyCount, word(companyCount, 'company', 'companies'))}
+    ${disclosure('Budget Summary by Project', 'A focused view of project budget balances · USD', projectSummary, 'project', ps.length, word(ps.length, 'project', 'projects'))}
+    ${disclosure('Currency Summary', 'Original currencies and saved exchange rates', currencyTable + '<p class="help">Budget and utilization use their original currencies; payment figures use each payment request’s currency. Saved exchange rates determine consolidated USD totals.</p>', 'currency', currencies.length, word(currencies.length, 'currency', 'currencies'))}
+    ${disclosure('Payment Status', 'Payment completion and the remaining commitment', paymentProgress, 'payments', completion + '%', 'paid of utilized')}
+    ${disclosure('Budget Categories', 'Review allocations and category balances · USD', categoryTable, 'categories', categoryRows.length, word(categoryRows.length, 'category', 'categories'))}
+    </section>${activityCard(activity)}</div>`;
 }
+const ACTION_LABELS = {
+  "order.create": "Order created", "order.edit": "Order edited", "order.amend": "Amendment submitted", "order.reject": "Order rejected",
+  "amendment.approve": "Amendment approved", "amendment.return": "Amendment returned", "amendment.reject": "Amendment rejected", "amendment.resubmit": "Amendment resubmitted",
+  "request.create": "Payment request created", "request.edit": "Payment request edited", "request.submit": "Payment request submitted",
+  "request.approve": "Payment request approved", "request.return": "Payment request returned", "request.reject": "Payment request rejected",
+  "request.hold": "Put on hold", "request.resume": "Hold released", "request.pay": "Payment recorded", "request.support": "Documents supplied",
+  "request.remark": "Remark added", "master.save": "Master data saved", "user.save": "User saved", "settings.save": "Settings saved",
+  "import.create": "Records imported", lock: "Record locked", unlock: "Record unlocked",
+  "task.save": "Task saved", "task.delete": "Task deleted", "workflow.migrated": "Moved to Finance", "user.migrated": "Role retired",
+};
+const actionLabel = (code) => ACTION_LABELS[code] || (/^[a-z]+\.[a-zA-Z]+$/.test(code) ? code.replace(".", " ").replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : code);
 function orderMatch(o) {
   return (
     (!company || o.companyId === company) &&
     (!project || o.projectId === project) &&
-    (!teamFilter || o.team === teamFilter) &&
     (!search ||
       [
         o.number,
@@ -425,8 +658,6 @@ function filteredRequests() {
       (!from || r.date >= from) &&
       (!to || r.date <= to) &&
       (!statusFilter || r.status === statusFilter) &&
-      (!approvalOnly ||
-        ["Reviewer", "Approval 1", "Approval 2"].includes(r.status)) &&
       (!financeOnly || ["Finance", "On Hold"].includes(r.status))
     );
   });
@@ -460,7 +691,7 @@ function requestsPage() {
     tab === "finance"
       ? requestTable(lists.finance)
       : ordersTable(lists[tab] || lists.requests, tab, all);
-  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with independent approvals and evidence for every payment.", canCreateRequests(user) && tab === "requests" ? `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
+  return `${pageHeader("REQUEST WORKSPACE", "Requests", "One order, with every payment request submitted to Finance separately.", canCreateRequests(user) && tab === "requests" ? `<button data-action="import">Import CSV / Excel</button><button class="primary" data-action="newOrder">${icon("plus")}New Request</button>` : "")}<div class="tabs">${[
     ["requests", "Requests"],
     ["finance", "Finance"],
     ["balance", "Balance to request"],
@@ -488,10 +719,10 @@ function requestsPage() {
 }
 function requestTable(rs) {
   return rs.length
-    ? `<div class="table-wrap"><table class="work-table"><thead><tr><th>Payment request</th><th>Supplier / PO</th><th>Project / Company</th><th>Team</th><th class="right">Requested amount</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${rs
+    ? `<div class="table-wrap"><table class="work-table"><thead><tr><th>Payment request</th><th>Supplier / PO</th><th>Project / Company</th><th class="right">Requested amount</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${rs
         .map((r) => {
           const o = state.orders.find((o) => o.id === r.orderId);
-          return `<tr><td data-label="Payment request"><strong>${esc(r.number)}</strong><span class="secondary">${esc(r.date)} · ${r.percent}% instalment</span></td><td data-label="Supplier / PO">${esc(name("suppliers", o.supplierId))}<span class="secondary">${esc(o.po)}</span></td><td data-label="Project / Company">${esc(name("projects", o.projectId))}<span class="secondary">${esc(name("companies", o.companyId))}</span></td><td data-label="Team">${r.team}</td><td data-label="Requested amount" class="right"><strong><span class="currency">${r.currency || o.currency}</span>${fmt(r.amount)}</strong>${(r.currency || o.currency) !== "USD" ? `<span class="secondary">USD ${fmt(r.amount / (r.rate || o.rate))}</span>` : ""}</td><td data-label="Status">${badge(r.status)}</td><td>${rowAction("openRequest", r.id, "Open " + r.number)}</td></tr>`;
+          return `<tr><td data-label="Payment request"><strong>${esc(r.number)}</strong><span class="secondary">${esc(r.date)} · ${r.percent}% instalment</span></td><td data-label="Supplier / PO">${esc(name("suppliers", o.supplierId))}<span class="secondary">${esc(o.po)}</span></td><td data-label="Project / Company">${esc(name("projects", o.projectId))}<span class="secondary">${esc(name("companies", o.companyId))}</span></td><td data-label="Requested amount" class="right"><strong><span class="currency">${r.currency || o.currency}</span>${fmt(r.amount)}</strong>${(r.currency || o.currency) !== "USD" ? `<span class="secondary">USD ${fmt(r.amount / (r.rate || o.rate))}</span>` : ""}</td><td data-label="Status">${badge(r.status)}</td><td>${rowAction("openRequest", r.id, "Open " + r.number)}</td></tr>`;
         })
         .join("")}</tbody></table></div>`
     : empty(
@@ -501,13 +732,13 @@ function requestTable(rs) {
 }
 function ordersTable(os, view = "requests", all = state.requests) {
   return os.length
-    ? `<div class="table-wrap"><table class="work-table"><thead><tr><th>Request Reference</th><th>Supplier / PO</th><th>Project / Company</th><th>Team</th><th class="right">Total Amount</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${os
+    ? `<div class="table-wrap"><table class="work-table"><thead><tr><th>Request Reference</th><th>Supplier / PO</th><th>Project / Company</th><th class="right">Total Amount</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${os
         .map((o) => {
           const open = expanded.has(o.id),
             rs = all.filter(
               (r) => r.orderId === o.id && (view !== "inbox" || attention(r)),
             );
-          return `<tr><td data-label="Request Reference"><button class="linkbtn" data-action="openOrder" data-id="${o.id}">${esc(o.number)}</button></td><td data-label="Supplier / PO">${esc(name("suppliers", o.supplierId))}<span class="secondary">${esc(o.po)}</span></td><td data-label="Project / Company">${esc(name("projects", o.projectId))}<span class="secondary">${esc(name("companies", o.companyId))}</span></td><td data-label="Team">${esc(o.team)}</td><td data-label="Total Amount" class="right"><span class="currency">${o.currency}</span>${fmt(o.total)}</td><td>${view === "balance" ? rowAction("openOrder", o.id, "Open " + o.number) : `<button class="row-action expand-control" data-action="expand" data-id="${o.id}" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${esc(o.number)}">${open ? "−" : "+"}</button>`}</td></tr>${open && view !== "balance" ? `<tr class="children-row"><td colspan="6"><div class="nested-requests">${o.amendment ? `<button data-action="openOrder" data-id="${o.id}">Amendment · ${esc(o.amendment.status)}</button>` : ""}${requestTable(rs)}</div></td></tr>` : ""}`;
+          return `<tr><td data-label="Request Reference"><button class="linkbtn" data-action="openOrder" data-id="${o.id}">${esc(o.number)}</button></td><td data-label="Supplier / PO">${esc(name("suppliers", o.supplierId))}<span class="secondary">${esc(o.po)}</span></td><td data-label="Project / Company">${esc(name("projects", o.projectId))}<span class="secondary">${esc(name("companies", o.companyId))}</span></td><td data-label="Total Amount" class="right"><span class="currency">${o.currency}</span>${fmt(o.total)}</td><td>${view === "balance" ? rowAction("openOrder", o.id, "Open " + o.number) : `<button class="row-action expand-control" data-action="expand" data-id="${o.id}" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${esc(o.number)}">${open ? "−" : "+"}</button>`}</td></tr>${open && view !== "balance" ? `<tr class="children-row"><td colspan="5"><div class="nested-requests">${o.amendment ? `<button data-action="openOrder" data-id="${o.id}">Amendment · ${esc(o.amendment.status)}</button>` : ""}${requestTable(rs)}</div></td></tr>` : ""}`;
         })
         .join("")}</tbody></table></div>`
     : empty(
@@ -562,12 +793,42 @@ function usersPage() {
   const users = state.users.filter(
     (u) =>
       !userSearch ||
-      [u.name, u.username, u.email, u.role, u.team]
+      [u.name, u.username, u.email, u.role]
         .join(" ")
         .toLowerCase()
         .includes(userSearch.toLowerCase()),
   );
-  return `${pageHeader("ACCESS & IDENTITY", "User Manager", "Clear responsibilities. The right access for every member of the team.", `<button class="primary" data-action="newUser">${icon("plus")}Create user</button>`)}<div class="admin-stats"><div><strong>${state.users.length}</strong><span>Total users</span></div><div><strong>${state.users.filter((u) => u.active).length}</strong><span>Active accounts</span></div><div><strong>${state.users.filter((u) => u.groupAccess).length}</strong><span>Full group access</span></div></div><div class="admin-intro"><span class="op-icon">${icon("shield")}</span><div><strong>One role per user. Mandatory two-factor authentication.</strong><br><small>Admin creates accounts. Password resets use email OTP; authenticator verification stays required.</small></div></div><div class="list-toolbar"><div class="searchbox">${icon("search")}<input id="userSearch" aria-label="Search users" value="${esc(userSearch)}" placeholder="Search name, username, email or role"></div><small>${users.length} users</small></div><section class="panel flush"><div class="table-wrap"><table><thead><tr><th>User</th><th>Role / Team</th><th>Company access</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${users.map((u) => `<tr><td><div class="user-cell"><span class="avatar" aria-hidden="true">${esc(u.name.slice(0, 1))}</span><div><strong>${esc(u.name)}</strong><span class="secondary">${esc(u.username)} · ${esc(u.email)}</span></div></div></td><td>${u.role}<span class="secondary">${u.team || "No team assignment"}${u.role === "Approver" ? " · Level " + u.approvalLevel : ""}</span></td><td><div class="access-chips">${u.groupAccess ? '<span class="access-chip">Full group</span>' : u.companies.map((c) => `<span class="access-chip">${esc(name("companies", c))}</span>`).join("")}</div></td><td>${badge(u.active ? "Active" : "Inactive")}</td><td>${rowAction("editUser", u.id, "Manage " + u.name)}</td></tr>`).join("")}</tbody></table></div>${!users.length ? empty("No matching users", "Try a different name, role or email address.") : ""}<div class="table-footer"><span>${users.length} accounts shown</span><span>Role controls actions · Company access controls visibility</span></div></section>`;
+  return `${pageHeader("ACCESS & IDENTITY", "User Manager", "Clear responsibilities. The right access for every member of the team.", `<button class="primary" data-action="newUser">${icon("plus")}Create user</button>`)}<div class="admin-stats"><div><strong>${state.users.length}</strong><span>Total users</span></div><div><strong>${state.users.filter((u) => u.active).length}</strong><span>Active accounts</span></div><div><strong>${state.users.filter((u) => u.groupAccess).length}</strong><span>Full group access</span></div></div><div class="admin-intro"><span class="op-icon">${icon("shield")}</span><div><strong>One role per user. Mandatory two-factor authentication.</strong><br><small>Admin creates accounts. Password resets use email OTP; authenticator verification stays required.</small></div></div><div class="list-toolbar"><div class="searchbox">${icon("search")}<input id="userSearch" aria-label="Search users" value="${esc(userSearch)}" placeholder="Search name, username, email or role"></div><small>${users.length} users</small></div><section class="panel flush"><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Company access</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${users.map((u) => `<tr><td><div class="user-cell"><span class="avatar" aria-hidden="true">${esc(u.name.slice(0, 1))}</span><div><strong>${esc(u.name)}</strong><span class="secondary">${esc(u.username)} · ${esc(u.email)}</span></div></div></td><td>${u.role}</td><td><div class="access-chips">${u.groupAccess ? '<span class="access-chip">Full group</span>' : u.companies.map((c) => `<span class="access-chip">${esc(name("companies", c))}</span>`).join("")}</div></td><td>${badge(u.active ? "Active" : "Inactive")}</td><td>${rowAction("editUser", u.id, "Manage " + u.name)}</td></tr>`).join("")}</tbody></table></div>${!users.length ? empty("No matching users", "Try a different name, role or email address.") : ""}<div class="table-footer"><span>${users.length} accounts shown</span><span>Role controls actions · Company access controls visibility</span></div></section>`;
+}
+// Audit Log: filters by action, user, company and date range plus a search; newest first,
+// AUDIT_PAGE_SIZE entries per page.
+const AUDIT_PAGE_SIZE = 20;
+function auditPage() {
+  const q = auditSearch.trim().toLowerCase();
+  const f = auditFilter;
+  const day = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const all = state.audit.slice().sort((x, y) => Date.parse(y.at) - Date.parse(x.at));
+  const rows = all.filter((x) =>
+    (!f.action || actionLabel(x.action) === f.action) &&
+    (!f.user || x.user === f.user) &&
+    (!f.company || (f.company === "group" ? !x.companyId : x.companyId === f.company)) &&
+    (!f.from || day(x.at) >= f.from) &&
+    (!f.to || day(x.at) <= f.to) &&
+    (!q || [actionLabel(x.action), x.action, x.user, x.detail, x.entity, x.companyId && name("companies", x.companyId)].join(" ").toLowerCase().includes(q)));
+  const pages = Math.max(1, Math.ceil(rows.length / AUDIT_PAGE_SIZE));
+  auditPageNo = Math.min(Math.max(1, auditPageNo), pages);
+  const start = (auditPageNo - 1) * AUDIT_PAGE_SIZE;
+  const shown = rows.slice(start, start + AUDIT_PAGE_SIZE);
+  const choices = (list, value, blank) => `<option value="">${esc(blank)}</option>` + list.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const uniq = (xs) => [...new Set(xs.filter(Boolean))].sort((m, n) => m.localeCompare(n));
+  const actions = uniq(all.map((x) => actionLabel(x.action))).map((v) => [v, v]);
+  const users = uniq(all.map((x) => x.user)).map((v) => [v, v]);
+  const companies = [...state.companies.map((c) => [c.id, c.name]), ["group", "Group (no company)"]];
+  const active = Boolean(f.action || f.user || f.company || f.from || f.to || q);
+  // Page numbers: first, last, and two either side of the current page.
+  const nums = [...new Set([1, pages, ...[-2, -1, 0, 1, 2].map((d) => auditPageNo + d)])].filter((n) => n >= 1 && n <= pages).sort((m, n) => m - n);
+  const pager = pages > 1 ? `<nav class="pager" aria-label="Audit log pages"><button data-action="auditGo" data-n="${auditPageNo - 1}" ${auditPageNo === 1 ? "disabled" : ""} aria-label="Previous page"><span class="pager-back">${icon("chevron")}</span>Previous</button><span class="pager-pages">${nums.map((n, i) => `${i && n - nums[i - 1] > 1 ? '<span class="pager-gap" aria-hidden="true">…</span>' : ""}<button data-action="auditGo" data-n="${n}" ${n === auditPageNo ? 'aria-current="page" class="current"' : ""} aria-label="Page ${n}">${n}</button>`).join("")}</span><button data-action="auditGo" data-n="${auditPageNo + 1}" ${auditPageNo === pages ? "disabled" : ""} aria-label="Next page">Next${icon("chevron")}</button></nav>` : "";
+  return `${pageHeader("ADMINISTRATION", "Audit Log", "Every recorded action, newest first. Entries cannot be edited or removed in the portal.")}<div class="filters audit-filters"><div><label for="auditAction">Action</label><select id="auditAction">${choices(actions, f.action, "All actions")}</select></div><div><label for="auditUser">User</label><select id="auditUser">${choices(users, f.user, "All users")}</select></div><div><label for="auditCompany">Company</label><select id="auditCompany">${choices(companies, f.company, "All companies")}</select></div><div><label for="auditFrom">From</label><input id="auditFrom" type="date" value="${esc(f.from)}"></div><div><label for="auditTo">To</label><input id="auditTo" type="date" value="${esc(f.to)}"></div>${active ? '<button class="linkbtn" data-action="auditClear">Clear filters</button>' : ""}</div><div class="list-toolbar"><div class="searchbox">${icon("search")}<input id="auditSearch" value="${esc(auditSearch)}" aria-label="Search the audit log" placeholder="Search action, user, reference or detail"></div><small>${rows.length ? `${start + 1}–${start + shown.length} of ${rows.length}` : "0"} entries${rows.length !== all.length ? ` · ${all.length} in total` : ""}</small></div><section class="panel flush"><div class="table-wrap"><table class="audit-table"><thead><tr><th>Date and time</th><th>Action</th><th>User</th><th>Detail</th><th>Company</th></tr></thead><tbody>${shown.map((x) => `<tr><td class="audit-when">${date(x.at)}</td><td><strong>${esc(actionLabel(x.action))}</strong></td><td>${esc(x.user)}</td><td>${esc(x.detail || "—")}</td><td>${x.companyId ? esc(name("companies", x.companyId)) : "Group"}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty(active ? "No matching entries" : "No audit entries yet", active ? "Adjust or clear the filters." : "Recorded actions will appear here.") : ""}<div class="table-footer"><span>Page ${auditPageNo} of ${pages} · ${AUDIT_PAGE_SIZE} per page</span><span>Application audit trail · read-only</span></div></section>${pager}`;
 }
 function settingsPage() {
   return `${pageHeader("ADMINISTRATION", "Settings", "Reference formats and operational controls.")}<form data-form="settings"><section class="panel">${section("01", "Reference numbering", `<div class="grid2">${field("Request reference format", input("orderFormat", state.settings.orderFormat, "text", 'required maxlength="100"'))}${field("Payment request reference format", input("numberFormat", state.settings.numberFormat, "text", 'required maxlength="100"'))}</div><p class="help">Required tokens: {COMPANY}, {PROJECT}, {SEQ}. Optional: {YYYY}. Separate permanent sequences run for each company and project. Issued references never change.</p>`)}${section("02", "Record locks", field("Lock duration · minutes", input("lockMinutes", 10, "number", "readonly")))}${footer("Save settings", "Sequence counters cannot be edited or reset.")}</section></form><section class="panel section-gap"><div class="section-title"><h2>Active locks</h2></div>${
@@ -578,14 +839,7 @@ function settingsPage() {
           `<div class="stats-line"><span>${esc(state.orders.find((o) => o.id === id)?.number || state.requests.find((r) => r.id === id)?.number || id)} · ${esc(l.name)}</span><button data-action="unlock" data-id="${id}">Unlock</button></div>`,
       )
       .join("") || '<p class="help">No active locks.</p>'
-  }</section><section class="panel section-gap"><h2>Audit trail</h2>${state.audit
-    .slice()
-    .reverse()
-    .map(
-      (a) =>
-        `<div class="activity"><div><strong>${esc(a.action)}</strong><p>${esc(a.user)} · ${date(a.at)}</p><p>${esc(a.detail)}</p></div></div>`,
-    )
-    .join("")}</section>`;
+  }</section>`;
 }
 function showModal(title, body) {
   const modal = $("#modal"),
@@ -647,7 +901,7 @@ function orderDetail(id) {
     m = o.amendment;
   showModal(
     "Request details",
-    `${returnPaymentId ? `<div class="actions" style="margin-top:0"><button data-action="openRequest" data-id="${returnPaymentId}" data-return-payment><span aria-hidden="true">←</span>Back to Payment Request · ${esc(state.requests.find(r=>r.id===returnPaymentId).number)}</button></div>` : ""}<div class="detail-top"><div><div class="eyebrow">${esc(o.team)} · REQUEST</div><div class="detail-number">${esc(o.number)}</div></div>${o.rejectedAt ? badge("Rejected") : ""}</div><div class="detail-lead"><div><div class="eyebrow">TOTAL ORDER AMOUNT</div><div class="amount"><span>${o.currency}</span>${fmt(o.total)}</div></div><div class="lead-side"><small>Remaining to request</small><strong>${o.currency} ${fmt(remainingToRequest(state, o))}</strong><small>USD ${fmt(o.total / o.rate)} full equivalent</small></div></div><div class="actions">${owner && remainingToRequest(state, o) > 0.005 ? `<button class="primary" data-action="newPayment" data-id="${id}">Create Payment Request</button>` : ""}${owner && (!m || ["Draft", "Rejected"].includes(m.status)) ? `<button data-action="editOrder" data-id="${id}">${m?.status === "Draft" ? "Correct amendment" : "Amend request details"}</button>` : ""}${user.role === "Admin" && !o.rejectedAt ? `<button class="danger" data-action="parentReject" data-id="${id}">Reject request</button>` : ""}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO", esc(o.po))}${detail("Invoice", esc(o.invoice || "—"))}${detail("Requested by", esc(name("users", o.requestedBy)))}</div><p class="sub">${esc(o.description)}</p>${warnings(
+    `${returnPaymentId ? `<div class="actions" style="margin-top:0"><button data-action="openRequest" data-id="${returnPaymentId}" data-return-payment><span aria-hidden="true">←</span>Back to Payment Request · ${esc(state.requests.find(r=>r.id===returnPaymentId).number)}</button></div>` : ""}<div class="detail-top"><div><div class="eyebrow">REQUEST</div><div class="detail-number">${esc(o.number)}</div></div>${o.rejectedAt ? badge("Rejected") : ""}</div><div class="detail-lead"><div><div class="eyebrow">TOTAL ORDER AMOUNT</div><div class="amount"><span>${o.currency}</span>${fmt(o.total)}</div></div><div class="lead-side"><small>Remaining to request</small><strong>${o.currency} ${fmt(remainingToRequest(state, o))}</strong><small>USD ${fmt(o.total / o.rate)} full equivalent</small></div></div><div class="actions">${owner && remainingToRequest(state, o) > 0.005 ? `<button class="primary" data-action="newPayment" data-id="${id}">Create Payment Request</button>` : ""}${owner && (!m || ["Draft", "Rejected"].includes(m.status)) ? `<button data-action="editOrder" data-id="${id}">${m?.status === "Draft" ? "Correct amendment" : "Amend request details"}</button>` : ""}${isFinanceAdmin(user) && !o.rejectedAt ? `<button class="danger" data-action="parentReject" data-id="${id}">Reject request</button>` : ""}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO", esc(o.po))}${detail("Invoice", esc(o.invoice || "—"))}${detail("Requested by", esc(name("users", o.requestedBy)))}</div><p class="sub">${esc(o.description)}</p>${warnings(
       state,
       o,
     )
@@ -668,14 +922,14 @@ function fileList(files, kind, id, version = "", side = "data") {
 function amendmentView(o) {
   const m = o.amendment,
     review = stageActor(user, m);
-  return `<section class="decision-panel"><h3>Proposed amendment · ${esc(m.status)}</h3><p>${esc(m.reason)}</p><div class="detail-grid">${["total", "po", "invoice", "description"].map((k) => detail(k, `<span class="secondary">${esc(o[k])}</span> → ${esc(m.data[k])}`)).join("")}</div><p>Supplier: ${esc(name("suppliers", m.data.supplierId))} · Budget: ${esc(name("budgets", m.data.budgetId))}</p>${categoryTable(m.data)}${fileList(m.data.files, "amendment", o.id)}${reviewHistory(m.history, o.team)}<p class="help">Effective details stay unchanged until final approval.</p>${review ? `<div class="actions"><button class="primary" data-action="amendApprove" data-id="${o.id}">Approve amendment</button><button data-action="amendReturn" data-id="${o.id}">Return to requester</button><button class="danger" data-action="amendReject" data-id="${o.id}">Reject amendment</button></div>` : ""}</section>`;
+  return `<section class="decision-panel"><h3>Proposed amendment · ${esc(m.status)}</h3><p>${esc(m.reason)}</p><div class="detail-grid">${["total", "po", "invoice", "description"].map((k) => detail(k, `<span class="secondary">${esc(o[k])}</span> → ${esc(m.data[k])}`)).join("")}</div><p>Supplier: ${esc(name("suppliers", m.data.supplierId))} · Budget: ${esc(name("budgets", m.data.budgetId))}</p>${categoryTable(m.data)}${fileList(m.data.files, "amendment", o.id)}${reviewHistory(m.history)}<p class="help">Effective details stay unchanged until Finance approves the amendment.</p>${review ? `<div class="actions"><button class="primary" data-action="amendApprove" data-id="${o.id}">Approve amendment</button><button data-action="amendReturn" data-id="${o.id}">Return to requester</button><button class="danger" data-action="amendReject" data-id="${o.id}">Reject amendment</button></div>` : ""}</section>`;
 }
 function categoryTable(o) {
   const b = state.budgets.find((b) => b.id === o.budgetId);
   return `<div class="table-wrap"><table><thead><tr><th>Budget category</th><th class="right">Order allocation ${o.currency}</th><th class="right">USD equivalent</th></tr></thead><tbody>${o.allocations.map((a) => `<tr><td>${esc(b?.categories.find((c) => c.id === a.categoryId)?.name || a.categoryId)}</td><td class="right">${fmt(a.amount)}</td><td class="right">${fmt(a.amount / o.rate)}</td></tr>`).join("")}</tbody></table></div>`;
 }
-function reviewHistory(history = [], team) {
-  const entries = history.filter((h) => team !== "Planning" || h.stage !== "Reviewer");
+function reviewHistory(history = []) {
+  const entries = history;
   return `<section class="detail-section"><h3>Review history</h3>${entries.length ? `<div class="table-wrap"><table><thead><tr><th>Stage / Action</th><th>Name</th><th>Date / Time</th><th>Reason</th></tr></thead><tbody>${entries.map((h) => `<tr><td>${esc(h.stage)} · ${esc(h.action)}</td><td>${esc(h.by)}</td><td>${date(h.at)}</td><td>${esc(h.reason || "—")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="help">No review actions recorded yet.</p>'}</section>`;
 }
 function amendmentDetails(o, data, title, kind, version, side) {
@@ -687,7 +941,7 @@ function amendmentHistory(o) {
     ...(o.amendments || []).map((m) => ({ m, kind: "amendment-history", status: "Approved" })),
     ...(o.amendmentAttempts || []).map((m) => ({ m, kind: "amendment-attempt", status: m.status === "Draft" ? "Returned for correction" : m.status })),
   ].sort((a, b) => (b.m.createdAt || "").localeCompare(a.m.createdAt || ""));
-  return versions.length ? `<details class="details-disclosure"><summary>Amendment history <span class="count">${versions.length}</span></summary>${versions.map(({m, kind, status}) => `<details class="details-disclosure"><summary>${esc(status)} · ${date(m.createdAt)}</summary><p>${esc(m.reason)}</p>${m.approvedAt ? `<p>Effective from ${date(m.approvedAt)}</p>` : ""}${amendmentDetails(o, m.previous, "Previous effective details", kind, m.id, "previous")}${amendmentDetails(o, m.data, status === "Approved" ? "Approved details" : "Proposed details", kind, m.id, "data")}${reviewHistory(m.history, o.team)}</details>`).join("")}</details>` : "";
+  return versions.length ? `<details class="details-disclosure"><summary>Amendment history <span class="count">${versions.length}</span></summary>${versions.map(({m, kind, status}) => `<details class="details-disclosure"><summary>${esc(status)} · ${date(m.createdAt)}</summary><p>${esc(m.reason)}</p>${m.approvedAt ? `<p>Effective from ${date(m.approvedAt)}</p>` : ""}${amendmentDetails(o, m.previous, "Previous effective details", kind, m.id, "previous")}${amendmentDetails(o, m.data, status === "Approved" ? "Approved details" : "Proposed details", kind, m.id, "data")}${reviewHistory(m.history)}</details>`).join("")}</details>` : "";
 }
 function budgetHistory(budget) {
   return budget?.revisions?.length ? `<details class="details-disclosure"><summary>Previous budget versions <span class="count">${budget.revisions.length}</span></summary>${budget.revisions.map((v) => {
@@ -702,27 +956,12 @@ function supportingReferences(o, r) {
 function requestDetail(id) {
   const r = state.requests.find((r) => r.id === id),
     o = state.orders.find((o) => o.id === r.orderId);
-  const review =
-      r.status === "Reviewer"
-        ? roleFor(user, r, "Reviewer")
-        : r.status === "Approval 1"
-          ? roleFor(user, r, "Approver", 1)
-          : r.status === "Approval 2"
-            ? roleFor(user, r, "Approver", 2)
-            : false,
-    fin =
-      roleFor(user, r, "Finance") && ["Finance", "On Hold"].includes(r.status),
+  const review = false,
+    fin = financeActor(user, r) && ["Finance", "On Hold"].includes(r.status),
     draft =
       r.status === "Draft" &&
       canManageRequest(user, r);
-  const stages = [
-    "Requested",
-    ...(r.team === "Purchasing" ? ["Reviewer"] : []),
-    "Approval 1",
-    ...(r.team === "Purchasing" ? ["Approval 2"] : []),
-    "Finance",
-    "Paid",
-  ];
+  const stages = ["Requested", "Finance", "Paid"];
   const context = draft
     ? "Ready when you are"
     : review
@@ -738,7 +977,7 @@ function requestDetail(id) {
             : "Awaiting the next stage";
   showModal(
     "Payment request",
-    `<div class="detail-top"><div><div class="eyebrow">${r.team.toUpperCase()} · PAYMENT REQUEST</div><div class="detail-number">${esc(r.number)}</div></div>${badge(r.status)}</div><div class="detail-lead"><div><div class="eyebrow">REQUESTED PAYMENT · ${r.percent}% AT CREATION</div><div class="amount"><span>${r.currency || o.currency}</span>${fmt(r.amount)}</div><small>${esc(r.terms)}</small></div><div class="lead-side"><small>Full order amount</small><strong>${o.currency} ${fmt(o.total)}</strong><small>${esc(o.po)}</small></div></div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("Invoice", esc(o.invoice || "Not yet provided"))}${detail("Request date", r.date)}${detail("Saved exchange rate", `1 USD = ${fmt(r.rate)} ${r.currency}`)}${detail("Reserved order amount", `${o.currency} ${fmt(parentAmount(r))}`)}${detail("Requested by", esc(name("users", r.requestedBy)))}</div><h3>Approval progress</h3><div class="steps" style="--stages:${stages.length}" aria-label="Payment request approval progress">${stages
+    `<div class="detail-top"><div><div class="eyebrow">PAYMENT REQUEST</div><div class="detail-number">${esc(r.number)}</div></div>${badge(r.status)}</div><div class="detail-lead"><div><div class="eyebrow">REQUESTED PAYMENT · ${r.percent}% AT CREATION</div><div class="amount"><span>${r.currency || o.currency}</span>${fmt(r.amount)}</div><small>${esc(r.terms)}</small></div><div class="lead-side"><small>Full order amount</small><strong>${o.currency} ${fmt(o.total)}</strong><small>${esc(o.po)}</small></div></div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("Invoice", esc(o.invoice || "Not yet provided"))}${detail("Request date", r.date)}${detail("Saved exchange rate", `1 USD = ${fmt(r.rate)} ${r.currency}`)}${detail("Reserved order amount", `${o.currency} ${fmt(parentAmount(r))}`)}${detail("Requested by", esc(name("users", r.requestedBy)))}</div><h3>Progress</h3><div class="steps" style="--stages:${stages.length}" aria-label="Payment request progress">${stages
       .map((st) => {
         const ap = r.approvals.find((a) => a.stage === st);
         const current =
@@ -747,25 +986,30 @@ function requestDetail(id) {
             !!ap ||
             st === "Requested" ||
             (st === "Paid" && r.status === "Paid") ||
-            (st === "Finance" && r.status === "Paid");
+            (st === "Finance" && r.status === "Paid") ||
+            (st === "Requested" && r.status !== "Draft");
         return `<div class="step ${done ? "done" : current ? "current" : ""}" ${current ? 'aria-current="step"' : ""}><span class="step-dot" aria-hidden="true"></span><strong>${st === "Reviewer" ? "Checked by" : st}</strong>${esc(ap?.by || (st === "Paid" && r.payment ? r.payment.by : current ? "Current stage" : ""))}${ap ? `<span class="secondary">${date(ap.at)}</span>` : ""}</div>`;
       })
       .join("")}</div>${warnings(state, o)
       .map((w) => `<div class="notice warn">${esc(w)}</div>`)
       .join(
         "",
-      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount with its own supporting PDF."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit for approval ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" && canReject(user, r) ? `<div class="actions"><button class="danger" data-action="reject" data-id="${id}">Reject payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${canManageRequest(user, r) ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${user.role === "Admin" ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is approved separately. Corrections return to the requester and restart the team approval workflow.</p>`,
+      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount with its own supporting PDF."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit to Finance ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" && !fin && canReject(user, r) ? `<div class="actions"><button class="danger" data-action="reject" data-id="${id}">Reject payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${canManageRequest(user, r) ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${isFinanceAdmin(user) ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is reviewed by Finance separately. Corrections return to the requester, who resubmits to Finance.</p>`,
   );
 }
-function orderForm(id) {
+// preset: { companyId, projectId } fills the company, project and (when the project has
+// only one) the approved budget for a new request raised from a project page.
+function orderForm(id, preset = null) {
   const effective = id ? state.orders.find((o) => o.id === id) : null;
   const o =
     effective?.amendment?.status === "Draft"
       ? { ...effective, ...effective.amendment.data }
       : effective;
+  const presetBudgets = !o && preset ? state.budgets.filter((b) => b.projectId === preset.projectId) : [];
+  const scope = o || (preset ? { ...preset, budgetId: presetBudgets.length === 1 ? presetBudgets[0].id : "" } : null);
   showModal(
     o ? "Amend request" : "New Request",
-    `<form data-form="order" data-id="${id || ""}"><div class="form-intro"><p>Enter the order details and its first payment request. Each payment request follows its own approval workflow.</p></div>${section("01", "Company & budget", `<div class="grid2">${user.role === "Admin" ? field("Team", `<select name="team" required ${o ? "disabled" : ""}>${opt(["Planning", "Purchasing"].map(id => ({ id, name: id })), o?.team)}</select>`) : ""}${field("Company", `<select name="companyId" id="formCompany" required>${opt(state.companies, o?.companyId)}</select>`)}${field("Project", `<select name="projectId" id="formProject" required>${opt(o ? state.projects.filter((p) => p.companyId === o.companyId) : [], o?.projectId)}</select>`)}${field("Approved budget", `<select name="budgetId" id="formBudget" required>${opt(o ? state.budgets.filter((b) => b.projectId === o.projectId) : [], o?.budgetId)}</select>`)}${field("Supplier", `<select name="supplierId" required>${opt(state.suppliers, o?.supplierId)}</select>`)}</div>`)}${section(
+    `<form data-form="order" data-id="${id || ""}"><div class="form-intro"><p>Enter the order details and its first payment request. Each payment request is submitted to Finance separately.</p></div>${section("01", "Company & budget", `<div class="grid2">${field("Company", `<select name="companyId" id="formCompany" required>${opt(state.companies, scope?.companyId)}</select>`)}${field("Project", `<select name="projectId" id="formProject" required>${opt(scope ? state.projects.filter((p) => p.companyId === scope.companyId) : [], scope?.projectId)}</select>`)}${field("Approved budget", `<select name="budgetId" id="formBudget" required>${opt(scope ? state.budgets.filter((b) => b.projectId === scope.projectId) : [], scope?.budgetId)}</select>`)}${field("Supplier", `<select name="supplierId" required>${opt(state.suppliers, o?.supplierId)}</select>`)}</div>`)}${section(
       "02",
       "Order details",
       `<div class="grid2">${field("PO number", input("po", o?.po, "text", 'required maxlength="100"'))}${field("Invoice number · optional for advance", input("invoice", o?.invoice, "text", 'maxlength="100"'))}${field(
@@ -775,10 +1019,10 @@ function orderForm(id) {
           o?.currency || "USD",
         )}</select>`,
       )}${field("Full order amount", input("total", o?.total, "number", 'required min="0.01" step="0.01"'))}${field("Description", `<textarea name="description" required maxlength="3000" placeholder="Describe the goods, services or works covered by this order.">${esc(o?.description)}</textarea>`, true)}</div>`,
-    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple ${o ? "" : "required"}><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", `${esc(o?.team || user.team || "Select a team")} · Independent payment approvals.`)}</form>`,
+    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : scope?.budgetId ? allocationInputs(scope.budgetId) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple ${o ? "" : "required"}><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", "Each payment request goes to Finance on its own.")}</form>`,
   );
   if (o) {
-    for (const name of ["companyId", "projectId", "currency", "team"]) {
+    for (const name of ["companyId", "projectId", "currency"]) {
       const el = document.querySelector(`[data-form=order] [name=${name}]`);
       if (el) {
         el.value = o[name];
@@ -917,7 +1161,7 @@ function masterForm(id) {
       : "";
   showModal(
     r ? "Edit / Revise master record" : "Add master record",
-    `<form data-form="master" data-id="${id || ""}">${section("01", "Record details", `<div class="grid2">${html}</div>`)}${budget}${budgetHistory(r)}${footer("Save record", k === "suppliers" ? "Suppliers are shared across all companies." : k === "currencies" ? "USD is the base reporting currency." : "Admin-managed master data.")}</form>`,
+    `<form data-form="master" data-id="${id || ""}">${section("01", "Record details", `<div class="grid2">${html}</div>`)}${budget}${budgetHistory(r)}${footer("Save record", k === "suppliers" ? "Suppliers are shared across all companies." : k === "currencies" ? "USD is the base reporting currency." : "Managed by Finance and Admin.")}</form>`,
   );
 }
 function budgetRow(c) {
@@ -930,28 +1174,9 @@ function userForm(id) {
     `<form data-form="user" data-id="${id || ""}">${section("01", "Account identity", `<div class="grid2">${field("Full name", input("name", u?.name, "text", "required"))}${field("Username", input("username", u?.username, "text", "required"))}${field("Email for password reset", input("email", u?.email, "email", "required"))}${field(u ? "New password · leave blank to keep" : "Initial password", input("password", "", "password", `minlength="12" maxlength="256" autocomplete="new-password" ${u ? "" : "required"}`))}</div>`)}${section(
       "02",
       "Role & responsibility",
-      `<div class="grid2">${field("Single role", `<select name="role" id="userRole">${ROLES.map((r) => `<option value="${r}" ${u?.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>`)}${field(
-        "Team",
-        `<select name="team" id="userTeam">${opt(
-          ["Planning", "Purchasing"].map((t) => ({ id: t, name: t })),
-          u?.team,
-          "No team",
-        )}</select><div class="help">Planning: Requester → Approver → Finance. Purchasing includes Reviewer and two approval levels.</div>`,
-      )}${field("Approval level · Approver only", `<select name="approvalLevel"><option value="1">Level 1</option><option value="2" ${u?.approvalLevel === 2 ? "selected" : ""}>Level 2 · Purchasing only</option></select>`)}</div>`,
+      `<div class="grid2">${field("Single role", `<select name="role" id="userRole">${ROLES.map((r) => `<option value="${r}" ${u?.role === r ? "selected" : ""}>${r}</option>`).join("")}</select>`)}</div><p class="help">Requesters raise orders and payment requests. Finance reviews and pays them, and manages budgets, master data and project tasks. Viewers can only read.</p>`,
     )}${section("03", "Company access", `<div class="checks"><label class="group-access"><input name="groupAccess" type="checkbox" ${u?.groupAccess ? "checked" : ""}>Full group access</label>${state.companies.map((c) => `<label><input name="companies" type="checkbox" value="${c.id}" ${u?.companies.includes(c.id) ? "checked" : ""}>${esc(c.name)}</label>`).join("")}</div>`)}<div class="checks"><label><input name="active" type="checkbox" ${u?.active === false ? "" : "checked"}>Active account</label></div>${footer("Save user", "Mandatory 2FA is enrolled at first sign-in.")}</form>`,
   );
-  syncUserRole(document.querySelector("[data-form=user]"));
-}
-function syncUserRole(f) {
-  const planning = f.elements.team.value === "Planning",
-    option = f.elements.role.querySelector('option[value="Reviewer"]');
-  option.disabled = planning;
-  option.hidden = planning;
-  if (planning && f.elements.role.value === "Reviewer")
-    f.elements.role.value = "Requester";
-  f.elements.approvalLevel.querySelector('option[value="2"]').disabled =
-    planning;
-  if (planning) f.elements.approvalLevel.value = "1";
 }
 function reasonForm(id, action) {
   const titles = {
@@ -970,7 +1195,7 @@ function reasonForm(id, action) {
       state.orders.find((o) => o.id === id);
   showModal(
     titles[action],
-    `<form data-form="reason" data-id="${id}" data-action-type="${action}"><div class="form-intro"><p>${esc(r.number)} · ${action === "documents" ? "Describe the documents needed. The requester can upload them directly back to Finance; existing approvals stay valid." : action === "deletePayment" ? "Payment details and payment supporting PDFs will be permanently cleared. The approved request returns to Pending Payment. A reason is mandatory and remains in the audit trail." : action === "parentReject" ? "All child payment requests must be rejected first. Paid children require Admin payment deletion before rejection." : action === "return" ? "The requester can correct and resubmit. All approval stages will restart." : action === "reject" ? "Record a clear reason for rejecting this payment request." : action === "hold" ? "Explain what needs to be resolved before payment can proceed." : "Leave context for the Finance team and requester."}</p></div>${field(action === "remark" ? "Remark" : "Reason", `<textarea name="reason" required maxlength="2000" placeholder="Give the team a clear explanation and next step."></textarea>`)}${footer(action === "remark" ? "Add remark" : titles[action], "This action is recorded in the audit trail.")}</form>`,
+    `<form data-form="reason" data-id="${id}" data-action-type="${action}"><div class="form-intro"><p>${esc(r.number)} · ${action === "documents" ? "Describe the documents needed. The requester can upload them directly back to Finance; existing approvals stay valid." : action === "deletePayment" ? "Payment details and payment supporting PDFs will be permanently cleared. The approved request returns to Pending Payment. A reason is mandatory and remains in the audit trail." : action === "parentReject" ? "All child payment requests must be rejected first. Paid children require Admin payment deletion before rejection." : action === "return" ? "The requester can correct the request and resubmit it to Finance." : action === "reject" ? "Record a clear reason for rejecting this payment request." : action === "hold" ? "Explain what needs to be resolved before payment can proceed." : "Leave context for the Finance team and requester."}</p></div>${field(action === "remark" ? "Remark" : "Reason", `<textarea name="reason" required maxlength="2000" placeholder="Give the team a clear explanation and next step."></textarea>`)}${footer(action === "remark" ? "Add remark" : titles[action], "This action is recorded in the audit trail.")}</form>`,
   );
 }
 function payForm(id) {
@@ -990,7 +1215,7 @@ function documentView(id) {
   const ap = (st) => r.approvals.find((x) => x.stage === st);
   showModal(
     "View Payment Request",
-    `<div class="noprint actions" style="margin-top:0;margin-bottom:20px"><button class="primary" data-action="print">Print / Save as PDF</button><button data-action="openRequest" data-id="${id}">Back to request</button></div><article class="printdoc"><div class="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75"></div><small>GROUP PROJECT MONITORING</small><h1>PAYMENT REQUEST</h1><div class="detail-top"><strong>${esc(r.number)}</strong>${badge(r.status)}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Date", r.date)}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO number", esc(o.po))}${detail("Invoice number", esc(o.invoice || "—"))}${detail("Team", o.team)}${detail("Order currency", o.currency)}${detail("Payment currency", r.currency || o.currency)}${detail("Saved payment rate", `1 USD = ${fmt(r.rate)} ${r.currency || o.currency}`)}${detail("Approved budget", esc(name("budgets", o.budgetId)))}</div><h3>Description</h3><p>${esc(o.description)}</p>${categoryTable(o)}<table style="margin-top:18px"><tbody><tr><td>Full order amount</td><td class="right">${o.currency} ${fmt(o.total)}</td></tr><tr><td>Other instalments paid to date</td><td class="right">${o.currency} ${fmt(prior)}</td></tr><tr><td><strong>This payment request · ${r.percent}% at creation</strong></td><td class="right"><strong>${r.currency || o.currency} ${fmt(r.amount)}</strong></td></tr><tr><td>Payment terms</td><td>${esc(r.terms)}</td></tr></tbody></table><h3 style="margin-top:22px">Request & approvals · this payment request only</h3><table><thead><tr><th>Stage</th><th>Name</th><th>Date / Time</th></tr></thead><tbody><tr><td>Requested by</td><td>${esc(name("users", r.requestedBy))}</td><td>${date(r.createdAt)}</td></tr>${[...(r.team === "Purchasing" ? ["Reviewer"] : []), "Approval 1", ...(r.team === "Purchasing" ? ["Approval 2"] : [])].map((st) => `<tr><td>${st === "Reviewer" ? "Checked by" : st}</td><td>${esc(ap(st)?.by || "Pending")}</td><td>${date(ap(st)?.at)}</td></tr>`).join("")}${r.payment ? `<tr><td>Paid by</td><td>${esc(r.payment.by)}</td><td>${r.payment.date} · ${r.payment.type}</td></tr>` : ""}</tbody></table>${r.remarks.length ? '<h3 style="margin-top:22px">Finance remarks</h3>' + r.remarks.map((m) => `<p>${esc(m.text)} — ${esc(m.by)}</p>`).join("") : ""}${supportingReferences(o, r)}${reviewHistory(r.history, r.team)}<div class="docfooter">System-generated document · ${esc(r.number)} · Generated ${date(Date.now())}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}</div></article>`,
+    `<div class="noprint actions" style="margin-top:0;margin-bottom:20px"><button class="primary" data-action="print">Print / Save as PDF</button><button data-action="openRequest" data-id="${id}">Back to request</button></div><article class="printdoc"><div class="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75"></div><small>GROUP PROJECT MONITORING</small><h1>PAYMENT REQUEST</h1><div class="detail-top"><strong>${esc(r.number)}</strong>${badge(r.status)}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Date", r.date)}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO number", esc(o.po))}${detail("Invoice number", esc(o.invoice || "—"))}${detail("Order currency", o.currency)}${detail("Payment currency", r.currency || o.currency)}${detail("Saved payment rate", `1 USD = ${fmt(r.rate)} ${r.currency || o.currency}`)}${detail("Approved budget", esc(name("budgets", o.budgetId)))}</div><h3>Description</h3><p>${esc(o.description)}</p>${categoryTable(o)}<table style="margin-top:18px"><tbody><tr><td>Full order amount</td><td class="right">${o.currency} ${fmt(o.total)}</td></tr><tr><td>Other instalments paid to date</td><td class="right">${o.currency} ${fmt(prior)}</td></tr><tr><td><strong>This payment request · ${r.percent}% at creation</strong></td><td class="right"><strong>${r.currency || o.currency} ${fmt(r.amount)}</strong></td></tr><tr><td>Payment terms</td><td>${esc(r.terms)}</td></tr></tbody></table><h3 style="margin-top:22px">Request & payment · this payment request only</h3><table><thead><tr><th>Stage</th><th>Name</th><th>Date / Time</th></tr></thead><tbody><tr><td>Requested by</td><td>${esc(name("users", r.requestedBy))}</td><td>${date(r.createdAt)}</td></tr>${r.approvals.map((x) => `<tr><td>${esc(x.stage === "Reviewer" ? "Checked by" : x.stage)}</td><td>${esc(x.by)}</td><td>${date(x.at)}</td></tr>`).join("")}${r.finalApprovedAt ? `<tr><td>Submitted to Finance</td><td>${esc(name("users", r.requestedBy))}</td><td>${date(r.finalApprovedAt)}</td></tr>` : ""}${r.payment ? `<tr><td>Paid by</td><td>${esc(r.payment.by)}</td><td>${r.payment.date} · ${r.payment.type}</td></tr>` : ""}</tbody></table>${r.remarks.length ? '<h3 style="margin-top:22px">Finance remarks</h3>' + r.remarks.map((m) => `<p>${esc(m.text)} — ${esc(m.by)}</p>`).join("") : ""}${supportingReferences(o, r)}${reviewHistory(r.history)}<div class="docfooter">System-generated document · ${esc(r.number)} · Generated ${date(Date.now())}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}</div></article>`,
   );
 }
 function enrollmentOptions() {
@@ -1118,7 +1343,6 @@ document.addEventListener("click", async (e) => {
     [
       "openOrder",
       "openRequest",
-      "approve",
       "submit",
       "resume",
       "unlock",
@@ -1174,6 +1398,51 @@ document.addEventListener("click", async (e) => {
         ?.focus();
       return;
     }
+    if (a === "openProject") {
+      projectId = id;
+      page = "project";
+      render();
+      window.scrollTo({ top: 0, behavior: "instant" });
+      $("#pageTitle")?.focus({ preventScroll: true });
+      return;
+    }
+    if (a === "backProjects") {
+      const from = projectId;
+      page = "projects";
+      render();
+      document.querySelector(`[data-action="openProject"][data-id="${from}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (a === "newProject" || a === "editProject") {
+      masterTab = "projects";
+      masterForm(a === "editProject" ? id : undefined);
+      return;
+    }
+    if (a === "projectOrder") {
+      const pr = state.projects.find((x) => x.id === id);
+      orderForm(undefined, { companyId: pr.companyId, projectId: pr.id });
+      return;
+    }
+    if (a === "projectPayment") {
+      // A payment request needs the order's lock, as when it is raised from the order itself.
+      await command({ type: "lock", id });
+      selected = id;
+      paymentForm(id);
+      return;
+    }
+    if (a === "newTask") {
+      taskForm(id);
+      return;
+    }
+    if (a === "editTask") {
+      taskForm(null, id);
+      return;
+    }
+    if (a === "deleteTask") {
+      const t = state.tasks.find((x) => x.id === id);
+      showModal("Delete task", `<form data-form="taskDelete" data-id="${id}"><div class="form-intro"><p>Delete “${esc(t.name)}”? Project progress is recalculated without it. The deletion is recorded in the audit log.</p></div>${footer("Delete task", "This cannot be undone.")}</form>`);
+      return;
+    }
     if (a === "amendApprove") {
       await command({ type: "amendment.approve", id });
       orderDetail(id);
@@ -1200,13 +1469,27 @@ document.addEventListener("click", async (e) => {
         ?.focus({ preventScroll: true });
       return;
     }
+    if (a === "auditGo") {
+      auditPageNo = Number(b.dataset.n) || 1;
+      render();
+      document.querySelector(".pager .current")?.focus({ preventScroll: true });
+      document.querySelector(".audit-table")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (a === "auditClear") {
+      auditFilter = { action: "", user: "", company: "", from: "", to: "" };
+      auditSearch = "";
+      auditPageNo = 1;
+      render();
+      $("#auditAction")?.focus({ preventScroll: true });
+      return;
+    }
     if (a === "clearFilters") {
       company = "";
       project = "";
       from = "";
       to = "";
       statusFilter = "";
-      teamFilter = "";
       search = "";
       approvalOnly = false;
       financeOnly = false;
@@ -1219,7 +1502,6 @@ document.addEventListener("click", async (e) => {
       from = "";
       to = "";
       statusFilter = "";
-      teamFilter = "";
       approvalOnly = false;
       financeOnly = false;
       tab = "requests";
@@ -1268,16 +1550,10 @@ document.addEventListener("click", async (e) => {
     else if (a === "newPayment") paymentForm(id);
     else if (a === "editPayment")
       paymentForm(state.requests.find((r) => r.id === id).orderId, id);
-    else if (["submit", "approve", "resume"].includes(a)) {
+    else if (["submit", "resume"].includes(a)) {
       await command({ type: "request." + a, id });
       requestDetail(id);
-      toast(
-        a === "approve"
-          ? "Stage approved"
-          : a === "submit"
-            ? "Submitted for approval"
-            : "Hold released",
-      );
+      toast(a === "submit" ? "Submitted to Finance" : "Hold released");
     } else if (
       [
         "return",
@@ -1353,8 +1629,8 @@ document.addEventListener("change", async (e) => {
       user = raw.users.find((u) => u.id === t.value);
       sessionStorage.setItem("demo-actor", user.id);
       state = visibleState(raw, user);
-      if (!["dashboard", "requests"].includes(page) && user.role !== "Admin")
-        page = "dashboard";
+      const allowed = ["dashboard", "projects", "project", "requests", ...(isFinanceAdmin(user) ? ["master", "audit"] : []), ...(user.role === "Admin" ? ["users", "settings"] : [])];
+      if (!allowed.includes(page)) page = "dashboard";
       company = "";
       project = "";
       render();
@@ -1366,7 +1642,6 @@ document.addEventListener("change", async (e) => {
         "from",
         "to",
         "statusFilter",
-        "teamFilter",
       ].includes(t.id)
     ) {
       if (t.id === "company" || t.id === "drawerCompany") {
@@ -1381,7 +1656,22 @@ document.addEventListener("change", async (e) => {
         approvalOnly = false;
         financeOnly = false;
       }
-      if (t.id === "teamFilter") teamFilter = t.value;
+      const focusedId = t.id;
+      render();
+      document.getElementById(focusedId)?.focus({ preventScroll: true });
+    } else if (t.dataset.task) {
+      const task = state.tasks.find((x) => x.id === t.dataset.task);
+      try {
+        await command({ type: "task.save", data: { record: { ...task, status: t.value } } });
+        toast(`${task.name}: ${t.value}`);
+      } catch (error) {
+        toast(error.message, "error");
+        render();
+      }
+      document.querySelector(`[data-task="${task.id}"]`)?.focus({ preventScroll: true });
+    } else if (["auditAction", "auditUser", "auditCompany", "auditFrom", "auditTo"].includes(t.id)) {
+      auditFilter = { ...auditFilter, [{ auditAction: "action", auditUser: "user", auditCompany: "company", auditFrom: "from", auditTo: "to" }[t.id]]: t.value };
+      auditPageNo = 1;
       const focusedId = t.id;
       render();
       document.getElementById(focusedId)?.focus({ preventScroll: true });
@@ -1392,8 +1682,7 @@ document.addEventListener("change", async (e) => {
         $("#paymentCurrency").value = t.value;
         syncPayment(t);
       }
-    } else if (t.id === "userTeam" || t.id === "userRole") {
-      syncUserRole(t.form);
+    } else if (t.id === "userRole") {
     } else if (t.id === "formCompany") {
       $("#formProject").innerHTML = opt(
         state.projects.filter((p) => p.companyId === t.value),
@@ -1421,10 +1710,12 @@ document.addEventListener("change", async (e) => {
 document.addEventListener("input", (e) => {
   e.target.removeAttribute("aria-invalid");
   e.target.setCustomValidity?.("");
-  if (e.target.id === "masterSearch" || e.target.id === "userSearch") {
+  if (e.target.id === "masterSearch" || e.target.id === "userSearch" || e.target.id === "auditSearch" || e.target.id === "projectSearch") {
     const id = e.target.id,
       pos = e.target.selectionStart;
     if (id === "masterSearch") masterSearch = e.target.value;
+    else if (id === "projectSearch") projectSearch = e.target.value;
+    else if (id === "auditSearch") { auditSearch = e.target.value; auditPageNo = 1; }
     else userSearch = e.target.value;
     render();
     document.getElementById(id).focus();
@@ -1527,7 +1818,7 @@ document.addEventListener("submit", async (e) => {
       const uploads = fd.getAll('importPDFs').filter(f => f.size);
       if (uploads.reduce((sum, f) => sum + f.size, 0) > 2000000) throw Error('Combined supporting PDFs must not exceed 2 MB');
       const files = await Promise.all(uploads.map(readPDF));
-      const payload = { kind: d.importKind, rows, files, ...(user.role === "Admin" ? { team: d.team } : {}) };
+      const payload = { kind: d.importKind, rows, files };
       await command({ type: 'import.preview', data: payload });
       importPreview = payload;
       const headers = importFields[d.importKind];
@@ -1575,7 +1866,6 @@ document.addEventListener("submit", async (e) => {
             ...(await Promise.all(files.map(readPDF))),
           ]
         : keep;
-      d.team = old?.team || (user.role === "Admin" ? d.team : user.team);
       d.allocations = state.budgets
         .find((b) => b.id === d.budgetId)
         .categories.map((c) => ({
@@ -1596,7 +1886,7 @@ document.addEventListener("submit", async (e) => {
       if (!id) await openRecord(state.requests.at(-1).id, "request");
       toast(
         id
-          ? "Amendment submitted for approval"
+          ? "Amendment submitted to Finance"
           : "Request and first payment request created",
       );
     } else if (kind === "payment") {
@@ -1662,6 +1952,14 @@ document.addEventListener("submit", async (e) => {
       });
       await closeModal();
       toast("Master data saved");
+    } else if (kind === "task") {
+      await command({ type: "task.save", data: { record: { id: id || undefined, projectId: f.dataset.project, name: d.name, status: d.status, owner: d.owner, due: d.due } } });
+      await closeModal();
+      toast(id ? "Task saved" : "Task added");
+    } else if (kind === "taskDelete") {
+      await command({ type: "task.delete", id });
+      await closeModal();
+      toast("Task deleted");
     } else if (kind === "user") {
       const record = {
         ...d,
@@ -1787,7 +2085,7 @@ document.addEventListener(
   true,
 );
 
-// Dashboard sheet grid parallax: the background barely moves on screen (8% of the
+// Workspace sheet grid parallax (every page): the background barely moves on screen (8% of the
 // scroll speed). It is positioned in the same frame as the page scroll so it never
 // trails the foreground.
 const reduceScrollMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");

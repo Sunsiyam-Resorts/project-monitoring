@@ -17,10 +17,10 @@
     background-attachment: fixed;
   }
   .sidebar, .topbar { background: #f0f3ed; }
-  .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .panel, .budget-kpis,
   .report-disclosure, .login-panel { background: #f9fbf7; }
   .dashboard-kpi[data-kpi=available] { background: #e3ebdf; }
-  .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .panel, .budget-kpis,
   .report-disclosure, .login-panel, dialog {
     border-color: var(--glass-border);
     box-shadow: var(--glass-shadow);
@@ -51,7 +51,7 @@
       -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(115%);
       border-color: rgb(255 255 255 / 65%);
     }
-    .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+    .panel, .budget-kpis,
     .report-disclosure, .login-panel {
       background: var(--glass-surface);
       backdrop-filter: blur(var(--glass-blur));
@@ -65,13 +65,13 @@
     }
   }
   /* Avoid nested backdrop compositing on the four secondary metric cells. */
-  .payment-kpis .dashboard-kpi { background: transparent; box-shadow: none; }
+  .budget-kpis .dashboard-kpi { background: transparent; box-shadow: none; }
 }
-/* Dashboard spreadsheet cells (Excel default 64 x 20): crisp around the glass cards, diffused beneath them by their blur. */
+/* Spreadsheet cells behind every workspace page (Excel default 64 x 20): crisp around the glass cards, diffused beneath them by their blur. */
 @media screen {
   :root { --sheet-line: rgb(39 61 48 / 3.5%); }
-  .main[data-view="dashboard"] { position: relative; isolation: isolate; }
-  .main[data-view="dashboard"]::before {
+  .main[data-view] { position: relative; isolation: isolate; }
+  .main[data-view]::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -87,7 +87,7 @@
   }
 }
 @media screen and (prefers-reduced-transparency: reduce), print {
-  .main[data-view="dashboard"]::before { display: none; }
+  .main[data-view]::before { display: none; }
 }
 @media screen and (max-width: 760px) {
   :root { --glass-blur: 12px; }
@@ -96,18 +96,18 @@
   .work-table tr.children-row { background: transparent; }
 }
 @media screen and (prefers-reduced-transparency: reduce) {
-  .sidebar, .topbar, .panel, .budget-kpis .dashboard-kpi, .payment-kpis,
+  .sidebar, .topbar, .panel, .budget-kpis,
   .report-disclosure, .login-panel, dialog {
     background: #f9fbf7;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
   .dashboard-kpi[data-kpi=available] { background: #e3ebdf; }
-  .payment-kpis .dashboard-kpi { background: transparent; }
+  .budget-kpis .dashboard-kpi { background: transparent; }
   dialog::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
-/* Tinted glass: the darker accent cards are clear, lightly frosted glass. The sheet
+/* Tinted glass: the darker accent cards (and the Dashboard shortcut card) are clear, lightly frosted glass. The sheet
    grid stays faintly visible through them; text stays on top, unaltered. */
 @media screen {
   :root {
@@ -123,6 +123,7 @@
     --frost-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .1 0 0 0 0 .14 0 0 0 0 .1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   :root .dashboard-kpi[data-kpi="available"],
+  :root .kpi-side > .workspace-actions, :root .kpi-side > .progress-card,
   :root .detail-lead,
   :root .decision-panel {
     position: relative;
@@ -136,6 +137,7 @@
   }
   /* Frost: fine etched grain. */
   :root .dashboard-kpi[data-kpi="available"]::after,
+  :root .kpi-side > .workspace-actions::after, :root .kpi-side > .progress-card::after,
   :root .detail-lead::after,
   :root .decision-panel::after {
     content: "";
@@ -148,10 +150,12 @@
     mix-blend-mode: var(--grain-blend);
   }
   :root .dashboard-kpi[data-kpi="available"] > *,
+  :root .kpi-side > .workspace-actions > *, :root .kpi-side > .progress-card > *,
   :root .detail-lead > *,
   :root .decision-panel > * { position: relative; z-index: 1; }
   @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     :root .dashboard-kpi[data-kpi="available"],
+    :root .kpi-side > .workspace-actions, :root .kpi-side > .progress-card,
     :root .detail-lead,
     :root .decision-panel {
       backdrop-filter: blur(0.5px) saturate(130%) brightness(1.02);
@@ -161,6 +165,7 @@
 }
 @media screen and (prefers-reduced-transparency: reduce) {
   :root .dashboard-kpi[data-kpi="available"],
+  :root .kpi-side > .workspace-actions, :root .kpi-side > .progress-card,
   :root .detail-lead,
   :root .decision-panel {
     background: var(--tint-solid, #e3ebdf);
@@ -168,6 +173,7 @@
     -webkit-backdrop-filter: none;
   }
   :root .dashboard-kpi[data-kpi="available"]::after,
+  :root .kpi-side > .workspace-actions::after, :root .kpi-side > .progress-card::after,
   :root .detail-lead::after,
   :root .decision-panel::after { display: none; }
 }

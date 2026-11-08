@@ -12,8 +12,8 @@ Internal Sun Siyam Group staff working at office desktops, daily, handling many 
 
 Each user has exactly one role and explicit company access (or full group access):
 
-- **Requester** (Purchasing or Planning team): creates orders (parent requests) and their payment requests, edits own drafts, supplies documents Finance asks for.
-- **Reviewer** ("Checked By") and **Approver** (Level 1, Level 2): check, approve, reject or return requests for their team, company and level. They cannot edit financial details.
+- **Requester**: creates orders (parent requests) and their payment requests, edits own drafts, supplies documents Finance asks for, and submits each payment request to Finance.
+- **Finance**: reviews, holds, returns, rejects and pays every submitted payment request, approves amendments, and maintains budgets, master data and project tasks. Full operational access except User Manager and Settings; never acts on its own requests.
 - **Finance**: adds remarks, puts requests on hold, records exact payments with date, type and evidence.
 - **Viewer**: read-only visibility within company access.
 - **Admin**: master data, users, settings, unlocks, rejection at any stage; temporarily also data entry during the population period.
@@ -22,7 +22,7 @@ Senior management relies on the Dashboard for budget position, but the daily wor
 
 ## Product Purpose
 
-The portal replaces email, paper and spreadsheet approvals for project payments across Sun Siyam companies (properties). Every payment request moves through its team's full approval route in one place, and management can see, at any moment, the approved budget against what is utilized, paid, outstanding, on hold and still to be requested, per company and project.
+The portal replaces email, paper and spreadsheet approvals for project payments across Sun Siyam companies (properties). Every payment request moves from requester to Finance in one place, and management can see, at any moment, the approved budget against what is utilized, paid, outstanding, on hold and still to be requested, per company and project.
 
 Success means:
 
@@ -36,8 +36,8 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 ## Operating Context
 
 - Structure: Company (property) → Project → Approved Budget → Categories. Budgets may be in any configured currency; consolidated totals use saved USD conversions (currency units per USD 1, e.g. MVR 15.42).
-- Approval routes: Purchasing is Requester → Reviewer → Approver 1 → Approver 2 → Finance. Planning is Requester → Approver 1 → Finance. Parent amendments follow the same team route.
-- Pages: Dashboard, Requests (tabs: Requests, Finance, Balance Payments To Be Requested, My Actions), Master Data, User Manager, Settings (Admin only).
+- Workflow: every payment request goes Requester → Finance → Paid; there are no approval teams or levels. Parent amendments are approved by Finance.
+- Pages: Dashboard, Requests (tabs: Requests, Finance, Balance Payments To Be Requested, My Actions), Master Data, User Manager, Audit Log, Settings (Admin only).
 - Documents: supporting PDFs on parents, requested documents and payment evidence (2 MB combined per upload action); a printable A4 payment request document printed or saved as PDF from the browser.
 - Imports: CSV/XLSX order and payment import for data population.
 - Records are locked exclusively for 10 minutes while open; Admin can unlock (audited).
@@ -53,7 +53,7 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 - Duplicate checks: same PO within a company; same invoice under the same supplier across companies.
 - Demo workspace: fictional, browser-local data with a role selector. It must always be labelled as demo and never described as secure login.
 - Terminology is fixed by the approved contract: Company (portal label for property), order / main request (parent), payment request (child), Budget Utilized, Available Budget, Paid, Outstanding Payments, On Hold, Balance Payments Pending, Not received by Finance, My Actions.
-- Deferred: physical project progress and milestones. Open: recovery policy for a lost authenticator.
+- Project progress is the share of each project's tasks that are Done; the Projects page and each project page show it. Open: recovery policy for a lost authenticator.
 
 ## Brand Commitments
 

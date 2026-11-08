@@ -111,7 +111,7 @@ function categories(value) {
   });
 }
 
-export function importCommand(s, u, kind, v, files = [], team = u.team) {
+export function importCommand(s, u, kind, v, files = []) {
   requireValue(importFields[kind], 'Invalid import type');
   requireValue(Object.keys(v).length === importFields[kind].length && Object.keys(v).every(k => importFields[kind].includes(k)), 'Use the template columns only');
   const payment = () => {
@@ -137,7 +137,7 @@ export function importCommand(s, u, kind, v, files = [], team = u.team) {
     return { type: 'order.create', data: {
       companyId: company.id, projectId: project.id, budgetId: budget.id,
       supplierId: find(s.suppliers, v.Supplier, 'supplier').id,
-      team: u.role === 'Admin' ? team : u.team, po: v['PO number'], invoice: v['Invoice number'], currency: v.Currency.toUpperCase(),
+      po: v['PO number'], invoice: v['Invoice number'], currency: v.Currency.toUpperCase(),
       total: positive(v['Full order amount'], 'Full order amount'), description: v.Description,
       allocations: categories(v['Budget category allocations']).map(c => ({ categoryId: find(budget.categories, c.name, 'budget category').id, amount: c.amount })),
       files: names.map(name => { const matches = files.filter(f => f.name === name); requireValue(matches.length === 1, `Attach exactly one PDF named ${name}`); return matches[0]; }),

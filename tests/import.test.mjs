@@ -107,23 +107,23 @@ test('Server rejects cross-company and cross-role imports, unauthorized columns,
   assert.deepEqual(s, saved);
 });
 
-test('Admin order/payment imports select a team and preserve existing requester ownership', () => {
+test('Admin and Finance order/payment imports need no team and preserve existing requester ownership', () => {
   const { s, u, value } = orderSetup(), a = admin(s);
-  a.team = '';
   const rows = rowsFor('orders', [value]), before = structuredClone(s);
-  assert.throws(() => run(s, a, 'orders', rows, { files: [pdf] }), /Select Planning/);
+  run(s, a, 'orders', rows, { files: [pdf] }, 'import.preview');
   assert.deepEqual(s, before);
-  run(s, a, 'orders', rows, { files: [pdf], team: 'Planning' }, 'import.preview');
-  assert.deepEqual(s, before);
-  run(s, a, 'orders', rows, { files: [pdf], team: 'Planning' });
-  assert.equal(s.orders[0].team, 'Planning');
+  run(s, a, 'orders', rows, { files: [pdf] });
+  assert.equal(s.orders[0].team, undefined);
   assert.equal(s.requests[0].requestedBy, a.id);
   assert.equal(s.requests[0].status, 'Draft');
   assert.deepEqual(s.requests[0].approvals, []);
-  run(s, u, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'REQUESTER-PO' }]), { files: [pdf], team: 'Planning' });
+  run(s, u, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'REQUESTER-PO' }]), { files: [pdf] });
   const order = s.orders.at(-1);
-  assert.equal(order.team, 'Purchasing');
+  assert.equal(order.requestedBy, u.id);
   run(s, a, 'payments', rowsFor('payments', [{ 'Main request number': order.number, 'Payment Amount': '10' }]));
   assert.equal(s.requests.at(-1).requestedBy, u.id);
   assert.equal(s.requests.at(-1).createdBy, a.id);
+  const fin = s.users.find(x => x.role === 'Finance');
+  run(s, fin, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'FINANCE-PO', 'Invoice number': 'FINANCE-INV' }]), { files: [pdf] });
+  assert.equal(s.orders.at(-1).requestedBy, fin.id);
 });

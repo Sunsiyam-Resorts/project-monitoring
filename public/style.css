@@ -67,9 +67,12 @@
   --text-title: 30px;
   --sidebar-width: 216px;
   --duration: 150ms;
+  /* Apple's system font (SF Pro) on Apple devices. SF Pro is licensed for Apple
+     platforms only and is not self-hosted; elsewhere the self-hosted Inter /
+     Inter Tight, the closest open match, is used. */
   --font:
-    "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
-  --font-display: "Inter Tight", "Inter", Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Tight", "Inter", Arial, sans-serif;
 }
 * {
   box-sizing: border-box;
@@ -3483,63 +3486,333 @@ textarea:focus {
 /* KPI trend charts. Colours validated for colour-vision deficiency; rising candles are
    hollow and falling ones solid, so direction never depends on colour alone. Budget
    Utilized and the four payment figures are single ink lines.
-   Wide tiles: two columns, label and figure left, chart centred top-to-bottom on the
-   right; the figure size follows its character count (--len) so it always fits.
-   Narrow tiles: the chart sits top-right above the figure instead. */
+   Wide tiles: the figure takes a fixed share of the tile (sized by the row's longest
+   value) and the chart fills everything else, the full height of the tile's content.
+   Narrow tiles: the chart sits top-right above the figure, or between label and
+   figure on small tablets. Strokes keep a constant width however the chart stretches. */
 :root { --trend-up: #3d9a5f; --trend-down: #a8322c; --trend-flat: var(--muted); --trend-line: var(--ink); }
 @media screen {
-  .dashboard-kpi.has-trend { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
-  .budget-kpis .dashboard-kpi.has-trend { --kpi-min: 22px; --kpi-max: 38px; }
-  .payment-kpis .dashboard-kpi.has-trend { --kpi-min: 18px; --kpi-max: 28px; }
-  .has-trend > .kpi-main { container-type: inline-size; display: flex; flex-direction: column; align-self: stretch; min-width: 0; }
+  .dashboard-kpi.has-trend { position: relative; container-type: inline-size; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 20px; align-items: stretch; }
+  .payment-kpis .dashboard-kpi.has-trend { --kpi-min: 20px; --kpi-max: 34px; --pad2: 0px; --share: 0.62; }
+  .has-trend > .kpi-main { display: flex; flex-direction: column; min-width: 0; }
   .has-trend > .kpi-main > h2, .has-trend > .kpi-main > h3 { padding-right: 0; }
-  :root .has-trend .kpi-main .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(var(--kpi-min), calc((100cqi - 40px) / (var(--len) * 0.54)), var(--kpi-max)); }
-  :root .dashboard-kpi.has-trend > .kpi-trend-figure { position: relative; margin: 0; width: var(--chart-w); align-self: center; }
-  .kpi-trend { display: block; width: 100%; height: 32px; overflow: visible; }
+  :root .has-trend .kpi-main .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(var(--kpi-min), calc((100cqi - var(--pad2)) * var(--share) / (var(--row-len, var(--len)) * 0.54)), var(--kpi-max)); }
+  :root .dashboard-kpi.has-trend > .kpi-trend-figure { position: relative; margin: 0; width: 100%; min-width: 0; min-height: 44px; display: flex; align-items: stretch; }
+  .payment-kpis .has-trend > .kpi-trend-figure { max-height: 60px; align-self: center; height: 100%; }
+  .kpi-trend { display: block; width: 100%; height: 100%; min-height: 44px; overflow: visible; }
   .kpi-trend, .kpi-trend * { stroke: none; fill: none; }
-  .kpi-trend .candle line { stroke-width: 1; }
+  .kpi-trend line, .kpi-trend path, .kpi-trend rect { vector-effect: non-scaling-stroke; }
+  .kpi-trend .candle line { stroke-width: 1.25; }
   .kpi-trend .candle.up line { stroke: var(--trend-up); }
-  .kpi-trend .candle.up rect:not(.trend-hit) { fill: none; stroke: var(--trend-up); stroke-width: 1.2; }
+  .kpi-trend .candle.up rect:not(.trend-hit) { fill: none; stroke: var(--trend-up); stroke-width: 1.5; }
   .kpi-trend .candle.down line { stroke: var(--trend-down); }
   .kpi-trend .candle.down rect:not(.trend-hit) { fill: var(--trend-down); }
-  .kpi-trend .candle.flat rect:not(.trend-hit) { fill: var(--trend-flat); opacity: 0.55; }
   .kpi-trend .trend-line { fill: none; stroke: var(--trend-line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .kpi-trend-figure[style*="56px"] .trend-line { stroke-width: 1.5; }
-  .kpi-trend .trend-end { fill: var(--trend-line); }
+  .kpi-trend .trend-end { stroke: var(--trend-line); stroke-width: 6; stroke-linecap: round; }
   .kpi-trend .trend-hit { fill: transparent; }
   .kpi-trend g:hover rect:not(.trend-hit), .kpi-trend .trend-hit:hover { opacity: 0.85; }
 }
-/* Narrow tiles: chart top-right, figure keeps its usual size below. */
-@media screen and (min-width: 761px) and (max-width: 1399px) {
-  .budget-kpis .dashboard-kpi.has-trend { display: flex; flex-direction: column; align-items: stretch; }
-  .budget-kpis .has-trend > .kpi-main { flex: 1; }
-  .budget-kpis .has-trend > .kpi-main > h2 { padding-right: 108px; }
-  :root .budget-kpis .has-trend .kpi-main .dashboard-kpi-value { font-size: 28px; }
-  :root .budget-kpis .dashboard-kpi.has-trend > .kpi-trend-figure { position: absolute; top: 20px; right: 22px; }
-}
-@media screen and (min-width: 1101px) and (max-width: 1399px), screen and (max-width: 520px) {
-  .payment-kpis .dashboard-kpi.has-trend { display: flex; flex-direction: column; align-items: stretch; }
-  .payment-kpis .has-trend > .kpi-main { flex: 1; }
-  .payment-kpis .has-trend > .kpi-main > h3 { padding-right: 68px; }
-  :root .payment-kpis .has-trend .kpi-main .dashboard-kpi-value { font-size: 20px; }
-  :root .payment-kpis .dashboard-kpi.has-trend > .kpi-trend-figure { position: absolute; top: 0; right: 16px; }
-}
-/* Fallback layouts keep the original wrapping figure ("USD" may wrap above the amount). */
-@media screen and (min-width: 761px) and (max-width: 1399px) {
-  :root .budget-kpis .has-trend .kpi-main .dashboard-kpi-value { white-space: normal; }
-}
-@media screen and (min-width: 1101px) and (max-width: 1399px), screen and (max-width: 520px) {
-  :root .payment-kpis .has-trend .kpi-main .dashboard-kpi-value { white-space: normal; }
-}
-/* Small tablets: budget tiles are too narrow to share a row with the chart, so stack
-   label, chart, amount. */
-@media screen and (min-width: 761px) and (max-width: 1023px) {
-  .budget-kpis .has-trend > .kpi-main { display: contents; }
-  .budget-kpis .has-trend > .kpi-main > h2 { order: 1; padding-right: 0; margin-bottom: 12px; }
-  :root .budget-kpis .dashboard-kpi.has-trend > .kpi-trend-figure { order: 2; position: relative; top: auto; right: auto; width: 100%; max-width: 96px; margin-bottom: 12px; }
-  :root .budget-kpis .has-trend .kpi-main .dashboard-kpi-value { order: 3; font-size: 20px; }
-}
 @media print { .kpi-trend-figure { display: none; } }
+/* Main card: Total Approved Budget, Budget Utilized and Available Budget in one card,
+   three equal figure columns above one combined year-to-date chart. */
+:root { --band-line: #8b9083; --hatch: color-mix(in srgb, var(--ink) 40%, transparent); }
+@media screen {
+  /* Surface, border and glass come from the shared card rules (same as the payment row). */
+  :root .budget-kpis.budget-overview { display: flex; flex-direction: column; container-type: inline-size; padding: 24px 26px 18px; border-radius: var(--radius); }
+  .overview-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The figures are sections of one card, not cards: no own surface, glass or tint. */
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi] { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; text-align: left; min-width: 0; padding: 0 24px; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible; }
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]::after, :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]::before { content: none; }
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:first-child { padding-left: 0; }
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-right: 0; border-right: 0; }
+  :root .budget-overview .dashboard-kpi h2 { min-height: 0; max-width: none; margin: 0 0 10px; font-size: 13px; font-weight: 500; }
+  :root .budget-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(22px, calc((100cqi - 96px) / 3 / (var(--row-len) * 0.54)), 48px); }
+  /* The chart takes whatever height the card has beyond the figures (it stretches to the payment stack). */
+  .overview-chart { margin: 22px 0 0; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+  .overview-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+  .overview-legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .overview-legend span::before { content: ""; width: 14px; height: 2px; border-radius: 2px; background: var(--trend-line); }
+  .overview-legend .key-approved::before { background: var(--band-line); }
+  .overview-legend .key-available::before { height: 10px; border-radius: 2px; background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 4px); }
+  /* The plot box: lines on top, the hatched available layer beneath, revealed together. */
+  .overview-plot { position: relative; flex: 1 1 auto; display: flex; min-height: 156px; }
+  .overview-hatch { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 6px); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+  .overview-plot > .kpi-trend { position: relative; display: block; width: 100%; flex: 1 1 auto; height: auto; min-height: 0; overflow: visible; }
+  .kpi-trend-overview .overview-approved { fill: none; stroke: var(--band-line); stroke-width: 1.75; stroke-linejoin: round; }
+  .kpi-trend-overview .overview-utilized { fill: none; stroke: var(--trend-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .kpi-trend-overview .overview-end-approved, .kpi-trend-overview .overview-end-utilized { stroke-width: 6; stroke-linecap: round; }
+  .kpi-trend-overview .overview-end-approved { stroke: var(--band-line); }
+  .kpi-trend-overview .overview-end-utilized { stroke: var(--trend-line); }
+  .kpi-trend-overview .trend-hit:hover { fill: rgb(127 127 127 / 6%); }
+  .overview-months { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-top: 8px; color: var(--muted); font-size: 11px; }
+  .overview-months span { text-align: right; padding-right: 2px; }
+}
+@media screen and (max-width: 760px) {
+  .overview-figures { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi] { padding: 0 0 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+  :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-bottom: 0; border-bottom: 0; }
+  :root .budget-overview .dashboard-kpi-value { font-size: clamp(22px, calc((100cqi - 8px) / (var(--row-len) * 0.54)), 40px); }
+  :root .budget-kpis.budget-overview { padding: 20px; }
+  .overview-plot { min-height: 132px; }
+  .overview-months span:nth-child(even) { visibility: hidden; }
+}
+@media print { .overview-chart { display: none; } }
+/* Dashboard KPI layout: the main card on the left; on the right the payment card
+   (four figures over one combined chart) with the My Actions widget below it. The main
+   card stretches to the right column's height. One column under 1100px. */
+:root { --pay-paid: var(--trend-line); --pay-outstanding: #2a78d6; --pay-hold: #eb6834; --pay-balance: #1baf7a; }
+@media screen {
+  .kpi-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.46fr); gap: 16px; align-items: stretch; margin-bottom: var(--rhythm); }
+  :root .kpi-layout .dashboard-kpis { margin: 0; }
+  .kpi-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; container-type: inline-size; }
+  :root .budget-kpis.payment-overview { display: flex; flex-direction: column; flex: 1 1 auto; container-type: inline-size; padding: 20px 22px 16px; border-radius: var(--radius); }
+  .payment-overview .overview-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 0; }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi] { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 0 16px; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible; }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]::after, :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]::before { content: none; }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:nth-child(odd) { padding-left: 0; border-right: 1px solid var(--line); }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:nth-child(even) { padding-right: 0; }
+  /* Each label carries its line's colour key, so the figures double as the legend. */
+  :root .payment-overview .dashboard-kpi h3 { display: flex; align-items: flex-start; gap: 7px; min-height: 0; max-width: none; margin: 0 0 6px; font-size: 12px; font-weight: 500; }
+  .payment-overview .dashboard-kpi h3::before { content: ""; flex: none; width: 12px; height: 2px; margin-top: 0.62em; border-radius: 2px; background: var(--key, var(--pay-paid)); }
+  .payment-overview [data-kpi=outstanding] { --key: var(--pay-outstanding); }
+  .payment-overview [data-kpi=hold] { --key: var(--pay-hold); }
+  .payment-overview [data-kpi=balance] { --key: var(--pay-balance); }
+  :root .payment-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(18px, calc((100cqi - 40px) / 2 / (var(--row-len) * 0.54)), 30px); }
+  .payment-overview .overview-chart { margin-top: 18px; }
+  .payment-overview .overview-plot { min-height: 96px; }
+  .kpi-trend-payments .pay-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .kpi-trend-payments .pay-end { stroke-width: 6; stroke-linecap: round; }
+  .kpi-trend-payments .pay-paid { stroke: var(--pay-paid); }
+  .kpi-trend-payments .pay-outstanding { stroke: var(--pay-outstanding); }
+  .kpi-trend-payments .pay-hold { stroke: var(--pay-hold); }
+  .kpi-trend-payments .pay-balance { stroke: var(--pay-balance); }
+  .kpi-trend-payments .trend-hit:hover { fill: rgb(127 127 127 / 6%); }
+  .payment-overview .overview-months span:nth-child(even) { visibility: hidden; }
+  /* Shortcuts widget: a card holding two square buttons with large, extra-bold labels
+     and a small arrow in the bottom-right corner. */
+  :root .kpi-side > .workspace-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 12px; }
+  :root .kpi-side .action-tile { position: relative; display: flex; align-items: flex-start; justify-content: flex-start; aspect-ratio: 1; min-width: 0; height: auto; padding: 16px 16px 44px; text-align: left; white-space: normal; font-family: var(--font-display, inherit); font-size: clamp(20px, calc(((100cqi - 36px) / 2 - 32px) / 5), 46px); font-weight: 800; line-height: 1.02; letter-spacing: -0.025em; overflow-wrap: normal; hyphens: none; }
+  :root .kpi-side .action-tile .ui-icon { position: absolute; right: 16px; bottom: 16px; width: 18px; height: 18px; margin: 0; }
+}
+@media screen and (max-width: 1100px) {
+  .kpi-layout { grid-template-columns: minmax(0, 1fr); }
+  /* Full width: the shortcut card shrinks to two fixed squares instead of spanning the row. */
+  :root .kpi-side > .workspace-actions { align-self: flex-start; grid-template-columns: repeat(2, 220px); }
+  :root .kpi-side .action-tile { font-size: 34px; }
+}
+@media screen and (max-width: 520px) {
+  :root .kpi-side > .workspace-actions { align-self: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root .kpi-side .action-tile { font-size: clamp(20px, calc(((100cqi - 36px) / 2 - 32px) / 5), 46px); }
+}
+/* A full-width payment card (under 1100px) lays its four figures out in one row. */
+@container (min-width: 640px) {
+  .payment-overview .overview-figures { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:nth-child(n) { padding: 0 20px; border-right: 1px solid var(--line); }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:first-child { padding-left: 0; }
+  :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-right: 0; border-right: 0; }
+  :root .payment-overview .dashboard-kpi-value { font-size: clamp(18px, calc((100cqi - 120px) / 4 / (var(--row-len) * 0.54)), 30px); }
+}
+/* Dashboard filter row: reporting currency on the left, Project filter on the right. */
+@media screen {
+  /* One horizontal line: the currency note left; the Project filter (label inline) and
+     Export summary right, all centred on the same axis at the same 44px height. */
+  .main[data-view="dashboard"] .filters { align-items: center; }
+  .main[data-view="dashboard"] .filters > .filter-end { order: -1; margin: 0 auto 0 0; align-self: center; display: flex; align-items: center; min-height: 44px; }
+  .main[data-view="dashboard"] .filters > div:not(.filter-end) { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .main[data-view="dashboard"] .filters > div:not(.filter-end) > label { margin: 0; white-space: nowrap; }
+  .main[data-view="dashboard"] .filters > div:not(.filter-end) > select { min-width: 190px; }
+  .main[data-view="dashboard"] .filters > .filter-action { min-height: 44px; margin: 0; align-self: center; }
+}
+/* Narrow screens: currency on its own line; the Project filter fills the next line beside Export summary. */
+@media screen and (max-width: 1000px) {
+  .main[data-view="dashboard"] .filters > .filter-end { flex: 1 0 100%; min-height: 0; }
+  .main[data-view="dashboard"] .filters > div:not(.filter-end) { flex: 1 1 0; }
+  .main[data-view="dashboard"] .filters > div:not(.filter-end) > select { flex: 1 1 auto; min-width: 0; width: auto; }
+  .main[data-view="dashboard"] .filters > .filter-action { flex: none; }
+}
+/* Dashboard lower section, in the same language as the KPI cards above: one glass card
+   each, a quiet title row, hairline-divided rows and display-weight figures. The two
+   columns line up with the main card and the right-hand column above. */
+@media screen {
+  :root .dashboard-bottom { grid-template-columns: minmax(0, 1fr) minmax(320px, 0.46fr); gap: 16px; align-items: start; }
+  :root .dashboard-bottom > .panel { margin: 0; padding: 0; overflow: hidden; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 22px 26px 14px; }
+  .card-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-head small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  /* Breakdown rows: title and description, the headline figure, then the chevron. */
+  :root .explore-card .report-disclosure.report-disclosure { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible; }
+  :root .explore-card .report-disclosure > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 24px; min-height: 0; padding: 18px 26px; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+  :root .explore-card .report-disclosure > summary:hover { background: rgb(127 127 127 / 5%); }
+  :root .explore-card .report-disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .explore-card .report-text strong { display: block; font-size: 14px; font-weight: 550; }
+  .explore-card .report-text small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .report-figure { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+  .report-figure b { font: 500 28px/1.05 var(--font-display); letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+  .report-figure small { margin-top: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+  :root .explore-card .report-disclosure > summary > .ui-icon { width: 18px; height: 18px; color: var(--muted); transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+  :root .explore-card .report-disclosure[open] > summary > .ui-icon { transform: rotate(90deg); color: var(--ink); }
+  :root .explore-card .report-body { border-top: 1px solid var(--line); background: rgb(127 127 127 / 3%); }
+
+  /* Activity: a dated ledger. The day is the figure; month and time sit beneath it. */
+  .activity-list { margin: 0; padding: 0; list-style: none; }
+  .activity-entry { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 16px; align-items: start; padding: 16px 26px; border-top: 1px solid var(--line); }
+  .activity-entry time { display: flex; flex-direction: column; }
+  .activity-entry time b { font: 500 28px/1.05 var(--font-display); letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+  .activity-entry time small + small { margin-top: 1px; }
+  .activity-entry time small { margin-top: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .activity-entry strong { display: block; padding-top: 3px; font-size: 14px; font-weight: 550; }
+  .activity-entry p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+  .activity-card > .empty { border-top: 1px solid var(--line); padding: 32px 26px; }
+}
+@media screen and (max-width: 1100px) {
+  :root .dashboard-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+@media screen and (max-width: 520px) {
+  .card-head { padding: 18px 18px 12px; }
+  :root .explore-card .report-disclosure > summary { gap: 14px; padding: 16px 18px; }
+  .report-figure b, .activity-entry time b { font-size: 24px; }
+  .activity-entry { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; padding: 14px 18px; }
+}
+/* Audit Log page: dates in tabular figures, never wrapped. */
+.audit-table .audit-when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+.audit-table td:nth-child(4) { overflow-wrap: anywhere; }
+/* Audit Log pager: previous / numbered pages / next, under the table. */
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.pager-pages { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pager button { min-height: 40px; min-width: 40px; padding: 0 14px; justify-content: center; font-variant-numeric: tabular-nums; }
+.pager button.current { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.pager button:disabled { opacity: 0.45; cursor: default; }
+.pager-gap { color: var(--muted); padding: 0 2px; }
+.pager > button { gap: 6px; }
+.pager > button .ui-icon { width: 16px; height: 16px; }
+.pager-back { display: inline-flex; transform: scaleX(-1); }
+.audit-filters > div { min-width: 150px; }
+@media screen and (max-width: 520px) {
+  .pager { flex-wrap: wrap; justify-content: center; }
+  .pager > button { flex: 1 1 0; }
+  .pager-pages { order: -1; width: 100%; justify-content: center; }
+}
+/* Projects. Progress is the share of tasks Done: a solid segment for Done, a hatched one
+   for In progress (the same diagonal hatch as the main card's available area), and the
+   empty track for To do. Figures use the display face, as on the Dashboard. */
+@media screen {
+  .progress-track { display: flex; gap: 2px; height: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--ink) 9%, transparent); }
+  .progress-track i { display: block; height: 100%; flex: none; }
+  .progress-track i[style="width:0.00%"] { display: none; }
+  .progress-track .done, .key.done { background: var(--trend-line); }
+  .progress-track .doing, .key.doing { background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 4px); box-shadow: inset 0 0 0 1px var(--hatch); }
+  .key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; }
+  .key.todo { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+  .project-flag { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--warning); font-size: 12px; font-weight: 550; }
+  .project-flag .ui-icon, .task-overdue .ui-icon { width: 14px; height: 14px; }
+
+  /* Projects list: one quiet card per project. The whole card is the target (it carries
+     the open action); the title button is the keyboard stop and lights the card's ring. */
+  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+  :root .project-card { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 22px 24px 20px; cursor: pointer; transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), border-color 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+  :root .project-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--ink) 22%, transparent); }
+  :root .project-card:active { transform: translateY(0); }
+  .project-card:has(.project-link:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .project-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .project-card-head > div { min-width: 0; }
+  .project-card-head h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; }
+  .project-card-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  :root .project-link { display: inline; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; }
+  .project-link:focus-visible { outline: none; }
+  .project-pct, .progress-figure b { font: 500 40px/0.9 var(--font-display); letter-spacing: -0.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .project-pct span, .progress-figure span { margin-left: 2px; color: var(--muted); font-size: 0.5em; letter-spacing: 0; }
+  .project-foot { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .project-foot strong { color: var(--ink); font-weight: 550; }
+  .project-foot > span { white-space: nowrap; }
+  .project-late { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-weight: 550; vertical-align: bottom; }
+  .project-late .ui-icon { width: 13px; height: 13px; }
+
+  /* Project page */
+  :root .back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -8px 0 4px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--muted); font-size: 13px; font-weight: 550; }
+  :root .back-link:hover { color: var(--ink); }
+  .back-link .ui-icon { width: 16px; height: 16px; }
+  :root .kpi-side > .progress-card { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 20px 22px; }
+  .progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .progress-head h2 { margin: 0; font-size: 13px; font-weight: 500; letter-spacing: 0; }
+  .progress-head small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .progress-figure { display: flex; align-items: baseline; }
+  .progress-figure b { font-size: clamp(48px, 16cqi, 72px); }
+  .progress-figure span { font-size: 26px; }
+  .progress-card .progress-track { height: 10px; }
+  .progress-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+  .progress-counts div + div { padding-left: 14px; border-left: 1px solid var(--line); }
+  .progress-counts dt { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .progress-counts dd { margin: 4px 0 0; font: 500 22px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+  .project-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  :root .project-main > .panel { margin: 0; padding: 0; overflow: hidden; }
+  .task-card .card-head { align-items: center; }
+  .task-card .card-head .primary { min-height: 40px; }
+  .task-list { margin: 0; padding: 0; list-style: none; }
+  .task-row { display: grid; grid-template-columns: 148px minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 14px 26px; border-top: 1px solid var(--line); }
+  .task-status { width: 100%; min-height: 40px; }
+  .task-main strong { display: block; font-size: 14px; font-weight: 550; overflow-wrap: anywhere; }
+  .task-row[data-status="done"] .task-main strong { color: var(--muted); }
+  .task-main p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .task-overdue { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); font-weight: 550; vertical-align: bottom; }
+  .task-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 550; }
+  .task-badge .ui-icon { width: 14px; height: 14px; }
+  .task-badge[data-status="to-do"] { color: var(--muted); }
+  .task-actions { display: flex; gap: 14px; }
+  .task-actions .linkbtn { min-height: 40px; }
+  :root .danger-link { color: var(--danger); }
+  /* Project requests: order, what is left to request, and the payment request action. */
+  .requests-card .card-head { align-items: center; }
+  .requests-card .card-head .primary { min-height: 40px; }
+  .request-list { margin: 0; padding: 0; list-style: none; }
+  .request-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 168px; gap: 18px; align-items: center; padding: 14px 26px; border-top: 1px solid var(--line); }
+  .request-main .linkbtn { font-size: 14px; font-weight: 550; }
+  .request-main p { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .request-figures { display: flex; flex-direction: column; align-items: flex-end; text-align: right; font-variant-numeric: tabular-nums; }
+  .request-figures strong { font-size: 14px; font-weight: 550; white-space: nowrap; }
+  .request-figures small { margin-top: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .request-row > button { min-height: 40px; justify-content: center; white-space: nowrap; }
+  .requests-card > .empty { border-top: 1px solid var(--line); padding: 32px 26px; }
+  .task-card > .empty { border-top: 1px solid var(--line); padding: 32px 26px; }
+}
+@media screen and (max-width: 520px) {
+  :root .project-card { padding: 18px; }
+  .project-pct { font-size: 34px; }
+  .task-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 14px; padding: 14px 18px; }
+  .request-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px 18px; }
+  .request-figures { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; text-align: left; }
+  .request-figures small { margin: 0; }
+  .request-row > button { margin-top: 4px; }
+  .request-spacer { display: none; }
+  .task-row > .task-status, .task-row > .task-badge { grid-column: 1 / -1; justify-self: start; width: auto; min-width: 150px; }
+}
+/* Odometer figures: each digit is a fixed-width cell whose 0–9 strip rolls to the
+   target digit. Tabular figures keep every cell the same width while rolling. */
+@media screen {
+  /* The figure's own font: the older .dashboard-kpi-value span rule styles only the USD prefix. */
+  .dashboard-kpi-value .odo-number, .dashboard-kpi-value .odo-number > span { font: inherit; color: inherit; letter-spacing: inherit; }
+  .odo-number { display: inline-block; height: 1.2em; line-height: 1.2em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dashboard-kpi-value .odo-number > .odo { color: transparent; }
+  /* Half-size decimals, sitting on the main figure's baseline. */
+  .dashboard-kpi-value .kpi-dec { font: inherit; font-size: 0.5em; color: inherit; letter-spacing: inherit; }
+  .dashboard-kpi-value .odo-number > .odo-dec { font-size: 0.5em; vertical-align: baseline; height: auto; line-height: 1.2em; }
+  .dashboard-kpi-value .odo-dec > span { font: inherit; color: inherit; letter-spacing: inherit; display: inline-block; vertical-align: top; height: 1.2em; }
+  .dashboard-kpi-value .odo-dec > .odo { color: transparent; }
+  .odo-number > span { display: inline-block; vertical-align: top; height: 1.2em; }
+  .odo { position: relative; overflow: hidden; color: transparent; -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); }
+  .odo::before {
+    content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9";
+    position: absolute; inset: 0 0 auto 0; white-space: pre; text-align: center;
+    line-height: 1.2em; color: var(--ink);
+    transform: translateY(calc(var(--d, 0) * -1.2em));
+    transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--i, 0) * 22ms);
+  }
+  /* Rows leaving a table: a detached copy slides out to the right. */
+  .row-ghost { z-index: 4; margin: 0; overflow: hidden; border: 0 !important; border-radius: 0; box-shadow: none; background: var(--surface); pointer-events: none; }
+  .row-ghost table { width: 100%; table-layout: fixed; }
+  .row-ghost td { border-bottom: 0; }
+}
 /* Sidebar scope: the company selector sits directly under the logo. */
 @media screen {
   .sidebar-scope { padding: 0 0 20px; margin: -8px 0 20px; border-bottom: 1px solid var(--line); }
@@ -3581,6 +3854,19 @@ textarea:focus {
   .navigation-drawer, .menu-toggle { display: none !important; }
   :root { --canvas: #ffffff; --accent: #111111; --accent-soft: #f2f2f2; --ink: #111111; }
 }
-@media screen and (max-width: 520px) {
-  :root .payment-kpis .has-trend .kpi-main .dashboard-kpi-value { font-size: 17px; }
+
+/* Scrollbars: slim, rounded, theme-coloured. Chromium/Safari use the -webkit
+   pseudo-elements (which they ignore if the standard properties are set), Firefox
+   uses the standard thin scrollbar with the same colours. */
+:root { --scroll-thumb: rgb(39 61 48 / 24%); --scroll-thumb-hover: rgb(39 61 48 / 46%); }
+@supports selector(::-webkit-scrollbar) {
+  :root, :root * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background-color: var(--scroll-thumb); border: 2px solid transparent; border-radius: 8px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+  ::-webkit-scrollbar-button { display: none; }
+}
+@supports not selector(::-webkit-scrollbar) {
+  :root, :root * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb-hover) transparent; }
 }

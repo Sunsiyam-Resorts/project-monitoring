@@ -66,38 +66,10 @@ export function demoState({ history = false } = {}) {
       companies: [],
       active: true,
     },
-    ...["Purchasing", "Planning"]
-      .flatMap((team, i) => [
-        { id: "req" + i, name: team + " Requester", role: "Requester", team },
-        ...(i === 0
-          ? [
-              {
-                id: "rev" + i,
-                name: team + " Reviewer",
-                role: "Reviewer",
-                team,
-              },
-            ]
-          : []),
-        {
-          id: "app" + i,
-          name: team + " Approver",
-          role: "Approver",
-          team,
-          approvalLevel: 1,
-        },
-        ...(i === 0
-          ? [
-              {
-                id: "app2",
-                name: "Purchasing Final Approver",
-                role: "Approver",
-                team,
-                approvalLevel: 2,
-              },
-            ]
-          : []),
-      ])
+    ...[
+      { id: "req0", name: "Project Requester", role: "Requester" },
+      { id: "req1", name: "Site Requester", role: "Requester" },
+    ]
       .map((u) => ({
         ...u,
         username: u.id,
@@ -110,6 +82,16 @@ export function demoState({ history = false } = {}) {
       name: "Finance Officer",
       username: "finance",
       email: "finance@example.com",
+      role: "Finance",
+      groupAccess: true,
+      companies: [],
+      active: true,
+    },
+    {
+      id: "fin2",
+      name: "Finance Manager",
+      username: "finance2",
+      email: "finance2@example.com",
       role: "Finance",
       groupAccess: true,
       companies: [],
@@ -138,7 +120,6 @@ export function demoState({ history = false } = {}) {
       projectId: "p1",
       budgetId: "b0",
       supplierId: "s1",
-      team: "Purchasing",
       currency: "USD",
       rate: 1,
       total: 420000,
@@ -157,7 +138,6 @@ export function demoState({ history = false } = {}) {
       projectId: "p2",
       budgetId: "b1",
       supplierId: "s2",
-      team: "Purchasing",
       currency: "USD",
       rate: 1,
       total: 180000,
@@ -176,7 +156,6 @@ export function demoState({ history = false } = {}) {
       projectId: "p3",
       budgetId: "b2",
       supplierId: "s3",
-      team: "Planning",
       currency: "MVR",
       rate: 15.42,
       total: 3700800,
@@ -198,7 +177,6 @@ export function demoState({ history = false } = {}) {
       projectId: "p4",
       budgetId: "b3",
       supplierId: "s1",
-      team: "Purchasing",
       currency: "USD",
       rate: 1,
       total: 310000,
@@ -216,12 +194,12 @@ export function demoState({ history = false } = {}) {
     number: "PR-2026-00000" + (i + 1),
     orderId: o.id,
     companyId: o.companyId,
-    team: o.team,
     amount: o.total * 0.3,
     percent: 30,
     terms: "30% advance on confirmed order",
     date: "2026-10-" + String(8 + i).padStart(2, "0"),
-    status: ["Paid", "Finance", "On Hold", "Approval 1"][i],
+    status: ["Paid", "Finance", "On Hold", "Draft"][i],
+    ...(i < 3 ? { finalApprovedAt: "2026-10-11T08:00:00Z" } : {}),
     requestedBy: o.requestedBy,
     createdAt: o.createdAt,
     approvals: [],
@@ -245,33 +223,7 @@ export function demoState({ history = false } = {}) {
     by: "Finance Officer",
     at: "2026-10-12T08:00:00Z",
   };
-  for (const r of s.requests) {
-    r.approvals = [
-      {
-        stage: "Reviewer",
-        by: r.team + " Reviewer",
-        at: "2026-10-09T08:00:00Z",
-      },
-      ...(r.status === "Approval 1"
-        ? []
-        : [
-            {
-              stage: "Approval 1",
-              by: r.team + " Approver",
-              at: "2026-10-10T08:00:00Z",
-            },
-          ]),
-      ...(r.team === "Purchasing" && r.status !== "Approval 1"
-        ? [
-            {
-              stage: "Approval 2",
-              by: "Purchasing Final Approver",
-              at: "2026-10-11T08:00:00Z",
-            },
-          ]
-        : []),
-    ];
-  }
+  s.tasks = sampleTasks(s);
   s.audit = s.requests.map((r) => ({
     id: "a" + r.id,
     at: r.createdAt,
@@ -284,6 +236,8 @@ export function demoState({ history = false } = {}) {
   s.sequence = 4;
   if (history) addSampleHistory(s, pdf);
   s.version = 1;
+  // Bump when the sample data changes: a saved demo with another value is replaced.
+  s.sampleVersion = 3;
   return migrateState(s);
 }
 
@@ -344,14 +298,13 @@ function addSampleHistory(s, pdf) {
       const total = between(3, 16) * 5000;
       if (cap.get(cat) < total) continue;
       cap.set(cat, cap.get(cat) - total);
-      const team = rand() < 0.6 ? "Purchasing" : "Planning";
-      const requester = team === "Purchasing" ? "req0" : "req1";
+      const requester = rand() < 0.6 ? "req0" : "req1";
       const committed = Date.UTC(2026, month, between(2, 26));
       const created = committed - between(5, 14) * DAY;
       const id = "h" + ++n;
       s.orders.push({
         id, companyId: p.companyId, projectId: p.id, budgetId: "b" + pi,
-        supplierId: pick(suppliers), team, currency: "USD", rate: 1, total,
+        supplierId: pick(suppliers), currency: "USD", rate: 1, total,
         po: "DEMO-PO-" + (2000 + n), invoice: "DEMO-INV-" + (2000 + n),
         description: "Sample " + (cat.startsWith("civil") ? "civil works" : cat.startsWith("mep") ? "MEP works" : "furniture and finishes") + " package " + n,
         allocations: [{ categoryId: cat, amount: total }],
@@ -364,13 +317,12 @@ function addSampleHistory(s, pdf) {
         if (approvedOn > LAST) return;
         const rid = id + "r" + c;
         const amount = Math.round(total * percent) / 100;
-        const stages = team === "Purchasing" ? ["Reviewer", "Approval 1", "Approval 2"] : ["Approval 1"];
         const r = {
-          id: rid, orderId: id, companyId: p.companyId, team, amount, percent,
+          id: rid, orderId: id, companyId: p.companyId, amount, percent,
           terms: percent === 100 ? "Full payment on delivery" : percent + "% instalment",
           date: iso(approvedOn), status: "Finance", requestedBy: requester,
           createdAt: at(approvedOn - 3 * DAY), finalApprovedAt: at(approvedOn),
-          approvals: stages.map((stage) => ({ stage, by: team + (stage === "Approval 2" ? " Final Approver" : stage === "Reviewer" ? " Reviewer" : " Approver"), at: at(approvedOn) })),
+          approvals: [],
           history: [], remarks: [],
         };
         let ready = approvedOn;
@@ -411,4 +363,63 @@ function addSampleHistory(s, pdf) {
     ...history.sort((a, b) => a.at.localeCompare(b.at)).map((a, i) => ({ id: "h-audit-" + i, user: "Finance Officer", ...a })),
     ...s.audit,
   ];
+}
+
+// Fictional project tasks, generated deterministically for every demo project. Each project
+// runs its own plan of phases from a start date at a steady pace; against a fixed reference
+// date, phases well in the past are Done (a few slipped ones are still In progress and so
+// overdue), phases around the reference date are In progress, and later ones are To do.
+// Progress is the share of each project's tasks that are Done.
+function sampleTasks(s) {
+  const REF = Date.UTC(2026, 10, 5);
+  const DAY = 86400000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  const owner = {
+    survey: "Site team", design: "Architect", budget: "Finance", tender: "Finance", contract: "Finance", permit: "Project manager",
+    civil: "Main contractor", mep: "MEP contractor", fit: "Fit-out contractor", ffe: "Procurement", land: "Landscape contractor",
+    test: "MEP contractor", snag: "Project manager", hand: "Operations", ops: "Operations", it: "IT", hr: "Human resources",
+  };
+  const plans = {
+    p1: { start: Date.UTC(2026, 0, 12), pace: 30, slip: [6], tasks: [
+      ["Feasibility study and business case", "ops"], ["Site survey and soil report", "survey"], ["Concept design", "design"],
+      ["Budget approved by the board", "budget"], ["Detailed design and drawings", "design"], ["Environmental and building permits", "permit"],
+      ["Main contractor tender", "tender"], ["Main contractor appointed", "contract"], ["Site mobilisation", "civil"],
+      ["Foundations and structure", "civil"], ["MEP first fix", "mep"], ["Villa interior fit-out", "fit"],
+      ["FF&E procurement", "ffe"], ["Landscaping and pathways", "land"], ["Testing and commissioning", "test"],
+      ["Snagging", "snag"], ["Handover to operations", "hand"],
+    ] },
+    p2: { start: Date.UTC(2026, 1, 2), pace: 24, slip: [5], tasks: [
+      ["Villa condition survey", "survey"], ["Refurbishment scope agreed", "budget"], ["Interior design concept", "design"],
+      ["Furniture and finishes selection", "ffe"], ["Fit-out contractor appointed", "contract"], ["Block A strip-out", "fit"],
+      ["Block A bathrooms and joinery", "fit"], ["Block B strip-out", "fit"], ["Block B bathrooms and joinery", "fit"],
+      ["Air-conditioning replacement", "mep"], ["Soft furnishings installed", "ffe"], ["Snagging", "snag"], ["Villas back in inventory", "hand"],
+    ] },
+    p3: { start: Date.UTC(2026, 3, 6), pace: 28, slip: [], tasks: [
+      ["Concept design", "design"], ["Structural assessment of decks", "survey"], ["Supplier tender", "tender"],
+      ["Timber and roofing supplier appointed", "contract"], ["Deck and roof works", "civil"], ["Plunge pool upgrades", "mep"],
+      ["Outdoor shower and lighting", "mep"], ["Beach villa interiors", "fit"], ["Snagging", "snag"], ["Handover to operations", "hand"],
+    ] },
+    p4: { start: Date.UTC(2025, 11, 1), pace: 26, slip: [7], tasks: [
+      ["Business case", "ops"], ["Warehouse lease signed", "contract"], ["Warehouse layout design", "design"],
+      ["Racking and cold store installed", "civil"], ["Equipment delivery", "ffe"], ["Staff accommodation design", "design"],
+      ["Staff accommodation fit-out", "fit"], ["Inventory system selection", "it"], ["Systems go-live", "it"],
+      ["Recruitment of additional staff", "hr"], ["Staff training", "hr"], ["Full operation", "ops"],
+    ] },
+  };
+  const out = [];
+  for (const p of s.projects) {
+    const plan = plans[p.id];
+    if (!plan) continue;
+    plan.tasks.forEach(([name, kind], k) => {
+      const due = plan.start + (k + 1) * plan.pace * DAY;
+      const status = due < REF - 21 * DAY ? (plan.slip.includes(k) ? "In progress" : "Done") : due <= REF + 40 * DAY ? "In progress" : "To do";
+      const done = status === "Done";
+      out.push({
+        id: `t-${p.id}-${k + 1}`, companyId: p.companyId, projectId: p.id, name, status, due: iso(due), owner: owner[kind],
+        createdAt: new Date(plan.start).toISOString(), createdBy: "fin",
+        updatedAt: new Date(Math.min(due, REF)).toISOString(), ...(done ? { completedAt: new Date(due - 2 * DAY).toISOString() } : {}),
+      });
+    });
+  }
+  return out;
 }

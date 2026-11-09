@@ -3656,9 +3656,9 @@ textarea:focus {
 
   /* Activity: a dated ledger. The day is the figure; month and time sit beneath it. */
   .activity-list { margin: 0; padding: 0; list-style: none; }
-  .activity-entry { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 16px; align-items: start; padding: 16px 26px; border-top: 1px solid var(--line); }
+  .activity-entry { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; align-items: start; padding: 16px 26px; border-top: 1px solid var(--line); }
   .activity-entry time { display: flex; flex-direction: column; }
-  .activity-entry time b { font: 500 28px/1.05 var(--font-display); letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+  .activity-entry time b { font: 500 24px/1.05 var(--font-display); letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
   .activity-entry time small + small { margin-top: 1px; }
   .activity-entry time small { margin-top: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .activity-entry strong { display: block; padding-top: 3px; font-size: 14px; font-weight: 550; }
@@ -3671,8 +3671,9 @@ textarea:focus {
 @media screen and (max-width: 520px) {
   .card-head { padding: 18px 18px 12px; }
   :root .explore-card .report-disclosure > summary { gap: 14px; padding: 16px 18px; }
-  .report-figure b, .activity-entry time b { font-size: 24px; }
-  .activity-entry { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; padding: 14px 18px; }
+  .report-figure b { font-size: 24px; }
+  .activity-entry time b { font-size: 21px; }
+  .activity-entry { grid-template-columns: 70px minmax(0, 1fr); gap: 12px; padding: 14px 18px; }
 }
 /* Audit Log page: dates in tabular figures, never wrapped. */
 .audit-table .audit-when { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }

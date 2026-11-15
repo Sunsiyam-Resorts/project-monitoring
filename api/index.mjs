@@ -91,8 +91,10 @@ export default async function handler(req, res) {
     if (
       ["login", "verify", "reset-start", "reset-finish", "sso"].includes(action)
     )
+      // Behind the Cloudflare Tunnel, CF-Connecting-IP is the visitor's address set by Cloudflare;
+      // X-Forwarded-For there keeps any value the visitor sent, so it would let them dodge the limit.
       await throttle(
-        `${action}:${req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"}`,
+        `${action}:${req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"}`,
       );
     if (action === "sso") {
       res.statusCode = 303;

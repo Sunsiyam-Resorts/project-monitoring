@@ -4,10 +4,10 @@ Use ONLY `Sunsiyam-Resorts/project-monitoring` for the portal. The ERP repositor
 
 The portal runs in Docker on the internal Ubuntu server at 192.168.135.39. `compose.yaml` starts two containers:
 
-- `portal`: built from the repository's `Dockerfile`; Node.js serves `public/` and the API (`scripts/serve.mjs`) on port 3000.
+- `portal`: built from the repository's `Dockerfile`; Node.js serves `public/` and the API (`scripts/serve.mjs`) on port 3000 inside the container, published on the server as port 3080.
 - `db`: PostgreSQL 17. Its data lives in the Docker volume `project-monitoring_pgdata`, under `/var/lib/docker/volumes/` on the server. Its port is not published, so only the portal container can reach it.
 
-For now the portal is served over **plain HTTP** at `http://192.168.135.39:3000`. Passwords, authenticator codes and session cookies cross the network unencrypted, so do not enter real finance records until HTTPS is in place (see [Moving to HTTPS](#moving-to-https)). This replaces the earlier Vercel and 130.3 deployments; `vercel.json` is kept only until cut-over.
+For now the portal is served over **plain HTTP** at `http://192.168.135.39:3080`. The server also runs other Docker applications; the ERP already uses port 3000 there, and 3001, 3002 and 18080 are taken as well. Passwords, authenticator codes and session cookies cross the network unencrypted, so do not enter real finance records until HTTPS is in place (see [Moving to HTTPS](#moving-to-https)). This replaces the earlier Vercel and 130.3 deployments; `vercel.json` is kept only until cut-over.
 
 ## 1. Server prerequisites
 
@@ -20,7 +20,7 @@ sudo systemctl enable --now docker
 docker compose version
 ```
 
-Docker's own packages (`docker-ce`, `docker-compose-plugin`, from https://docs.docker.com/engine/install/ubuntu/) work as well. If `ufw` is active, allow the portal port: `sudo ufw allow 3000/tcp`.
+Docker's own packages (`docker-ce`, `docker-compose-plugin`, from https://docs.docker.com/engine/install/ubuntu/) work as well. If `ufw` is active, allow the portal port: `sudo ufw allow 3080/tcp`.
 
 ## 2. Get the code
 
@@ -45,7 +45,7 @@ sudo nano .env    # fill in the initial Admin
 | Variable | Value |
 |---|---|
 | POSTGRES_PASSWORD | Database password, used by both containers. Hexadecimal (as generated above) so it is safe inside the connection URL. Set it before the first start; changing it later does not change the existing database user's password. |
-| PORTAL_PORT | Host port for the portal, default `3000`. |
+| PORTAL_PORT | Host port for the portal, default `3080`. Pick another free port if needed (`sudo ss -ltn` lists the ports in use). |
 | ADMIN_USERNAME | Initial administrator username, e.g. abuney |
 | ADMIN_EMAIL | Administrator email |
 | ADMIN_PASSWORD | Strong initial password, 12–256 characters. Wrap it in single quotes (`'...'`) so characters such as `$` and `#` are kept literally. |
@@ -65,7 +65,7 @@ Keep all values out of GitHub and chat messages. The application creates its own
 cd /opt/project-monitoring
 sudo docker compose up -d --build
 sudo docker compose ps                                   # both services "healthy"
-curl -s http://127.0.0.1:3000/api/index?action=config    # {"configured":true,"demo":false,...}
+curl -s http://127.0.0.1:3080/api/index?action=config    # {"configured":true,"demo":false,...}
 sudo docker compose logs -f portal                       # follow the portal log
 ```
 
@@ -100,7 +100,7 @@ sudo docker compose restart portal
 
 In the ERP (`rene`) environment, set:
 
-- `PROJECT_MONITORING_URL` — the portal's origin, currently `http://192.168.135.39:3000` (the HTTPS origin once HTTPS is in place)
+- `PROJECT_MONITORING_URL` — the portal's origin, currently `http://192.168.135.39:3080` (the HTTPS origin once HTTPS is in place)
 - `PROJECT_MONITORING_SSO_SECRET` — the same value as the portal's `ERP_SSO_SECRET`
 
 The ERP sidebar's **Project Monitoring** item opens `/api/project-monitoring/launch` in the ERP, which redirects to `<portal>/api/index?action=sso&token=…`. The portal signs in the active portal user with the same email, without password or TOTP, and records "Signed in via ERP" in the audit. ERP users without a portal account, or with an inactive one, land on the portal login with "ERP sign-in failed". Create portal users with the same email they use in the ERP.
@@ -110,7 +110,7 @@ The ERP sidebar's **Project Monitoring** item opens `/api/project-monitoring/lau
 Put an HTTPS reverse proxy in front of the portal, then:
 
 1. Obtain a TLS certificate for the address users will open: from an internal CA for an internal DNS name pointing at the server (recommended), or with the server IP in its Subject Alternative Name (e.g. `IP:192.168.135.39`). Install the internal CA on staff devices so browsers trust it.
-2. In `compose.yaml`, publish the portal only to the proxy: `"127.0.0.1:3000:3000"`.
+2. In `compose.yaml`, publish the portal only to the proxy: `"127.0.0.1:${PORTAL_PORT:-3080}:3000"`.
 3. Add `NODE_ENV=production` to `.env`, then `sudo docker compose up -d`.
 4. Update `PROJECT_MONITORING_URL` in the ERP to the HTTPS origin.
 
@@ -131,7 +131,7 @@ server {
     client_max_body_size 4m;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3080;
         proxy_set_header Host $host;                    # required by the API's same-origin check
         proxy_set_header X-Forwarded-For $remote_addr;  # set, not appended, so sign-in throttling cannot be spoofed
         proxy_set_header X-Forwarded-Proto https;

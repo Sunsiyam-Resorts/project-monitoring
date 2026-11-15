@@ -40,8 +40,9 @@ services:
       HOST: 0.0.0.0
       PORT: "3000"
     ports:
-      # Plain HTTP on the server's IP. Behind an HTTPS reverse proxy, change to "127.0.0.1:3000:3000".
-      - "${PORTAL_PORT:-3000}:3000"
+      # Plain HTTP on the server's IP, port 3080 (3000 is taken on the server). Behind an HTTPS reverse proxy,
+      # change to "127.0.0.1:${PORTAL_PORT:-3080}:3000".
+      - "${PORTAL_PORT:-3080}:3000"
     logging: *logging
 
 volumes:

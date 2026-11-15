@@ -68,10 +68,18 @@ function setup() {
     admin: s.users[0],
   };
 }
-// There are no approval stages: submitting sends a payment request straight to Finance.
+// There are no approval stages, and a new payment request is already with Finance (Revision 4):
+// the requester only lets go of it.
 function approve(x) {
-  x.run(x.requester, "request.submit", x.r.id);
   x.run(x.requester, "unlock", x.r.id);
+}
+// Finance returns the setup payment request; the requester holds its lock again to correct it.
+function returnToDraft(x) {
+  x.run(x.requester, "unlock", x.r.id);
+  x.lock(x.finance, x.r.id);
+  x.run(x.finance, "request.return", x.r.id, { reason: "Correct the request" });
+  x.run(x.finance, "unlock", x.r.id);
+  x.lock(x.requester, x.r.id);
 }
 test("Admin and Finance can raise requests; each payment request goes to Finance on its own", () => {
   const x = setup();
@@ -82,21 +90,19 @@ test("Admin and Finance can raise requests; each payment request goes to Finance
   const o = x.s.orders.at(-1), r = x.s.requests.at(-1);
   assert.equal(o.requestedBy, x.admin.id);
   assert.equal(o.team, undefined);
-  assert.equal(r.status, "Draft");
-  assert.equal(o.committedAt, undefined);
-  x.lock(x.admin, r.id);
-  x.run(x.admin, "request.edit", r.id, { percent: 40 });
-  assert.equal(r.amount, 40000);
-  x.run(x.admin, "request.submit", r.id);
+  // The first payment request goes straight to Finance and commits the order.
   assert.equal(r.status, "Finance");
-  assert.ok(o.committedAt);
+  assert.equal(o.committedAt, r.createdAt);
+  assert.equal(o.commitmentRequestId, r.id);
+  x.lock(x.admin, r.id);
+  assert.throws(() => x.run(x.admin, "request.submit", r.id), /draft/);
   assert.throws(() => x.run(x.admin, "request.approve", r.id), /Unknown request action/);
   // Nobody pays a request they raised themselves.
   assert.throws(() => x.run(x.admin, "request.pay", r.id, { paymentDate: "2026-10-14", paymentType: "TT", files: x.payload.files }), /Finance role/);
   assert.throws(() => x.run(x.admin, "request.edit", r.id, { percent: 50 }), /draft/);
   x.lock(x.admin, o.id);
   x.run(x.admin, "request.create", null, { orderId: o.id, percent: 20 });
-  assert.equal(x.s.requests.at(-1).status, "Draft");
+  assert.equal(x.s.requests.at(-1).status, "Finance");
   assert.deepEqual(x.s.requests.at(-1).approvals, []);
   x.run(x.admin, "order.amend", o.id, { ...x.payload, po: o.po, invoice: o.invoice, description: "Admin proposed correction", reason: "Population correction" });
   assert.equal(o.description, x.payload.description);
@@ -110,7 +116,6 @@ test("Admin and Finance can raise requests; each payment request goes to Finance
   x.run(x.finance, "order.create", null, { ...x.payload, po: "FIN-PO", invoice: "FIN-INV", payment: { percent: 50 } });
   const fr = x.s.requests.at(-1);
   x.lock(x.finance, fr.id);
-  x.run(x.finance, "request.submit", fr.id);
   assert.throws(() => x.run(x.finance, "request.hold", fr.id, { reason: "x" }), /Finance role/);
   x.run(x.finance, "unlock", fr.id);
   x.lock(x.finance2, fr.id);
@@ -120,6 +125,8 @@ test("Admin and Finance can raise requests; each payment request goes to Finance
 
 test("Admin data entry preserves requester ownership, locks, scope and balance limits", () => {
   const x = setup();
+  // Only a payment request Finance returned is a draft that can be corrected.
+  returnToDraft(x);
   assert.throws(() => x.run(x.admin, "request.edit", x.r.id, { percent: 20 }), /another user/);
   x.run(x.requester, "unlock", x.r.id);
   x.lock(x.admin, x.r.id);
@@ -140,21 +147,25 @@ test("Admin data entry preserves requester ownership, locks, scope and balance l
   x.run(x.finance, "order.create", null, { ...x.payload, po: "FIN-PO", invoice: "FIN-INV" });
   assert.equal(x.s.orders.at(-1).requestedBy, x.finance.id);
 });
-test("Submitting sends a payment request straight to Finance and commits the full parent once", () => {
+test("Creating a payment request sends it straight to Finance and commits the full parent once", () => {
   const x = setup();
   assert.equal(x.r.amount, 30000);
-  assert.equal(x.o.committedAt, undefined);
-  assert.equal(kpis(x.s).commitment, 0);
-  x.run(x.requester, "request.submit", x.r.id);
   assert.equal(x.r.status, "Finance");
-  assert.ok(x.r.finalApprovedAt);
+  assert.equal(x.r.finalApprovedAt, x.r.createdAt);
   assert.deepEqual(x.r.approvals, []);
+  assert.equal(x.o.committedAt, x.r.createdAt);
   assert.equal(x.o.commitmentRequestId, x.r.id);
+  assert.equal(kpis(x.s).commitment, 100000);
+  // There is no separate submit step.
+  assert.throws(() => x.run(x.requester, "request.submit", x.r.id), /draft/);
+  // An order without a payment request is not committed.
+  x.run(x.requester, "order.create", null, { ...x.payload, po: "PO-2", invoice: "INV-2" });
+  assert.equal(x.s.orders.at(-1).committedAt, undefined);
   assert.equal(kpis(x.s).commitment, 100000);
 });
 
 
-test("Second child starts draft with no inherited approvals and cannot double commit", () => {
+test("Second child goes to Finance with no inherited approvals and cannot double commit", () => {
   const x = setup();
   approve(x);
   x.lock(x.requester, x.o.id);
@@ -164,8 +175,9 @@ test("Second child starts draft with no inherited approvals and cannot double co
     terms: "Balance",
   });
   const second = x.s.requests[1];
-  assert.equal(second.status, "Draft");
+  assert.equal(second.status, "Finance");
   assert.deepEqual(second.approvals, []);
+  assert.equal(x.o.commitmentRequestId, x.r.id);
   assert.equal(kpis(x.s).commitment, 100000);
   assert.throws(
     () =>
@@ -177,9 +189,8 @@ test("Second child starts draft with no inherited approvals and cannot double co
     /remaining/,
   );
 });
-test("Submission removes direct editing; parent changes require an amendment", () => {
+test("A payment request with Finance cannot be edited directly; parent changes require an amendment", () => {
   const x = setup();
-  x.run(x.requester, "request.submit", x.r.id);
   assert.throws(
     () =>
       x.run(x.requester, "request.edit", x.r.id, {
@@ -217,7 +228,6 @@ test("Finance return goes to the requester, who corrects and resubmits to Financ
 
 test("Rejection requires reason and releases child allocation", () => {
   const x = setup();
-  x.run(x.requester, "request.submit", x.r.id);
   x.run(x.requester, "unlock", x.r.id);
   x.lock(x.finance, x.r.id);
   assert.throws(() => x.run(x.finance, "request.reject", x.r.id), /Reason/);
@@ -232,7 +242,6 @@ test("Rejection requires reason and releases child allocation", () => {
 });
 test("Only Finance or Admin, never the requester or a Viewer, act on a submitted request", () => {
   const x = setup();
-  x.run(x.requester, "request.submit", x.r.id);
   assert.throws(() => x.run(x.requester, "request.hold", x.r.id, { reason: "x" }), /Finance role/);
   assert.throws(() => x.run(x.requester, "request.return", x.r.id, { reason: "x" }), /cannot review/);
   assert.throws(() => x.run(x.requester, "request.approve", x.r.id), /Unknown request action/);
@@ -458,7 +467,7 @@ test("Audit identifies actor, action, record and company", () => {
   assert.ok(
     x.s.audit.some(
       (a) =>
-        a.action === "request.submit" &&
+        a.action === "request.create" &&
         a.user === "Project Requester" &&
         a.companyId === "c1" &&
         a.entity === x.r.id,
@@ -466,13 +475,22 @@ test("Audit identifies actor, action, record and company", () => {
   );
 });
 
-test("Unapproved reservations hide a fully raised order without affecting dashboard payment balances", () => {
+test("A returned draft keeps its reservation, hiding a fully raised order, without counting as with Finance", () => {
   const x = setup();
   approve(x);
   x.lock(x.requester, x.o.id);
   x.run(x.requester, "request.create", null, { orderId: x.o.id, percent: 70 });
+  const second = x.s.requests[1];
   assert.equal(remainingToRequest(x.s, x.o), 0);
-  const k = kpis(x.s);
+  let k = kpis(x.s);
+  assert.equal(k.balance, 0);
+  assert.equal(k.outstanding, 100000);
+  assert.equal(k.utilized, k.paid + k.outstanding + k.hold + k.balance);
+  x.lock(x.finance, second.id);
+  x.run(x.finance, "request.return", second.id, { reason: "Correct the terms" });
+  assert.equal(second.status, "Draft");
+  assert.equal(remainingToRequest(x.s, x.o), 0);
+  k = kpis(x.s);
   assert.equal(k.balance, 70000);
   assert.equal(k.outstanding, 30000);
   assert.equal(k.utilized, k.paid + k.outstanding + k.hold + k.balance);
@@ -517,7 +535,7 @@ test("Finance financial correction removes current approvals and requires the wh
     currency: "USD",
     terms: "Corrected",
   });
-  approve(x);
+  x.run(x.requester, "request.submit", x.r.id);
   assert.equal(kpis(x.s).outstanding, 20000);
 });
 test("Additional supporting preserves final approval and returns directly to Finance with multiple files", () => {
@@ -594,10 +612,12 @@ test("Parent rejection requires all children rejected and releases budget only a
 });
 test("Cross-currency requests reserve a frozen parent equivalent and preserve rates after master changes", () => {
   const x = setup();
+  returnToDraft(x);
   x.run(x.requester, "request.edit", x.r.id, { currency: "MVR", percent: 30 });
   assert.equal(x.r.amount, 462600);
   assert.equal(x.r.orderAmount, 30000);
   assert.equal(x.r.rate, 15.42);
+  x.run(x.requester, "request.submit", x.r.id);
   approve(x);
   assert.equal(kpis(x.s).outstanding, 30000);
   x.s.currencies.find((c) => c.id === "MVR").rate = 20;
@@ -611,7 +631,9 @@ test("Cross-currency requests reserve a frozen parent equivalent and preserve ra
   });
   assert.equal(x.s.requests[1].orderAmount, 70000);
   assert.equal(remainingToRequest(x.s, x.o), 0);
-  assert.equal(kpis(x.s).balance, 70000);
+  // The second request is with Finance too, so nothing is left as balance pending.
+  assert.equal(kpis(x.s).balance, 0);
+  assert.equal(kpis(x.s).outstanding, 100000);
   assert.throws(
     () =>
       x.run(x.requester, "request.create", null, {
@@ -851,7 +873,9 @@ test("Only Finance and Admin change project tasks; progress is the share of task
 
 test('Held cross-currency requests remain visible in currency stats and never overlap Outstanding through document collection, release and payment', () => {
   const x = setup();
+  returnToDraft(x);
   x.run(x.requester, 'request.edit', x.r.id, {currency:'MVR',percent:30});
+  x.run(x.requester, 'request.submit', x.r.id);
   approve(x);
   x.lock(x.finance, x.r.id);
   x.run(x.finance, 'request.hold', x.r.id, {reason:'Bank confirmation'});
@@ -933,7 +957,7 @@ test("KPI trends over the demo's year of history end at the current figures for 
   assert.ok(all.paid.every((c) => c.close >= c.open));
   assert.ok(all.hold.some((c) => c.close < c.open), "a released hold appears as a fall");
 });
-test("Supporting PDFs are optional for requests, amendments, submission and payment; requested documents still need one", () => {
+test("Supporting PDFs are optional for requests, amendments and payment; requested documents still need one", () => {
   const x = setup();
   x.run(x.requester, "order.create", null, { ...x.payload, po: "PO-2", invoice: "INV-2", files: undefined });
   const o2 = x.s.orders.at(-1);
@@ -943,10 +967,7 @@ test("Supporting PDFs are optional for requests, amendments, submission and paym
   assert.deepEqual(o2.amendment.data.files, []);
   x.run(x.requester, "request.create", null, { orderId: o2.id, percent: 10, date: "2026-10-14" });
   const r2 = x.s.requests.at(-1);
-  x.lock(x.requester, r2.id);
-  x.run(x.requester, "request.submit", r2.id);
   assert.equal(r2.status, "Finance");
-  x.run(x.requester, "unlock", r2.id);
   x.lock(x.finance, r2.id);
   x.run(x.finance, "request.documents", r2.id, { reason: "Signed delivery note" });
   x.run(x.finance, "unlock", r2.id);
@@ -1009,10 +1030,10 @@ test("Only Admin deletes a payment request; it leaves every total, list and chec
 });
 test("A request with processed payment requests cannot be deleted; its drafts go and come back with it", () => {
   const x = setup();
+  // x.r goes back to the requester as a draft; r2 stays with Finance, so it counts as processed.
+  returnToDraft(x);
   x.run(x.requester, "request.create", null, { orderId: x.o.id, percent: 20, date: "2026-10-14" });
   const r2 = x.s.requests.at(-1);
-  x.lock(x.requester, r2.id);
-  x.run(x.requester, "request.submit", r2.id);
   for (const id of [r2.id, x.r.id, x.o.id]) x.run(x.requester, "unlock", id);
   x.lock(x.admin, x.o.id);
   assert.throws(() => x.run(x.admin, "order.delete", x.o.id, { reason: "Wrong project" }), new RegExp(`processed payment requests first: ${r2.number}`));

@@ -12,7 +12,7 @@ Internal Sun Siyam Group staff working at office desktops, daily, handling many 
 
 Each user has exactly one role and explicit company access (or full group access):
 
-- **Requester**: creates orders (parent requests) and their payment requests, edits own drafts, supplies documents Finance asks for, and submits each payment request to Finance.
+- **Requester**: creates orders (parent requests) and their payment requests, which go straight to Finance; corrects and resubmits payment requests Finance returns, and supplies documents Finance asks for.
 - **Finance**: reviews, holds, returns, rejects and pays every submitted payment request, approves amendments, and maintains budgets, master data and project tasks. Full operational access except User Manager and Settings; never acts on its own requests.
 - **Finance**: adds remarks, puts requests on hold, records exact payments with date, type and optional evidence.
 - **Viewer**: read-only visibility within company access.

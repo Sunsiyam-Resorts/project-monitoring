@@ -72,7 +72,7 @@ function orderSetup() {
   return { s, u, value };
 }
 
-test('Order imports require evidence, create independent drafts and preserve numbering on failure', () => {
+test('Order imports require evidence, send each payment request to Finance and preserve numbering on failure', () => {
   const { s, u, value } = orderSetup(), before = structuredClone(s), rows = rowsFor('orders', [value]);
   assert.throws(() => run(s, u, 'orders', rows), /Attach exactly one PDF/);
   assert.deepEqual(s, before);
@@ -81,14 +81,15 @@ test('Order imports require evidence, create independent drafts and preserve num
   run(s, u, 'orders', rows, { files: [pdf] });
   const o = s.orders[0], r = s.requests[0];
   assert.ok(o.number); assert.ok(r.number);
-  assert.equal(r.status, 'Draft'); assert.equal(r.amount, 30); assert.deepEqual(r.approvals, []);
-  assert.equal(o.committedAt, undefined);
+  // Imported payment requests go straight to Finance, like those created one by one.
+  assert.equal(r.status, 'Finance'); assert.equal(r.amount, 30); assert.deepEqual(r.approvals, []);
+  assert.equal(o.committedAt, r.createdAt); assert.equal(o.commitmentRequestId, r.id);
   const saved = structuredClone(s);
   assert.throws(() => run(s, u, 'orders', rows, { files: [pdf] }), /Duplicate PO/);
   assert.deepEqual(s, saved);
   const payments = rowsFor('payments', [{ 'Main request number': o.number, 'Payment Amount': '20', 'Payment terms': 'Fictional next instalment' }]);
   run(s, u, 'payments', payments);
-  assert.equal(s.requests[1].amount, 20); assert.equal(s.requests[1].status, 'Draft');
+  assert.equal(s.requests[1].amount, 20); assert.equal(s.requests[1].status, 'Finance');
   assert.deepEqual(s.requests[1].approvals, []); assert.deepEqual(s.locks, {});
   const tooLarge = rowsFor('payments', [{ 'Main request number': o.number, 'Payment Amount': '60' }]);
   assert.throws(() => run(s, u, 'payments', tooLarge), /remaining order balance/);
@@ -115,7 +116,7 @@ test('Admin and Finance order/payment imports need no team and preserve existing
   run(s, a, 'orders', rows, { files: [pdf] });
   assert.equal(s.orders[0].team, undefined);
   assert.equal(s.requests[0].requestedBy, a.id);
-  assert.equal(s.requests[0].status, 'Draft');
+  assert.equal(s.requests[0].status, 'Finance');
   assert.deepEqual(s.requests[0].approvals, []);
   run(s, u, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'REQUESTER-PO' }]), { files: [pdf] });
   const order = s.orders.at(-1);

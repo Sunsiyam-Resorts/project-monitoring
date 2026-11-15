@@ -896,17 +896,26 @@ func (p paymentFields) assignTo(r *Request) {
 	r.OrderRate, r.Percent, r.Date, r.Terms = p.orderRate, p.percent, ptr(p.date), ptr(p.terms)
 }
 
+// createPayment: a new payment request goes straight to Finance (Revision 4); there is no
+// separate submit step. Only a request Finance returns becomes a Draft, which is corrected and
+// submitted again.
 func (r *Rules) createPayment(s *State, u *User, o *Order, d any, now int64) *Request {
 	need(!truthyStr(o.RejectedAt), "This request was rejected")
+	at := isoString(now)
 	req := &Request{}
 	r.paymentData(s, o, d, Undefined).assignTo(req)
 	req.ID = ptr(r.randomID())
 	req.OrderID, req.CompanyID = o.ID, o.CompanyID
 	req.Number = ptr(r.issue(s, o, "payment", now))
-	req.Status = ptr("Draft")
-	req.RequestedBy, req.CreatedBy, req.CreatedAt = o.RequestedBy, u.ID, ptr(isoString(now))
+	req.Status = ptr("Finance")
+	req.RequestedBy, req.CreatedBy, req.CreatedAt = o.RequestedBy, u.ID, ptr(at)
+	req.FinalApprovedAt = ptr(at)
 	req.Approvals, req.History, req.Remarks, req.Files = []*Approval{}, []*HistoryEntry{}, []*Remark{}, []*File{}
 	s.Requests = append(s.Requests, req)
+	// The first payment request of an order commits the order to its budget.
+	if !truthyStr(o.CommittedAt) {
+		o.CommittedAt, o.CommitmentRequestID = ptr(at), req.ID
+	}
 	return req
 }
 

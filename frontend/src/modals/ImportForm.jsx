@@ -52,7 +52,7 @@ export function ImportForm({ kinds }) {
   return (
     <Modal title="Import CSV or Excel">
       <Form kind="import" ref={form} onSubmit={validate} onChange={reset}>
-        <div className="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts; each payment request is submitted to Finance separately.</div>
+        <div className="notice">Create new records only. Existing records and budget revisions must be edited individually. Imported payment requests go straight to Finance, as when they are created one by one.</div>
         <Field label="Import type"><select name="importKind">{kinds.map((k) => <option key={k} value={k}>{LABELS[k]}</option>)}</select></Field>
         <div className="actions">
           <button type="button" data-action="importCSV" onClick={() => actions.importTemplate(form.current.elements.importKind.value, false)}>Download CSV template</button>

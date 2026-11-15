@@ -2,7 +2,7 @@
 
 ## Handover history and authenticator checks
 
-- As Admin or Finance, use New Request. Save and submit a draft (it goes straight to Finance), add a further payment to an existing requester's order, propose an amendment and supply requested PDFs. A different Finance user, or Admin, processes a request Finance raised.
+- As Admin or Finance, use New Request. Create a request with its first payment request (it goes straight to Finance, with no Submit step), add a further payment to an existing requester's order, propose an amendment and supply requested PDFs. A different Finance user, or Admin, processes a request Finance raised.
 - As Admin or Finance, preview and confirm an order import; import additional payments for existing orders. Preview must not save records, and failed batches must preserve all existing records and counters.
 - In a browser where `crypto.randomUUID` is unavailable, create an Approved Budget with several categories, save, then revise it. Verify category IDs remain stable and previous amounts remain in history. Repeat ordinary record creation and imports; the shared ID helper must use cryptographic random bytes without changing issued references.
 
@@ -16,12 +16,12 @@ All demo records and uploaded demo changes remain in the current browser. Start 
 
 1. As Admin, inspect all five pages. Test group/company/project dashboards. Review category balances and export summary.
 2. Under Master Data, add a company and project, then an approved budget with several USD categories. Add a supplier and currency. Revise a budget and check the old amounts and reason are preserved.
-3. Switch to Project Requester. Create a parent with one company/project/budget, supplier, unique PO/invoice, full amount, category allocations and, optionally, a PDF. Open it and create a 30% child payment request. Submit it to Finance.
+3. Switch to Project Requester. Create a parent with one company/project/budget, supplier, unique PO/invoice, full amount, category allocations and, optionally, a PDF. Open it and create a 30% child payment request. It goes straight to Finance; there is no Submit step.
 4. Switch to Finance Officer. The child is in the Finance tab and Finance payments shortcut; there is no approval step.
 5. Verify the parent full amount is committed, although only 30% was requested. Finance's Not received by Finance tab should show the remaining 70%.
 6. Switch to Finance Officer. Add a remark, put the child on hold with a reason, release the hold, and record the exact payment with date/type and, optionally, a PDF.
 7. Return to the original Requester and create another part or the remaining balance under the same parent. Verify independent empty approvals and no double commitment.
-8. As Finance Officer, open Projects, open a project, add a task, change a task status inline and delete one. Progress (Done ÷ all tasks) updates on the project page and the Projects list, and each change appears in the Audit Log. As Group Viewer the same pages show no task controls. On the project page, use New request (company, project and budget are preset) and use Payment request on an order with value left to request; the new payment request opens as a draft.
+8. As Finance Officer, open Projects, open a project, add a task, change a task status inline and delete one. Progress (Done ÷ all tasks) updates on the project page and the Projects list, and each change appears in the Audit Log. As Group Viewer the same pages show no task controls. On the project page, use New request (company, project and budget are preset) and use Payment request on an order with value left to request; the new payment request opens already with Finance.
 9. Return a child from Finance with a reason. Confirm it returns to requester Draft, allows correction, and resubmission goes straight back to Finance. Check earlier review history.
 10. Try a duplicate parent PO in the same company from another requester; try the same invoice under the same supplier. Both should be blocked. A child reuses the parent's PO without duplicate warnings.
 11. Allocate an order above a category budget. Confirm warning and instruction to inform Finance, with submission still allowed.
@@ -49,8 +49,8 @@ Review the same records at desktop (1440 px), tablet (1024/768 px) and mobile (3
 
 Use REVIEW-1.md as the current contract. Check these scenarios with separate test accounts:
 
-1. Create an order and first 30% payment together. Confirm child Draft, no dashboard payment effect, 70% operational balance; then final-approve the child and confirm full Budget Utilized, 30% Outstanding and 70% dashboard Balance.
-2. Raise the other 70% without approval: order leaves Balance Payments To Be Requested, remains expandable in Requests, dashboard balance remains 70%. Reject it and check the operational balance reopens.
+1. Create an order and first 30% payment together. Confirm the child is with Finance at once (no Draft, no Submit step), with full Budget Utilized, 30% Outstanding and 70% dashboard Balance.
+2. Raise the other 70%: it goes straight to Finance, the order leaves Balance Payments To Be Requested and stays expandable in Requests, and the dashboard Balance falls to 0. Reject it and check that both balances reopen.
 3. Submitted requests leave requester My Actions and arrive only with Finance users who have access to that company (never the user who raised them).
 4. Hold, release and pay an approved child. Holds move out of Outstanding into On Hold; releasing moves them back. Confirm Utilized = Paid + Outstanding + On Hold + Balance Payments Pending.
 5. Request additional PDFs from Finance; requester uploads several files; request returns directly to Finance. Financial correction instead returns it to Draft for resubmission to Finance.
@@ -59,7 +59,7 @@ Use REVIEW-1.md as the current contract. Check these scenarios with separate tes
 8. On a USD order create an MVR child at 15.42. Test percent/amount in both directions, saved rates after currency-master changes, exact child-currency settlement, raw-currency subtotals and consolidated USD totals.
 9. Check company/project short-code uniqueness, independent sequences, format changes without renumbering issued references, original-document PDFs and current printable payment request.
 10. Review dashboard, all four tabs, dialogs and print at desktop/tablet/mobile sizes in a real browser. Verify no clipping, focus loss, nested-table overflow or print pagination defects.
-11. Create a request and a payment request without any PDF, submit it and record its payment without evidence. Then ask for additional documents: the requester must attach at least one PDF.
+11. Create a request and a payment request without any PDF and record its payment without evidence. Then ask for additional documents: the requester must attach at least one PDF.
 12. As Admin, open a request with a submitted or paid payment request: Delete request is disabled and names the payment requests to delete first. Delete a paid payment request with a reason; Paid, Outstanding, the trend charts and the remaining balance drop by its amount, and it disappears from every tab for every user. Delete a request holding only a draft: both disappear.
 13. On the Deleted page, check both records, the draft listed with its request and the log of each deletion. Review a record and open its PDFs. Restore the payment request and the request: they return with their earlier status and every figure is back. Restoring a payment request before its deleted request, after its PO was reused, or beyond the order balance must fail with a clear message.
 14. As Finance, Requester and Viewer, confirm there is no Deleted page and no delete button.

@@ -124,7 +124,7 @@ export function OrderForm({ id, preset }) {
         ) : (
           <Section number="05" title="First payment request"><PaymentFields o={null} r={null} combined /></Section>
         )}
-        <Footer label={o ? "Submit amendment" : "Create Request"} note="Each payment request goes to Finance on its own." />
+        <Footer label={o ? "Submit amendment" : "Create Request"} note={o ? "Finance reviews the amendment before it takes effect." : "The first payment request goes straight to Finance."} />
       </Form>
     </Modal>
   );

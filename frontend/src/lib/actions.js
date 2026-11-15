@@ -417,7 +417,7 @@ export function createActions(store) {
     await command({ type: id ? "request.edit" : "request.create", id, data: { ...d, orderId } });
     const s = get();
     await openRecord(id || (s.demo ? s.raw.requests.at(-1).id : s.state.requests.at(-1).id), "request");
-    toast("Payment request saved as draft");
+    toast(id ? "Payment request saved" : "Payment request submitted to Finance");
   }
 
   async function submitReason(id, action, fd) {

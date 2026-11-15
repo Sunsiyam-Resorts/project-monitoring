@@ -660,7 +660,7 @@ test("Four tabs use contextual creation and new request percent/amount/currency 
     await w.happyDOM.abort();
   }
 });
-test("Combined form creates the parent and first child with one submission and keeps dashboards unapproved", async () => {
+test("Combined form creates the parent and first child with one submission and sends the child straight to Finance", async () => {
   const w = await app();
   try {
     click(w, "[data-action=demo]");
@@ -703,13 +703,12 @@ test("Combined form creates the parent and first child with one submission and k
     );
     assert.equal(r.orderId, o.id);
     assert.equal(r.amount, 30000);
-    assert.equal(r.status, "Draft");
-    assert.equal(o.committedAt, undefined);
+    assert.equal(r.status, "Finance");
+    assert.equal(o.committedAt, r.createdAt);
     assert.equal(o.files.length, 1);
-    assert.match(
-      w.document.querySelector("#modal").textContent,
-      /Submit to Finance/,
-    );
+    // There is no separate submit step.
+    assert.equal(w.document.querySelector("#modal [data-action=submit]"), null);
+    assert.match(w.document.querySelector("#modal").textContent, /Finance/);
   } finally {
     w.close();
     await w.happyDOM.abort();
@@ -974,7 +973,7 @@ test('Approved budgets can be created and revised when crypto.randomUUID is unav
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
-test('Admin can create and submit requests to Finance and add further independent payments', async () => {
+test('Admin creates requests that go straight to Finance and adds further independent payments', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]'); click(w, '[data-page=requests]');
@@ -993,11 +992,9 @@ test('Admin can create and submit requests to Finance and add further independen
     const order = saved.orders.at(-1), child = saved.requests.at(-1);
     assert.equal(order.po, 'ADMIN-POPULATION-PO', w.document.querySelector('#toast').textContent);
     assert.equal(order.requestedBy, 'admin');
-    assert.equal(child.status, 'Draft');
-    click(w, '[data-action=submit]'); await flush();
-    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-    assert.equal(saved.requests.at(-1).status, 'Finance');
-    assert.ok(saved.orders.at(-1).committedAt);
+    assert.equal(child.status, 'Finance');
+    assert.equal(w.document.querySelector('[data-action=submit]'), null);
+    assert.ok(order.committedAt);
     click(w, '[data-action=close]'); await flush();
     click(w, `[data-action=openOrder][data-id="${order.id}"]`); await flush();
     click(w, '[data-action=newPayment]');
@@ -1006,7 +1003,8 @@ test('Admin can create and submit requests to Finance and add further independen
     submit(w, '[data-form=payment]'); await flush();
     saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
     assert.equal(saved.requests.at(-1).amount, 200, w.document.querySelector('#toast').textContent);
-    assert.equal(saved.requests.at(-1).status, 'Draft');
+    assert.equal(saved.requests.at(-1).status, 'Finance');
+    assert.match(w.document.querySelector('#toast').textContent, /submitted to Finance/);
     assert.deepEqual(saved.requests.at(-1).approvals, []);
   } finally { w.close(); await w.happyDOM.abort(); }
 });
@@ -1092,7 +1090,7 @@ test('Projects list and project pages show task progress; only Finance and Admin
     saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
     assert.equal(saved.requests.length, before + 1, w.document.querySelector('#modal').textContent.slice(0, 300));
     assert.equal(saved.requests.at(-1).orderId, orderId);
-    assert.equal(saved.requests.at(-1).status, 'Draft');
+    assert.equal(saved.requests.at(-1).status, 'Finance');
     click(w, '[data-action=close]');
     await flush();
     click(w, '[data-action=backProjects]');

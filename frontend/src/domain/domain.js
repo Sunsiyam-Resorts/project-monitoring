@@ -738,24 +738,33 @@ function paymentData(s, o, d, exclude) {
     terms: text(d.terms) || "Payment against order",
   };
 }
+// A new payment request goes straight to Finance (Revision 4); there is no separate submit step.
+// Only a request Finance returns becomes a Draft, which is corrected and submitted again.
 function createPayment(s, u, o, d, now) {
   need(!o.rejectedAt, "This request was rejected");
+  const at = new Date(now).toISOString();
   const r = {
     ...paymentData(s, o, d),
     id: randomId(),
     orderId: o.id,
     companyId: o.companyId,
     number: issue(s, o, "payment", now),
-    status: "Draft",
+    status: "Finance",
     requestedBy: o.requestedBy,
     createdBy: u.id,
-    createdAt: new Date(now).toISOString(),
+    createdAt: at,
+    finalApprovedAt: at,
     approvals: [],
     history: [],
     remarks: [],
     files: [],
   };
   s.requests.push(r);
+  // The first payment request of an order commits the order to its budget.
+  if (!o.committedAt) {
+    o.committedAt = at;
+    o.commitmentRequestId = r.id;
+  }
   return r;
 }
 function orderSnapshot(o) {

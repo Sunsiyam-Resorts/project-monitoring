@@ -61,7 +61,8 @@ export function PaymentForm({ orderId, id }) {
           <div className="lead-side"><small>Remaining to request</small><strong>{`${o.currency} ${fmt(o.total - reservation(state, o, id))}`}</strong></div>
         </div>
         <Section number="01" title="Payment details"><PaymentFields o={o} r={r} /></Section>
-        <Footer label="Save draft" note="Submit the draft to start its independent approval workflow." />
+        {/* A new payment request goes straight to Finance; only a returned draft is edited here. */}
+        <Footer label={r ? "Save changes" : "Submit to Finance"} note={r ? "Then submit the corrected payment request to Finance again." : "The payment request goes straight to Finance."} />
       </Form>
     </Modal>
   );

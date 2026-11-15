@@ -1,17 +1,17 @@
-# Container deployment (internal server 192.168.135.39)
+# Container deployment (https://project.ssrsys.com on 192.168.135.39)
 
 Use ONLY `Sunsiyam-Resorts/project-monitoring` for the portal. The ERP repository `Sunsiyam-Resorts/rene-next` is changed only for the single sign-on link. Do not import or change another repository.
 
-The portal runs in Docker on the internal Ubuntu server at 192.168.135.39. `compose.yaml` starts two containers:
+Users open **https://project.ssrsys.com**. Cloudflare provides HTTPS, and the Cloudflare Tunnel already running on the internal Ubuntu server at 192.168.135.39 (`cloudflared`) forwards requests to the portal at `http://localhost:3080`. `compose.yaml` starts two containers:
 
-- `portal`: built from the repository's `Dockerfile`; Node.js serves `public/` and the API (`scripts/serve.mjs`) on port 3000 inside the container, published on the server as port 3080.
+- `portal`: built from the repository's `Dockerfile`; Node.js serves `public/` and the API (`scripts/serve.mjs`) on port 3000 inside the container, published on the server only as `127.0.0.1:3080`, so the tunnel is the only way in.
 - `db`: PostgreSQL 17. Its data lives in the Docker volume `project-monitoring_pgdata`, under `/var/lib/docker/volumes/` on the server. Its port is not published, so only the portal container can reach it.
 
-For now the portal is served over **plain HTTP** at `http://192.168.135.39:3080`. The server also runs other Docker applications; the ERP already uses port 3000 there, and 3001, 3002 and 18080 are taken as well. Passwords, authenticator codes and session cookies cross the network unencrypted, so do not enter real finance records until HTTPS is in place (see [Moving to HTTPS](#moving-to-https)). This replaces the earlier Vercel and 130.3 deployments; `vercel.json` is kept only until cut-over.
+The server also runs other Docker applications; the ERP already uses port 3000 there, and 3001, 3002 and 18080 are taken as well. This replaces the earlier Vercel and 130.3 deployments; `vercel.json` is kept only until cut-over.
 
 ## 1. Server prerequisites
 
-Docker Engine with the Compose plugin, and git:
+Docker Engine with the Compose plugin, git and the Cloudflare Tunnel are already installed on 192.168.135.39. On a new server:
 
 ```sh
 sudo apt-get update
@@ -20,7 +20,7 @@ sudo systemctl enable --now docker
 docker compose version
 ```
 
-Docker's own packages (`docker-ce`, `docker-compose-plugin`, from https://docs.docker.com/engine/install/ubuntu/) work as well. If `ufw` is active, allow the portal port: `sudo ufw allow 3080/tcp`.
+Docker's own packages (`docker-ce`, `docker-compose-plugin`, from https://docs.docker.com/engine/install/ubuntu/) work as well. No firewall port needs opening: the portal is reached only through the tunnel.
 
 ## 2. Get the code
 
@@ -45,7 +45,7 @@ sudo nano .env    # fill in the initial Admin
 | Variable | Value |
 |---|---|
 | POSTGRES_PASSWORD | Database password, used by both containers. Hexadecimal (as generated above) so it is safe inside the connection URL. Set it before the first start; changing it later does not change the existing database user's password. |
-| PORTAL_PORT | Host port for the portal, default `3080`. Pick another free port if needed (`sudo ss -ltn` lists the ports in use). |
+| PORTAL_PORT | Local port the tunnel forwards to, default `3080`. If you change it, change the tunnel's service URL too (`sudo ss -ltn` lists the ports in use). |
 | ADMIN_USERNAME | Initial administrator username, e.g. abuney |
 | ADMIN_EMAIL | Administrator email |
 | ADMIN_PASSWORD | Strong initial password, 12–256 characters. Wrap it in single quotes (`'...'`) so characters such as `$` and `#` are kept literally. |
@@ -53,9 +53,8 @@ sudo nano .env    # fill in the initial Admin
 | RESEND_API_KEY | Email service key for password reset OTP. Empty disables email reset. |
 | MAIL_FROM | Verified sender, e.g. Project Portal <portal@yourdomain> |
 | ERP_SSO_SECRET | Shared ERP single sign-on secret, at least 32 bytes (`openssl rand -base64 32`). Must equal the ERP's `PROJECT_MONITORING_SSO_SECRET`. Empty disables ERP sign-in. |
-| NODE_ENV | Leave unset while the portal is on plain HTTP. `production` marks the session cookie `Secure`, which browsers refuse over HTTP, so nobody could sign in. Set it to `production` once HTTPS is in place. |
 
-`compose.yaml` sets `DATABASE_URL`, `HOST` and `PORT` for the portal container itself; values for them in `.env` are ignored there (they are used only by local `npm run dev`).
+`compose.yaml` sets `DATABASE_URL`, `HOST`, `PORT` and `NODE_ENV=production` (session cookie marked `Secure`) for the portal container itself; values for them in `.env` are ignored there (they are used only by local `npm run dev`).
 
 Keep all values out of GitHub and chat messages. The application creates its own tables and first Admin if the database is empty. Initial Admin settings remain required by the bootstrap; changing them does not reset an existing user's password. Do not rotate AUTH_ENCRYPTION_KEY without re-encrypting existing authenticator keys. Rotating ERP_SSO_SECRET requires changing it in the ERP at the same time.
 
@@ -71,7 +70,26 @@ sudo docker compose logs -f portal                       # follow the portal log
 
 Both containers restart automatically after a crash or a server reboot (`restart: unless-stopped`).
 
-## 5. Update
+## 5. Cloudflare Tunnel
+
+Add a public hostname to the server's existing tunnel that sends `project.ssrsys.com` to `http://localhost:3080`. `sudo systemctl cat cloudflared` shows how the tunnel is run:
+
+- **Started with `--token`** (managed in the Cloudflare dashboard): Cloudflare One / Zero Trust → Networks → Tunnels → the server's tunnel → Public hostnames → Add: subdomain `project`, domain `ssrsys.com`, service type `HTTP`, URL `localhost:3080`. Cloudflare creates the DNS record.
+- **Started with a config file** (usually `/etc/cloudflared/config.yml`): add this rule above the final catch-all rule, then run `cloudflared tunnel route dns <tunnel name> project.ssrsys.com` and `sudo systemctl restart cloudflared`:
+
+  ```yaml
+  - hostname: project.ssrsys.com
+    service: http://localhost:3080
+  ```
+
+Then:
+
+- Leave the tunnel's **HTTP Host Header** setting empty. The API's same-origin check needs requests to keep the `project.ssrsys.com` host, which cloudflared passes on by default.
+- If `cloudflared` runs in a container rather than on the server itself, `localhost` there is the container; point the hostname at an address that reaches the server instead.
+- Do not add a Cloudflare "Cache Everything" rule for this hostname. The portal sends its own `Cache-Control` headers: `no-cache` for pages and scripts (so a reload after an update gets the new version), one week for fonts and `no-store` for the API.
+- Sign-in throttling counts attempts per visitor using Cloudflare's `CF-Connecting-IP` header. Keep the portal published only on `127.0.0.1`, so nobody can bypass Cloudflare and send that header themselves.
+
+## 6. Update
 
 ```sh
 cd /opt/project-monitoring
@@ -81,7 +99,7 @@ sudo docker compose up -d --build
 
 The database volume is kept across rebuilds and restarts. **Never run `docker compose down -v`**: `-v` deletes the volume and with it the database.
 
-## 6. Backups
+## 7. Backups
 
 Nightly database dump on the server, kept 14 days, in `/etc/cron.d/project-monitoring-backup`:
 
@@ -96,52 +114,16 @@ sudo docker compose exec -T db pg_restore -U portal -d portal --clean --if-exist
 sudo docker compose restart portal
 ```
 
-## 7. ERP single sign-on
+## 8. ERP single sign-on
 
 In the ERP (`rene`) environment, set:
 
-- `PROJECT_MONITORING_URL` — the portal's origin, currently `http://192.168.135.39:3080` (the HTTPS origin once HTTPS is in place)
+- `PROJECT_MONITORING_URL` — `https://project.ssrsys.com`
 - `PROJECT_MONITORING_SSO_SECRET` — the same value as the portal's `ERP_SSO_SECRET`
 
 The ERP sidebar's **Project Monitoring** item opens `/api/project-monitoring/launch` in the ERP, which redirects to `<portal>/api/index?action=sso&token=…`. The portal signs in the active portal user with the same email, without password or TOTP, and records "Signed in via ERP" in the audit. ERP users without a portal account, or with an inactive one, land on the portal login with "ERP sign-in failed". Create portal users with the same email they use in the ERP.
 
-## Moving to HTTPS
-
-Put an HTTPS reverse proxy in front of the portal, then:
-
-1. Obtain a TLS certificate for the address users will open: from an internal CA for an internal DNS name pointing at the server (recommended), or with the server IP in its Subject Alternative Name (e.g. `IP:192.168.135.39`). Install the internal CA on staff devices so browsers trust it.
-2. In `compose.yaml`, publish the portal only to the proxy: `"127.0.0.1:${PORTAL_PORT:-3080}:3000"`.
-3. Add `NODE_ENV=production` to `.env`, then `sudo docker compose up -d`.
-4. Update `PROJECT_MONITORING_URL` in the ERP to the HTTPS origin.
-
-nginx on the server:
-
-```nginx
-server {
-    listen 80;
-    server_name _;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name _;
-    ssl_certificate     /etc/ssl/project-monitoring/cert.pem;
-    ssl_certificate_key /etc/ssl/project-monitoring/key.pem;
-    client_max_body_size 4m;
-
-    location / {
-        proxy_pass http://127.0.0.1:3080;
-        proxy_set_header Host $host;                    # required by the API's same-origin check
-        proxy_set_header X-Forwarded-For $remote_addr;  # set, not appended, so sign-in throttling cannot be spoofed
-        proxy_set_header X-Forwarded-Proto https;
-    }
-}
-```
-
-ERP sign-in links carry a 60-second single-use token in the query string. To keep it out of access logs, use a log format without `$request_uri` arguments for `/api/index`, or accept the logged tokens since they cannot be reused.
-
-Until then, note that sign-in throttling keys on the `X-Forwarded-For` header when a request carries one. With no proxy in front, a client can send its own value and so avoid the attempt limit; the mandatory authenticator code still applies.
+ERP sign-in links carry a 60-second single-use token in the query string; a logged copy cannot be reused.
 
 ## First sign-in
 
@@ -149,12 +131,13 @@ Enter the initial username/password, choose **Scan QR code** or **Enter setup ke
 
 Developers can review [DATABASE.md](DATABASE.md) for the storage model and setup, and [database-example.sql](database-example.sql) for the matching schema and read-only inspection examples.
 
-Create companies/projects/budgets/suppliers, then users and their company access. Do not enter real finance records until the live checks below pass and HTTPS is in place.
+Create companies/projects/budgets/suppliers, then users and their company access. Do not enter real finance records until the live checks below pass.
 
 ## Live acceptance checks
 
-- Open the portal; once on HTTPS, confirm the browser trusts the certificate and the session cookie is marked `Secure`.
-- Create a test record (confirms the same-origin check succeeds for the address users open).
+- Open https://project.ssrsys.com; confirm the certificate is valid and the session cookie is marked `Secure`.
+- Create a test record (confirms the same-origin check succeeds through the tunnel).
+- After an update, reload and confirm the new version appears (no stale cached scripts).
 - From the ERP, click **Project Monitoring**: you land signed in as the matching user. Reloading the same sign-in link fails (single use). An ERP user without a portal account lands on the login screen.
 - Log in as separate actual users in separate browsers. Check company scope and team-specific approvals.
 - Attempt to open the same request twice as different users; check lock expiry and Admin unlock.
@@ -165,6 +148,6 @@ Create companies/projects/budgets/suppliers, then users and their company access
 
 ## Architecture and verification limits
 
-Static browser UI + Node.js API (`api/index.mjs`, served by `scripts/serve.mjs`) in the `portal` container + PostgreSQL in the `db` container, on 192.168.135.39. The local checks cover domain logic, authentication primitives (including ERP token verification) and DOM interaction, not production database/network integration or browser visual layout. The server, Docker, certificate and email accounts must be set up separately; the repository alone does not provision those services.
+Browser → Cloudflare (HTTPS) → Cloudflare Tunnel on 192.168.135.39 → `portal` container (static UI + Node.js API, `api/index.mjs` served by `scripts/serve.mjs`) → `db` container (PostgreSQL). The local checks cover domain logic, authentication primitives (including ERP token verification) and DOM interaction, not production database/network integration or browser visual layout. The server, Docker, Cloudflare Tunnel and email accounts must be set up separately; the repository alone does not provision those services.
 
 The database code follows node-postgres's same-client transactions: https://node-postgres.com/features/transactions

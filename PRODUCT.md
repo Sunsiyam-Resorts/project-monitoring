@@ -42,7 +42,7 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 - Imports: CSV/XLSX order and payment import for data population.
 - Records are locked exclusively for 10 minutes while open; Admin can unlock (audited).
 - Access: username + password + mandatory TOTP, or ERP single sign-on from the ERP sidebar (skips portal password and TOTP by decision).
-- Hosting: Docker containers (Node.js portal built from the `Dockerfile`, PostgreSQL) on the internal server at 192.168.135.39, plain HTTP on port 3080 until HTTPS is added. Source is GitHub `Sunsiyam-Resorts/project-monitoring`.
+- Hosting: Docker containers (Node.js portal built from the `Dockerfile`, PostgreSQL) on the internal server at 192.168.135.39, served at https://project.ssrsys.com through the server's Cloudflare Tunnel. Source is GitHub `Sunsiyam-Resorts/project-monitoring`.
 
 ## Capabilities and Constraints
 

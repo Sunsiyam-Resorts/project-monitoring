@@ -4,10 +4,10 @@ Use ONLY `Sunsiyam-Resorts/project-monitoring` for the portal. The ERP repositor
 
 Users open **https://project.ssrsys.com**. Cloudflare provides HTTPS, and the Cloudflare Tunnel already running on the internal Ubuntu server at 192.168.135.39 (`cloudflared`) forwards requests to the portal at `http://localhost:3080`. `compose.yaml` starts two containers:
 
-- `portal`: built from the repository's `Dockerfile`; Node.js serves `public/` and the API (`scripts/serve.mjs`) on port 3000 inside the container, published on the server only as `127.0.0.1:3080`, so the tunnel is the only way in.
+- `portal`: built from the repository's `Dockerfile` in three stages: Node.js builds the React frontend (`frontend/`), Go builds the backend (`backend/`), and the final image holds only the Go binary and the built static files (distroless, no shell, runs as an unprivileged user). The binary serves the API and the frontend on port 3000 inside the container, published on the server only as `127.0.0.1:3080`, so the tunnel is the only way in.
 - `db`: PostgreSQL 17. Its data lives in the Docker volume `project-monitoring_pgdata`, under `/var/lib/docker/volumes/` on the server. Its port is not published, so only the portal container can reach it.
 
-The server also runs other Docker applications; the ERP already uses port 3000 there, and 3001, 3002 and 18080 are taken as well. This replaces the earlier Vercel and 130.3 deployments; `vercel.json` is kept only until cut-over.
+The server also runs other Docker applications; the ERP already uses port 3000 there, and 3001, 3002 and 18080 are taken as well. This replaces the earlier Vercel and 130.3 deployments.
 
 ## 1. Server prerequisites
 
@@ -54,7 +54,7 @@ sudo nano .env    # fill in the initial Admin
 | MAIL_FROM | Verified sender, e.g. Project Portal <portal@yourdomain> |
 | ERP_SSO_SECRET | Shared ERP single sign-on secret, at least 32 bytes (`openssl rand -base64 32`). Must equal the ERP's `PROJECT_MONITORING_SSO_SECRET`. Empty disables ERP sign-in. |
 
-`compose.yaml` sets `DATABASE_URL`, `HOST`, `PORT` and `NODE_ENV=production` (session cookie marked `Secure`) for the portal container itself; values for them in `.env` are ignored there (they are used only by local `npm run dev`).
+`compose.yaml` sets `DATABASE_URL`, `HOST`, `PORT` and `NODE_ENV=production` (session cookie marked `Secure`) for the portal container itself; values for them in `.env` are ignored there (they are used only when running the backend locally).
 
 Keep all values out of GitHub and chat messages. The application creates its own tables and first Admin if the database is empty. Initial Admin settings remain required by the bootstrap; changing them does not reset an existing user's password. Do not rotate AUTH_ENCRYPTION_KEY without re-encrypting existing authenticator keys. Rotating ERP_SSO_SECRET requires changing it in the ERP at the same time.
 
@@ -62,7 +62,7 @@ Keep all values out of GitHub and chat messages. The application creates its own
 
 ```sh
 cd /opt/project-monitoring
-sudo docker compose up -d --build
+sudo docker compose up -d --build                        # the first build takes a few minutes
 sudo docker compose ps                                   # both services "healthy"
 curl -s http://127.0.0.1:3080/api/index?action=config    # {"configured":true,"demo":false,...}
 sudo docker compose logs -f portal                       # follow the portal log
@@ -98,6 +98,8 @@ sudo docker compose up -d --build
 ```
 
 The database volume is kept across rebuilds and restarts. **Never run `docker compose down -v`**: `-v` deletes the volume and with it the database.
+
+The Go version replaced the earlier Node.js server in November 2026 without a data migration: it uses the same tables and stored workspace, so existing records, sessions, passwords and authenticators keep working after the update. The image now builds the React frontend and the Go binary itself, so the first build after that change takes a few minutes.
 
 ## 7. Backups
 
@@ -148,6 +150,6 @@ Create companies/projects/budgets/suppliers, then users and their company access
 
 ## Architecture and verification limits
 
-Browser → Cloudflare (HTTPS) → Cloudflare Tunnel on 192.168.135.39 → `portal` container (static UI + Node.js API, `api/index.mjs` served by `scripts/serve.mjs`) → `db` container (PostgreSQL). The local checks cover domain logic, authentication primitives (including ERP token verification) and DOM interaction, not production database/network integration or browser visual layout. The server, Docker, Cloudflare Tunnel and email accounts must be set up separately; the repository alone does not provision those services.
+Browser → Cloudflare (HTTPS) → Cloudflare Tunnel on 192.168.135.39 → `portal` container (Go binary from `backend/` serving the API and the React build from `frontend/`) → `db` container (PostgreSQL). The local checks cover the workflow rules in both languages (the Go parity test replays recordings of the JavaScript rules), authentication primitives (including ERP token verification), the API against a real PostgreSQL, and DOM interaction, not the production network or browser visual layout. The server, Docker, Cloudflare Tunnel and email accounts must be set up separately; the repository alone does not provision those services.
 
-The database code follows node-postgres's same-client transactions: https://node-postgres.com/features/transactions
+The database code runs each change in one pgx transaction on a single connection (`BEGIN`, `SELECT ... FOR UPDATE`, update, `COMMIT`): https://pkg.go.dev/github.com/jackc/pgx/v5

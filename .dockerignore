@@ -7,9 +7,10 @@
 .impeccable
 .vercel
 .DS_Store
-node_modules
-dist
-public/vendor
-tests
+**/node_modules
+frontend/dist
+frontend/legacy
+**/testdata
 docs
 *.md
+**/*_test.go

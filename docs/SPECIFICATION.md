@@ -90,5 +90,6 @@ View Payment Request displays a printable A4 document including main details, ch
 - Supporting PDFs are optional at parent creation and payment completion (Revision 3) and required only when Finance asks for additional documents. Combined parent supporting limit: 2 MB; each child payment PDF: 2 MB. These explicit release limits keep uploads below serverless request limits.
 - PDF contents are stored in PostgreSQL for the first testing release; they are fetched only by an authorised, lock-owning user and omitted from general state responses. Move to private object storage before substantial document volume.
 - Data is persisted as a JSONB workspace under one transactional lock: simple and atomic for initial testing, with limited high-volume concurrency. Normalised storage and incremental queries can be introduced after testing.
+- The server is a Go backend (`backend/`) that also serves the React interface (`frontend/`). The workflow rules are implemented in Go, which enforces them, and in JavaScript, which the browser uses for the demo and on-screen figures; a parity test replays recordings of the JavaScript rules against Go so the two cannot drift apart.
 - The demo is not a secure multi-user service and never writes to the live database.
 - No live financial data is preloaded. Demo names, figures, references and evidence are samples.

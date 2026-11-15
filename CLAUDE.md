@@ -11,4 +11,4 @@ Project rules for this repository are in [AGENTS.md](AGENTS.md); read it and `do
 - Do all work on `dev`. Commit to `dev` and push only `dev` (`git push origin dev`).
 - **Never push to `main`**: no `git push origin main`, no force-push, and no pushing another branch onto `main`. Do not merge into `main` locally.
 - To release, open a pull request from `dev` into `main` on GitHub (https://github.com/Sunsiyam-Resorts/project-monitoring/compare/main...dev) and let it be reviewed and merged there.
-- Before pushing `dev`, run `npm test` and `npm run build`, and pull the latest `main` into `dev` if the pull request would conflict.
+- Before pushing `dev`, run the checks in `AGENTS.md` (in `frontend/`: `npm test`, `npm run build`, and `npm run traces` when the workflow rules changed; in `backend/`: `go vet ./...`, `go test ./...`), and pull the latest `main` into `dev` if the pull request would conflict.

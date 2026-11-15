@@ -1,7 +1,7 @@
 -- Sun Siyam Project Monitoring: PostgreSQL schema reference.
 -- Repository: Sunsiyam-Resorts/project-monitoring
 -- This file contains no credentials, users or finance records.
--- The app creates these tables automatically in lib/store.mjs.
+-- The app creates these tables automatically (backend store, on the first request needing storage).
 -- Optional use on a development database:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f docs/database-example.sql
 -- The database and login role must already exist. This is not a data migration.

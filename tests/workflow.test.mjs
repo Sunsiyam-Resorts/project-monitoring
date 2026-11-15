@@ -246,7 +246,7 @@ test("Only Finance or Admin, never the requester or a Viewer, act on a submitted
   assert.equal(x.r.status, "On Hold");
 });
 
-test("On hold requires reason; exact payment requires date, type and separate PDF", () => {
+test("On hold requires reason; exact payment requires date and type, its PDFs are optional", () => {
   const x = setup();
   approve(x);
   x.lock(x.finance, x.r.id);
@@ -255,21 +255,15 @@ test("On hold requires reason; exact payment requires date, type and separate PD
   assert.equal(x.r.status, "On Hold");
   assert.throws(() => x.run(x.finance, "request.pay", x.r.id, {}), /Release/);
   x.run(x.finance, "request.resume", x.r.id);
-  assert.throws(
-    () =>
-      x.run(x.finance, "request.pay", x.r.id, {
-        paymentDate: "2026-10-14",
-        paymentType: "Transfer",
-      }),
-    /PDF/,
-  );
+  assert.throws(() => x.run(x.finance, "request.pay", x.r.id, { paymentDate: "2026-10-14" }), /payment type/);
+  assert.throws(() => x.run(x.finance, "request.pay", x.r.id, { paymentType: "Transfer" }), /payment date/);
   x.run(x.finance, "request.pay", x.r.id, {
     amount: 1,
     paymentDate: "2026-10-14",
     paymentType: "Transfer",
-    file: x.payload.files[0],
   });
   assert.equal(x.r.payment.amount, 30000);
+  assert.deepEqual(x.r.payment.files, []);
   assert.equal(x.r.status, "Paid");
   assert.throws(
     () =>
@@ -938,4 +932,125 @@ test("KPI trends over the demo's year of history end at the current figures for 
   assert.ok(all.budget.some((c) => c.close > c.open) && all.budget.some((c) => c.close < c.open));
   assert.ok(all.paid.every((c) => c.close >= c.open));
   assert.ok(all.hold.some((c) => c.close < c.open), "a released hold appears as a fall");
+});
+test("Supporting PDFs are optional for requests, amendments, submission and payment; requested documents still need one", () => {
+  const x = setup();
+  x.run(x.requester, "order.create", null, { ...x.payload, po: "PO-2", invoice: "INV-2", files: undefined });
+  const o2 = x.s.orders.at(-1);
+  assert.deepEqual(o2.files, []);
+  x.lock(x.requester, o2.id);
+  x.run(x.requester, "order.amend", o2.id, { ...x.payload, po: "PO-2", invoice: "INV-2", files: [], reason: "Clarify scope" });
+  assert.deepEqual(o2.amendment.data.files, []);
+  x.run(x.requester, "request.create", null, { orderId: o2.id, percent: 10, date: "2026-10-14" });
+  const r2 = x.s.requests.at(-1);
+  x.lock(x.requester, r2.id);
+  x.run(x.requester, "request.submit", r2.id);
+  assert.equal(r2.status, "Finance");
+  x.run(x.requester, "unlock", r2.id);
+  x.lock(x.finance, r2.id);
+  x.run(x.finance, "request.documents", r2.id, { reason: "Signed delivery note" });
+  x.run(x.finance, "unlock", r2.id);
+  x.lock(x.requester, r2.id);
+  assert.throws(() => x.run(x.requester, "request.support", r2.id, { files: [] }), /Attach supporting PDFs/);
+  x.run(x.requester, "request.support", r2.id, { files: x.payload.files });
+  assert.equal(r2.status, "Finance");
+  x.run(x.requester, "unlock", r2.id);
+  x.lock(x.finance, r2.id);
+  x.run(x.finance, "request.pay", r2.id, { paymentDate: "2026-10-14", paymentType: "Cheque" });
+  assert.equal(r2.status, "Paid");
+});
+test("Only Admin deletes a payment request; it leaves every total, list and check until Admin restores it", () => {
+  const x = setup();
+  approve(x);
+  x.lock(x.finance, x.r.id);
+  x.run(x.finance, "request.pay", x.r.id, { paymentDate: "2026-10-14", paymentType: "Transfer" });
+  assert.equal(kpis(x.s).paid, 30000);
+  assert.throws(() => x.run(x.finance, "request.delete", x.r.id, { reason: "Duplicate" }), /Only Admin/);
+  x.run(x.finance, "unlock", x.r.id);
+  assert.throws(() => x.run(x.admin, "request.delete", x.r.id, { reason: "Duplicate" }), /lock/);
+  x.lock(x.admin, x.r.id);
+  assert.throws(() => x.run(x.admin, "request.delete", x.r.id, {}), /Reason/);
+  x.run(x.admin, "request.delete", x.r.id, { reason: "Duplicate entry" });
+  // The record is kept as it was, but counts nowhere.
+  assert.equal(x.r.status, "Paid");
+  assert.equal(x.r.deleted.reason, "Duplicate entry");
+  assert.equal(x.s.locks[x.r.id], undefined);
+  const k = kpis(x.s);
+  assert.equal(k.paid, 0);
+  assert.equal(k.utilized, 100000);
+  assert.equal(k.balance, 100000);
+  assert.equal(kpiTrend(x.s, "", "", { now }).paid.at(-1).close, 0);
+  assert.equal(remainingToRequest(x.s, x.o), 100000);
+  assert.equal(currencyStats(x.s).find((c) => c.currency === "USD").paid, 0);
+  // Hidden from everyone's lists; only Admin receives it, separately and without PDF contents.
+  const fin = visibleState(x.s, x.finance);
+  assert.equal(fin.requests.some((r) => r.id === x.r.id), false);
+  assert.equal(fin.deletedRequests, undefined);
+  const adm = visibleState(x.s, x.admin);
+  assert.equal(adm.requests.some((r) => r.id === x.r.id), false);
+  assert.deepEqual(adm.deletedRequests.map((r) => r.id), [x.r.id]);
+  // Nobody acts on a deleted record; only Admin opens it, to review.
+  assert.throws(() => x.lock(x.finance, x.r.id), /not available/);
+  x.lock(x.admin, x.r.id);
+  assert.throws(() => x.run(x.admin, "request.remark", x.r.id, { reason: "x" }), /deleted/);
+  assert.throws(() => x.run(x.finance, "request.restore", x.r.id), /Only Admin/);
+  x.run(x.admin, "request.restore", x.r.id);
+  assert.equal(x.r.deleted, undefined);
+  assert.equal(x.r.status, "Paid");
+  assert.equal(kpis(x.s).paid, 30000);
+  assert.equal(x.r.deletionHistory.length, 1);
+  assert.equal(x.r.deletionHistory[0].reason, "Duplicate entry");
+  assert.ok(x.r.deletionHistory[0].restoredAt);
+  assert.deepEqual(x.s.audit.filter((a) => /\.(delete|restore)$/.test(a.action)).map((a) => a.action), ["request.delete", "request.restore"]);
+  // Restoring cannot overdraw the order: balance used while it was deleted blocks it.
+  x.run(x.admin, "request.delete", x.r.id, { reason: "Entered twice" });
+  x.run(x.requester, "request.create", null, { orderId: x.o.id, percent: 80, date: "2026-10-14" });
+  assert.throws(() => x.run(x.admin, "request.restore", x.r.id), /exceed/);
+});
+test("A request with processed payment requests cannot be deleted; its drafts go and come back with it", () => {
+  const x = setup();
+  x.run(x.requester, "request.create", null, { orderId: x.o.id, percent: 20, date: "2026-10-14" });
+  const r2 = x.s.requests.at(-1);
+  x.lock(x.requester, r2.id);
+  x.run(x.requester, "request.submit", r2.id);
+  for (const id of [r2.id, x.r.id, x.o.id]) x.run(x.requester, "unlock", id);
+  x.lock(x.admin, x.o.id);
+  assert.throws(() => x.run(x.admin, "order.delete", x.o.id, { reason: "Wrong project" }), new RegExp(`processed payment requests first: ${r2.number}`));
+  x.lock(x.admin, r2.id);
+  x.run(x.admin, "request.delete", r2.id, { reason: "Wrong project" });
+  x.run(x.admin, "order.delete", x.o.id, { reason: "Wrong project" });
+  assert.ok(x.o.deleted);
+  assert.equal(x.r.deleted.withOrder, x.o.id);
+  assert.equal(x.r.deleted.id, x.o.deleted.id);
+  assert.notEqual(r2.deleted.id, x.o.deleted.id);
+  const k = kpis(x.s);
+  assert.equal(k.utilized, 0);
+  assert.equal(k.outstanding, 0);
+  assert.equal(kpiTrend(x.s, "", "", { now }).utilized.at(-1).close, 0);
+  const adm = visibleState(x.s, x.admin);
+  assert.equal(adm.orders.some((o) => o.id === x.o.id), false);
+  assert.equal(adm.deletedOrders.length, 1);
+  assert.equal(adm.deletedRequests.length, 2);
+  assert.equal(adm.deletedOrders[0].files[0].data, undefined);
+  // Admin can still open its documents for review; nobody can add to it.
+  x.lock(x.admin, x.o.id);
+  assert.equal(supportingFile(x.s, x.admin, { id: x.o.id, kind: "order", index: 0 }, now).name, "support.pdf");
+  x.run(x.admin, "unlock", x.o.id);
+  assert.throws(() => x.lock(x.requester, x.o.id), /not available/);
+  // Its PO is free while it is deleted, which blocks restoring until the conflict is gone.
+  x.run(x.requester, "order.create", null, { ...x.payload, invoice: "INV-9" });
+  const dup = x.s.orders.at(-1);
+  assert.throws(() => x.run(x.admin, "order.restore", x.o.id), /now uses PO PO-1/);
+  x.lock(x.admin, dup.id);
+  x.run(x.admin, "order.delete", dup.id, { reason: "Duplicate" });
+  // A payment request deleted on its own waits for its request to be restored first.
+  assert.throws(() => x.run(x.admin, "request.restore", r2.id), /main request first/);
+  x.run(x.admin, "order.restore", x.o.id);
+  assert.equal(x.o.deleted, undefined);
+  assert.equal(x.r.deleted, undefined);
+  assert.ok(r2.deleted);
+  assert.equal(kpis(x.s).utilized, 100000);
+  x.run(x.admin, "request.restore", r2.id);
+  assert.equal(kpis(x.s).outstanding, 20000);
+  assert.equal(remainingToRequest(x.s, x.o), 50000);
 });

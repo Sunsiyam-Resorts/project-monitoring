@@ -124,7 +124,7 @@ export function importCommand(s, u, kind, v, files = []) {
     return p;
   };
   if (kind === 'payments') {
-    const o = find(s.orders, v['Main request number'], 'main request');
+    const o = find(s.orders.filter(o => !o.deleted), v['Main request number'], 'main request');
     return { type: 'request.create', data: { orderId: o.id, ...payment() } };
   }
   let company, project;
@@ -132,8 +132,10 @@ export function importCommand(s, u, kind, v, files = []) {
   if (['budgets', 'orders'].includes(kind)) project = find(s.projects.filter(p => p.companyId === company.id), v.Project, 'project');
   if (kind === 'orders') {
     const budget = find(s.budgets.filter(b => b.projectId === project.id && b.companyId === company.id), v['Approved budget'], 'approved budget');
-    const names = v['Supporting PDFs'].split('|').map(n => n.trim());
-    requireValue(names.every(Boolean), 'Supporting PDFs are required');
+    // Supporting PDFs are optional; a blank cell attaches none.
+    const listed = String(v['Supporting PDFs'] ?? '').trim();
+    const names = listed ? listed.split('|').map(n => n.trim()) : [];
+    requireValue(names.every(Boolean), 'Separate supporting PDF names with |');
     return { type: 'order.create', data: {
       companyId: company.id, projectId: project.id, budgetId: budget.id,
       supplierId: find(s.suppliers, v.Supplier, 'supplier').id,

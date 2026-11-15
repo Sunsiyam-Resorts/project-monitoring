@@ -22,6 +22,7 @@ For live login, copy `.env.example` to `.env`, configure PostgreSQL and the init
 - Requests: main orders, individual payment requests, personal action queue, date/company/project/status filters, and committed balances not yet received by Finance.
 - Master Data: companies, projects, approved USD budgets and category revisions, shared suppliers, currencies.
 - User Manager: one role (Requester, Finance, Viewer or Admin), company/group access, activation and initial passwords.
+- Deleted (Admin only): Admin deletes requests and payment requests, which then count nowhere; the page lists them with a deletion and restoration log, for review and restore.
 - Settings: permanent payment sequence with configurable display format, 10-minute locks, Admin unlock and full audit trail.
 - Per-payment printable A4 document, separate approvals and separate payment PDFs.
 - Persistent Node.js API, PostgreSQL storage, cookie sessions, scrypt password hashing, encrypted TOTP keys, rate limiting, email password reset, server-side permissions and transactional workflow updates.

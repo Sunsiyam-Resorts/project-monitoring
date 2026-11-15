@@ -14,7 +14,7 @@ Each user has exactly one role and explicit company access (or full group access
 
 - **Requester**: creates orders (parent requests) and their payment requests, edits own drafts, supplies documents Finance asks for, and submits each payment request to Finance.
 - **Finance**: reviews, holds, returns, rejects and pays every submitted payment request, approves amendments, and maintains budgets, master data and project tasks. Full operational access except User Manager and Settings; never acts on its own requests.
-- **Finance**: adds remarks, puts requests on hold, records exact payments with date, type and evidence.
+- **Finance**: adds remarks, puts requests on hold, records exact payments with date, type and optional evidence.
 - **Viewer**: read-only visibility within company access.
 - **Admin**: master data, users, settings, unlocks, rejection at any stage; temporarily also data entry during the population period.
 
@@ -37,8 +37,8 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 
 - Structure: Company (property) → Project → Approved Budget → Categories. Budgets may be in any configured currency; consolidated totals use saved USD conversions (currency units per USD 1, e.g. MVR 15.42).
 - Workflow: every payment request goes Requester → Finance → Paid; there are no approval teams or levels. Parent amendments are approved by Finance.
-- Pages: Dashboard, Requests (tabs: Requests, Finance, Balance Payments To Be Requested, My Actions), Master Data, User Manager, Audit Log, Settings (Admin only).
-- Documents: supporting PDFs on parents, requested documents and payment evidence (2 MB combined per upload action); a printable A4 payment request document printed or saved as PDF from the browser.
+- Pages: Dashboard, Requests (tabs: Requests, Finance, Balance Payments To Be Requested, My Actions), Master Data, User Manager, Audit Log, Deleted (Admin only: deleted requests and payment requests, their log, review and restore), Settings (Admin only).
+- Documents: optional supporting PDFs on parents and payment evidence, required only for documents Finance requests (2 MB combined per upload action); a printable A4 payment request document printed or saved as PDF from the browser.
 - Imports: CSV/XLSX order and payment import for data population.
 - Records are locked exclusively for 10 minutes while open; Admin can unlock (audited).
 - Access: username + password + mandatory TOTP, or ERP single sign-on from the ERP sidebar (skips portal password and TOTP by decision).

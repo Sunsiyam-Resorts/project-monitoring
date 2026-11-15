@@ -194,7 +194,7 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-target=Finance]'));
   assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-page=projects]'));
   assert.equal(w.document.querySelector('.kpi-side > .workspace-actions [data-target=inbox]'), null);
-  for (const page of ["projects", "requests", "master", "users", "audit", "settings", "dashboard"]) {
+  for (const page of ["projects", "requests", "master", "users", "audit", "deleted", "settings", "dashboard"]) {
     click(w, "[data-page=" + page + "]");
     assert.ok(w.document.querySelector(".content").textContent.length > 100);
   }
@@ -1093,4 +1093,84 @@ test('Projects list and project pages show task progress; only Finance and Admin
     assert.equal(w.document.querySelector('.task-status,[data-action=newTask],[data-action=editTask],[data-action=deleteTask]'), null);
     assert.ok(w.document.querySelector('.task-badge'));
   } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test("Admin deletes payment requests and requests, reviews them on the Deleted page and restores them", async () => {
+  // Fixed sample: r0 is Paid; one request holds only a draft payment request.
+  const seed = demoState();
+  const paid = seed.requests.find((r) => r.status === "Paid");
+  const paidOrder = seed.orders.find((o) => o.id === paid.orderId);
+  const draftOrder = seed.orders.find((o) => seed.requests.filter((r) => r.orderId === o.id).every((r) => r.status === "Draft"));
+  const draft = seed.requests.find((r) => r.orderId === draftOrder.id);
+  const w = await app(seed);
+  const saved = () => JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
+  const deleteWith = async (action, reason) => {
+    click(w, `[data-action=${action}]`);
+    w.document.querySelector("[name=reason]").value = reason;
+    submit(w, "[data-form=reason]");
+    await flush();
+  };
+  try {
+    click(w, "[data-action=demo]");
+    const paidBefore = domain.kpis(saved()).paid;
+    assert.ok(paidBefore >= paid.amount);
+    assert.ok(w.document.querySelector(".shell > .sidebar [data-page=deleted]"));
+    // A request with a processed payment request offers deletion only after that one goes.
+    click(w, "[data-page=requests]");
+    click(w, `[data-action=openOrder][data-id="${paidOrder.id}"]`);
+    await flush();
+    assert.ok(w.document.querySelector("[data-action=deleteOrder]").disabled);
+    assert.match(w.document.querySelector("#deleteOrderNote").textContent, new RegExp(paid.number));
+    click(w, `#modal [data-action=openRequest][data-id="${paid.id}"]`);
+    await flush();
+    await deleteWith("deleteRequest", "Entered against the wrong order");
+    assert.equal(w.document.querySelector("#modal").open, false);
+    assert.equal(saved().requests.find((r) => r.id === paid.id).deleted.reason, "Entered against the wrong order");
+    assert.equal(domain.kpis(saved()).paid, domain.money(paidBefore - paid.amount / paid.rate));
+    // A request holding only a draft is deleted together with that draft.
+    click(w, `[data-action=openOrder][data-id="${draftOrder.id}"]`);
+    await flush();
+    assert.equal(w.document.querySelector("[data-action=deleteOrder]").disabled, false);
+    await deleteWith("deleteOrder", "Raised twice");
+    assert.ok(saved().orders.find((o) => o.id === draftOrder.id).deleted);
+    assert.equal(saved().requests.find((r) => r.id === draft.id).deleted.withOrder, draftOrder.id);
+    assert.equal(w.document.querySelector(`[data-action=openOrder][data-id="${draftOrder.id}"]`), null);
+    // The Deleted page lists both, with the draft shown under its request, and logs each deletion.
+    click(w, ".shell > .sidebar [data-page=deleted]");
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Deleted");
+    const listed = () => [...w.document.querySelectorAll(".deleted-table tbody tr td:first-child strong")].map((x) => x.textContent);
+    assert.deepEqual(listed().sort(), [paid.number, draftOrder.number].sort());
+    assert.match(w.document.querySelector(".deleted-table").textContent, new RegExp(`with draft ${draft.number}`));
+    assert.equal(w.document.querySelectorAll(".deletion-log tbody tr").length, 3);
+    click(w, `[data-action=openDeleted][data-id="${paid.id}"]`);
+    await flush();
+    assert.match(w.document.querySelector("#modalTitle").textContent, /Deleted payment request/);
+    assert.match(w.document.querySelector("#modal").textContent, /Entered against the wrong order/);
+    click(w, "#modal [data-action=restoreDeleted]");
+    submit(w, "[data-form=restore]");
+    await flush();
+    assert.equal(saved().requests.find((r) => r.id === paid.id).deleted, undefined);
+    assert.equal(domain.kpis(saved()).paid, paidBefore);
+    assert.deepEqual(listed(), [draftOrder.number]);
+    click(w, `.deleted-table [data-action=restoreDeleted][data-id="${draftOrder.id}"]`);
+    submit(w, "[data-form=restore]");
+    await flush();
+    assert.equal(saved().orders.find((o) => o.id === draftOrder.id).deleted, undefined);
+    assert.equal(saved().requests.find((r) => r.id === draft.id).deleted, undefined);
+    assert.equal(w.document.querySelector(".deleted-table"), null);
+    assert.equal(w.document.querySelectorAll(".deletion-log tbody tr").length, 6);
+    // Finance never sees the page or the delete buttons.
+    await actor(w, "fin");
+    assert.equal(w.document.querySelector(".shell > .sidebar [data-page=deleted]"), null);
+    click(w, "[data-page=requests]");
+    click(w, `[data-action=openOrder][data-id="${paidOrder.id}"]`);
+    await flush();
+    assert.equal(w.document.querySelector("[data-action=deleteOrder]"), null);
+    click(w, `#modal [data-action=openRequest][data-id="${paid.id}"]`);
+    await flush();
+    assert.equal(w.document.querySelector("[data-action=deleteRequest]"), null);
+  } finally {
+    w.close();
+    await w.happyDOM.abort();
+  }
 });

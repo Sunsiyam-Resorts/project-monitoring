@@ -2,6 +2,8 @@
 
 **Revision 2 (November 2026) supersedes everything below where they differ.** The Purchasing and Planning teams and every approval stage are removed: a submitted payment request goes straight to Finance. Roles are Requester, Finance, Viewer and Admin. Finance has full operational access except User Manager and Settings: it maintains companies, projects, approved budgets (with revisions), suppliers and currencies, imports records, raises orders and payment requests, approves amendments, rejects orders, releases locks and deletes recorded payments. Nobody acts on a request or amendment they raised themselves, so a Finance user's own request is processed by another Finance user or Admin. Projects carry tasks (name, status To do / In progress / Done, optional owner and due date); a project's progress is the share of its tasks that are Done, and only Finance and Admin change tasks. The Projects page lists projects with their progress; each project page shows that project's budget, payments, progress, tasks, breakdowns and activity. Existing data migrates once: requests and amendments waiting at Reviewer, Approval 1 or Approval 2 move to Finance (committing their order if needed), Reviewer and Approver accounts become Viewer, and each change is audited.
 
+**Revision 3 (November 2026) supersedes everything below where they differ.** Supporting PDFs are optional when creating or amending a request, importing requests and recording a payment; answering Finance's request for additional documents still needs at least one PDF. Only Admin can delete a request or a payment request, with a mandatory reason, from its record view. A payment request can be deleted whatever its status, including Paid. A request can be deleted only when none of its payment requests has been processed: its draft payment requests are deleted with it, and every other payment request must be deleted first. A deleted record keeps all its details, history, payment and documents, but counts nowhere: it leaves every list and queue, the dashboard and its trends, balances, budget usage, currency figures and duplicate checks, and nobody can act on it. The Admin-only Deleted page lists the deleted records and the log of every deletion and restoration; Admin reviews a record there, including its documents, and can restore it to exactly the status it had. A request is restored with the drafts deleted with it; a payment request deleted on its own is restored after its request. Restoring is refused when its PO or invoice was reused in the meantime, when it would exceed the order balance, or when its request was rejected after it was deleted. Each deletion and restoration is audited.
+
 The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). It supersedes the earlier testing-release rules below where they differ, including Planning approvals, financial calculations, amendments, payment deletion, numbering and currencies.
 
 ## Temporary Admin data population access
@@ -14,7 +16,7 @@ Admin additions to an existing order preserve its original requester; `createdBy
 
 ## Repository and scope
 
-Only `Sunsiyam-Resorts/project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted on the internal server at 130.3 behind HTTPS. Project progress is tracked from project tasks (Revision 2).
+Only `Sunsiyam-Resorts/project-monitoring` may be used, plus the ERP repository `Sunsiyam-Resorts/rene-next` for the ERP single sign-on link only. No other repository, including Test1, may be accessed or changed. GitHub is the source repository; the portal is self-hosted in Docker on the internal server at 192.168.135.39 and served at https://project.ssrsys.com (see DEPLOYMENT.md). Project progress is tracked from project tasks (Revision 2).
 
 ## Master structure
 
@@ -22,7 +24,7 @@ Company (also referred to as property) → Project → Approved Budget → Categ
 
 ## Parent and children
 
-The main request is an order anchor and is not approved. It holds company, project, approved budget, supplier, PO number, optional invoice number, description, currency, full amount, multiple category allocations, team and supporting PDFs. Allocations in order currency must sum to the full amount. One parent covers one project and one budget, with multiple categories within that budget.
+The main request is an order anchor and is not approved. It holds company, project, approved budget, supplier, PO number, optional invoice number, description, currency, full amount, multiple category allocations, team and optional supporting PDFs. Allocations in order currency must sum to the full amount. One parent covers one project and one budget, with multiple categories within that budget.
 
 Each child payment request has a permanent generated number, request date, percentage of the original full amount, calculated exact amount, terms, requester, independent status, approval history, Finance remarks and its own payment evidence. No due date. The same parent information is reused for further part or balance requests. Paid + non-rejected pending requests cannot exceed the order total. Rejected requests release their reserved instalment amount.
 
@@ -55,7 +57,7 @@ Checks run only on parents. Block same PO within same company across both Planni
 
 ## Finance
 
-Company access grants visibility; Finance role grants payment processing. Any Finance user with access to that company can act. Remarks may be added before payment. On Hold needs a reason; release returns to Finance. Record exact requested amount only; require payment date, type (Cheque, Transfer, TT) and a separate payment supporting PDF. No partial settlement of a child. To split a payment, create appropriately sized child requests first.
+Company access grants visibility; Finance role grants payment processing. Any Finance user with access to that company can act. Remarks may be added before payment. On Hold needs a reason; release returns to Finance. Record exact requested amount only; require payment date and type (Cheque, Transfer, TT); separate payment supporting PDFs are optional (Revision 3). No partial settlement of a child. To split a payment, create appropriately sized child requests first.
 
 ## Access and login
 
@@ -79,13 +81,13 @@ Dashboard trends: year-to-date, one point per calendar month (UTC) from 1 Januar
 
 Requests: all parent and child records, My action queue and Not received by Finance; date/company/project/status filters. Date and status apply to payment lists; commitment tab is the current full position.
 
-Master Data, User Manager, Admin Settings. Settings allow number format changes using {YYYY} and {SEQ}; sequence is never editable/resettable.
+Master Data, User Manager, Admin Settings. Deleted (Admin only): deleted requests and payment requests, the deletion and restoration log, review and restore (Revision 3). Settings allow number format changes using {YYYY} and {SEQ}; sequence is never editable/resettable.
 
 View Payment Request displays a printable A4 document including main details, child amount and terms, requester, current child approvals and dates, status, prior paid instalments and Finance remarks/payment details. Print/Save as PDF uses the browser.
 
 ## Initial implementation choices and limits
 
-- PDF supporting is mandatory at parent creation and each payment completion. Combined parent supporting limit: 2 MB; each child payment PDF: 2 MB. These explicit release limits keep uploads below serverless request limits.
+- Supporting PDFs are optional at parent creation and payment completion (Revision 3) and required only when Finance asks for additional documents. Combined parent supporting limit: 2 MB; each child payment PDF: 2 MB. These explicit release limits keep uploads below serverless request limits.
 - PDF contents are stored in PostgreSQL for the first testing release; they are fetched only by an authorised, lock-owning user and omitted from general state responses. Move to private object storage before substantial document volume.
 - Data is persisted as a JSONB workspace under one transactional lock: simple and atomic for initial testing, with limited high-volume concurrency. Normalised storage and incremental queries can be introduced after testing.
 - The demo is not a secure multi-user service and never writes to the live database.

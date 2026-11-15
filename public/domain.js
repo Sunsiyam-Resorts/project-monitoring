@@ -95,6 +95,12 @@ export function projectProgress(s, projectId, now = Date.now()) {
     pct: ts.length ? Math.round((done / ts.length) * 100) : null,
   };
 }
+// Admin can delete a request (main order) or a payment request. A deleted record keeps all
+// its details under `deleted` and can be restored by Admin, but until then every list,
+// balance, total and check treats it as if it did not exist.
+export const isDeleted = (x) => !!x?.deleted;
+const liveOrders = (s) => s.orders.filter((o) => !o.deleted);
+const liveRequests = (s) => s.requests.filter((r) => !r.deleted);
 export const approved = (r) =>
   ["Finance", "On Hold", "Documents Required", "Paid"].includes(r.status);
 const onHold = (r) => r.status === "On Hold" ||
@@ -111,7 +117,7 @@ export function budgetAmount(b) {
 }
 export const reservation = (s, o, exclude) =>
   money(
-    s.requests
+    liveRequests(s)
       .filter(
         (r) =>
           r.orderId === o.id && r.id !== exclude && r.status !== "Rejected",
@@ -139,7 +145,7 @@ export const canReject = (u, r) =>
 export function kpiTrend(s, company = "", project = "", { now = Date.now() } = {}) {
   const inScope = (x) => (!company || x.companyId === company) && (!project || x.projectId === project);
   const bs = s.budgets.filter(inScope);
-  const scoped = s.orders.filter(inScope);
+  const scoped = liveOrders(s).filter(inScope);
   const os = scoped.filter((o) => committed(s, o));
   const live = new Map(scoped.filter((o) => !o.rejectedAt).map((o) => [o.id, o]));
   const time = (v) => (v ? Date.parse(v) : NaN);
@@ -153,7 +159,7 @@ export function kpiTrend(s, company = "", project = "", { now = Date.now() } = {
     .filter((a) => a.entity === r.id && ["request.hold", "request.resume", "request.pay", "request.reject"].includes(a.action))
     .map((a) => ({ action: a.action, at: time(a.at) }))
     .sort((a, b) => a.at - b.at);
-  const requests = s.requests.filter((r) => live.has(r.orderId)).map((r) => {
+  const requests = liveRequests(s).filter((r) => live.has(r.orderId)).map((r) => {
     const o = live.get(r.orderId);
     const log = events(r);
     const approvedAt = r.finalApprovedAt
@@ -214,13 +220,13 @@ export function kpiTrend(s, company = "", project = "", { now = Date.now() } = {
   return series;
 }
 export function kpis(s, company = "", project = "") {
-  const os = s.orders.filter(
+  const os = liveOrders(s).filter(
       (o) =>
         (!company || o.companyId === company) &&
         (!project || o.projectId === project),
     ),
     ids = new Set(os.filter((o) => !o.rejectedAt).map((o) => o.id)),
-    rs = s.requests.filter((r) => ids.has(r.orderId) && approved(r));
+    rs = liveRequests(s).filter((r) => ids.has(r.orderId) && approved(r));
   const bs = s.budgets.filter(
     (b) =>
       (!company || b.companyId === company) &&
@@ -258,7 +264,7 @@ export function kpis(s, company = "", project = "") {
     hold,
     balance,
     notReceived: balance,
-    approval: s.requests.filter(
+    approval: liveRequests(s).filter(
       (r) =>
         ids.has(r.orderId) &&
         RETIRED_STAGES.includes(r.status),
@@ -269,7 +275,7 @@ export function kpis(s, company = "", project = "") {
   };
 }
 export function currencyStats(s, company = "", project = "") {
-  const os = s.orders.filter(
+  const os = liveOrders(s).filter(
       (o) =>
         (!company || o.companyId === company) &&
         (!project || o.projectId === project) &&
@@ -285,7 +291,7 @@ export function currencyStats(s, company = "", project = "") {
             (b.currency || "USD") === c.id,
         ),
         orders = os.filter((o) => o.currency === c.id && committed(s, o)),
-        rs = s.requests.filter(
+        rs = liveRequests(s).filter(
           (r) => ids.has(r.orderId) && approved(r) && r.currency === c.id,
         ),
         sum = (fn) => money(rs.filter(fn).reduce((a, r) => a + r.amount, 0));
@@ -308,7 +314,7 @@ export function currencyStats(s, company = "", project = "") {
 }
 export function categoryUsed(s, budgetId, categoryId, exclude) {
   return money(
-    s.orders
+    liveOrders(s)
       .filter(
         (o) => o.id !== exclude && o.budgetId === budgetId && committed(s, o),
       )
@@ -512,8 +518,18 @@ export function visibleState(s, u) {
       if (k === "data" && typeof v[k] === "string") delete v[k];
       else strip(v[k]);
   }
-  out.orders.forEach(strip);
-  out.requests.forEach(strip);
+  // Deleted records leave every working list. Only Admin receives them, separately, for
+  // the Deleted page where they are reviewed and restored.
+  const deletedOrders = out.orders.filter(isDeleted),
+    deletedRequests = out.requests.filter(isDeleted);
+  out.orders = out.orders.filter((o) => !o.deleted);
+  out.requests = out.requests.filter((r) => !r.deleted);
+  if (u.role === "Admin") {
+    out.deletedOrders = deletedOrders;
+    out.deletedRequests = deletedRequests;
+  }
+  for (const list of [out.orders, out.requests, out.deletedOrders || [], out.deletedRequests || []])
+    list.forEach(strip);
   return out;
 }
 function documentCheck(f) {
@@ -530,7 +546,9 @@ function documentCheck(f) {
     "PDF must be valid and at most 2 MB",
   );
 }
-function documents(files, required = true) {
+// Supporting PDFs are optional on requests, amendments and payments; they are required only
+// when Finance has explicitly asked for additional documents.
+function documents(files = [], required = false) {
   need(
     Array.isArray(files) && (!required || files.length),
     "Attach supporting PDFs",
@@ -542,15 +560,22 @@ function documents(files, required = true) {
   );
   return files;
 }
-function findOrder(s, id, u) {
+function findOrder(s, id, u, { deleted = false } = {}) {
   const o = s.orders.find((o) => o.id === id);
   need(o && access(u, o.companyId), "Order not available");
+  need(deleted || !o.deleted, "This request has been deleted");
   return o;
 }
-function findRequest(s, id, u) {
+function findRequest(s, id, u, { deleted = false } = {}) {
   const r = s.requests.find((r) => r.id === id);
   need(r && access(u, r.companyId), "Request not available");
+  need(deleted || !r.deleted, "This payment request has been deleted");
   return r;
+}
+function restoreRecord(x, u, at) {
+  x.deletionHistory ||= [];
+  x.deletionHistory.push({ ...x.deleted, restoredAt: at, restoredBy: u.name, restoredById: u.id });
+  delete x.deleted;
 }
 function checkLock(s, u, id, now, required = true) {
   const l = s.locks[id];
@@ -569,7 +594,9 @@ export function supportingFile(s, u, { id, kind, index = 0, version, side = "dat
   need(Number.isInteger(Number(index)) && Number(index) >= 0, "Invalid file index");
   const parent = ["order", "amendment", "amendment-history", "amendment-attempt"].includes(kind);
   need(parent || ["request", "payment"].includes(kind), "Invalid document type");
-  const rec = parent ? findOrder(s, id, u) : findRequest(s, id, u);
+  // Admin reviews the documents of deleted records on the Deleted page.
+  const review = { deleted: u.role === "Admin" };
+  const rec = parent ? findOrder(s, id, u, review) : findRequest(s, id, u, review);
   checkLock(s, u, id, now);
   let files;
   if (kind === "order") files = rec.files;
@@ -629,7 +656,7 @@ function validateOrder(s, u, d, exclude) {
     "Category amounts must equal the full order amount",
   );
   need(
-    !s.orders.some(
+    !liveOrders(s).some(
       (o) =>
         o.id !== exclude &&
         o.companyId === d.companyId &&
@@ -639,7 +666,7 @@ function validateOrder(s, u, d, exclude) {
   );
   if (text(d.invoice))
     need(
-      !s.orders.some(
+      !liveOrders(s).some(
         (o) =>
           o.id !== exclude &&
           o.supplierId === d.supplierId &&
@@ -647,7 +674,7 @@ function validateOrder(s, u, d, exclude) {
       ),
       "Duplicate invoice number for this supplier",
     );
-  documents(d.files);
+  const files = documents(d.files ?? []);
   return {
     companyId: d.companyId,
     projectId: d.projectId,
@@ -663,7 +690,7 @@ function validateOrder(s, u, d, exclude) {
       categoryId: a.categoryId,
       amount: money(a.amount),
     })),
-    files: d.files,
+    files,
   };
 }
 function paymentData(s, o, d, exclude) {
@@ -776,6 +803,8 @@ export function apply(s, u, a, now = Date.now()) {
       s.requests.find((x) => x.id === a.id) ||
       s.orders.find((x) => x.id === a.id);
     need(rec && access(u, rec.companyId), "Record not available");
+    // Only Admin opens deleted records (to review them); anyone may let go of a lock.
+    need(a.type === "unlock" || !rec.deleted || u.role === "Admin", "Record not available");
     const l = s.locks[a.id];
     if (a.type === "lock") {
       checkLock(s, u, a.id, now, false);
@@ -920,7 +949,7 @@ export function apply(s, u, a, now = Date.now()) {
     need(!o.rejectedAt, "Request already rejected");
     need(text(d.reason), "Reason is required");
     need(
-      s.requests
+      liveRequests(s)
         .filter((r) => r.orderId === o.id)
         .every((r) => r.status === "Rejected"),
       "Reject all child payment requests first; paid requests require Admin payment deletion first",
@@ -930,6 +959,84 @@ export function apply(s, u, a, now = Date.now()) {
     o.rejectionReason = text(d.reason);
     company = o.companyId;
     detail = d.reason;
+  } else if (a.type === "order.delete") {
+    // A request goes only when nothing has been processed under it: its draft payment
+    // requests are deleted with it; any other payment request must be deleted first.
+    need(u.role === "Admin", "Only Admin can delete a request");
+    const o = findOrder(s, a.id, u);
+    checkLock(s, u, o.id, now);
+    need(text(d.reason), "Reason is required");
+    const children = liveRequests(s).filter((r) => r.orderId === o.id);
+    const processed = children.filter((r) => r.status !== "Draft");
+    need(
+      !processed.length,
+      `Delete its processed payment requests first: ${processed.map((r) => r.number).join(", ")}`,
+    );
+    for (const r of children) checkLock(s, u, r.id, now, false);
+    const mark = { id: randomId(), at, by: u.name, userId: u.id, reason: text(d.reason) };
+    o.deleted = mark;
+    for (const r of children) {
+      r.deleted = { ...mark, withOrder: o.id };
+      delete s.locks[r.id];
+    }
+    delete s.locks[o.id];
+    entity = o.id;
+    company = o.companyId;
+    detail = `${o.number}${children.length ? ` and ${children.length} draft payment request${children.length === 1 ? "" : "s"}` : ""}: ${text(d.reason)}`;
+  } else if (a.type === "request.delete") {
+    // Any payment request, whatever its status; its payment and history are kept for review.
+    need(u.role === "Admin", "Only Admin can delete a payment request");
+    const r = findRequest(s, a.id, u);
+    checkLock(s, u, r.id, now);
+    need(text(d.reason), "Reason is required");
+    r.deleted = { id: randomId(), at, by: u.name, userId: u.id, reason: text(d.reason) };
+    delete s.locks[r.id];
+    entity = r.id;
+    company = r.companyId;
+    detail = `${r.number} (${r.status}): ${text(d.reason)}`;
+  } else if (a.type === "order.restore") {
+    need(u.role === "Admin", "Only Admin can restore a request");
+    const o = findOrder(s, a.id, u, { deleted: true });
+    need(o.deleted, "This request is not deleted");
+    checkLock(s, u, o.id, now, false);
+    // References reused while it was deleted would otherwise become duplicates.
+    need(
+      !liveOrders(s).some((x) => x.companyId === o.companyId && norm(x.po) === norm(o.po)),
+      `Another request in this company now uses PO ${o.po}`,
+    );
+    if (text(o.invoice))
+      need(
+        !liveOrders(s).some((x) => x.supplierId === o.supplierId && norm(x.invoice) === norm(o.invoice)),
+        `Another request from this supplier now uses invoice ${o.invoice}`,
+      );
+    const children = s.requests.filter((r) => r.orderId === o.id && r.deleted?.id === o.deleted.id);
+    restoreRecord(o, u, at);
+    for (const r of children) restoreRecord(r, u, at);
+    entity = o.id;
+    company = o.companyId;
+    detail = `${o.number}${children.length ? ` and ${children.length} draft payment request${children.length === 1 ? "" : "s"}` : ""}`;
+  } else if (a.type === "request.restore") {
+    need(u.role === "Admin", "Only Admin can restore a payment request");
+    const r = findRequest(s, a.id, u, { deleted: true });
+    need(r.deleted, "This payment request is not deleted");
+    const o = s.orders.find((o) => o.id === r.orderId);
+    need(o && !o.deleted, "Restore its main request first");
+    checkLock(s, u, r.id, now, false);
+    if (r.status !== "Rejected") {
+      need(!o.rejectedAt, "Its main request was rejected after this payment request was deleted");
+      const limit =
+        o.amendment && o.amendment.status !== "Rejected"
+          ? Math.min(o.total, o.amendment.data.total)
+          : o.total;
+      need(
+        parentAmount(r) + reservation(s, o) <= limit + 0.005,
+        "Restoring it would exceed the request's remaining balance; reject or delete the payment requests raised since",
+      );
+    }
+    restoreRecord(r, u, at);
+    entity = r.id;
+    company = r.companyId;
+    detail = `${r.number} (${r.status})`;
   } else if (a.type === "request.create") {
     const o = findOrder(s, d.orderId, u);
     need(
@@ -955,7 +1062,6 @@ export function apply(s, u, a, now = Date.now()) {
       );
       if (action === "edit") Object.assign(r, paymentData(s, o, d, r.id));
       else {
-        need(o.files.length, "Order supporting required");
         need(
           reservation(s, o) <= o.total + 0.005,
           "Payment requests exceed order balance",
@@ -1008,7 +1114,7 @@ export function apply(s, u, a, now = Date.now()) {
         r.status === "Documents Required" && canManageRequest(u, r),
         "Only the original requester or Admin can supply these documents",
       );
-      const files = documents(d.files);
+      const files = documents(d.files, true);
       r.files.push(...files);
       r.history.push({
         stage: r.status,
@@ -1059,7 +1165,7 @@ export function apply(s, u, a, now = Date.now()) {
             d.paymentDate <= today(now),
           "Enter a valid payment date no later than today",
         );
-        const files = documents(d.files || (d.file ? [d.file] : []));
+        const files = documents(d.files || (d.file ? [d.file] : []), false);
         r.payment = {
           amount: r.amount,
           currency: r.currency,

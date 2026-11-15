@@ -1056,7 +1056,8 @@ th:last-child {
   color: var(--warning);
 }
 .badge.OnHold,
-.badge.Rejected {
+.badge.Rejected,
+.badge.Deleted {
   background: var(--danger-soft);
   border-color: var(--danger-line);
   color: var(--danger);
@@ -3166,7 +3167,7 @@ textarea:focus {
   .badge.Paid, .badge.Active, .badge.Committed { background: var(--success-soft); color: var(--success); border-color: transparent; }
   .badge.Finance, .badge.Reviewer, .badge.Approval1, .badge.Approval2 { background: var(--info-soft); color: var(--info); }
   .badge.OnHold, .badge.DocumentsRequired { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
-  .badge.Rejected { background: var(--danger-soft); color: var(--danger); }
+  .badge.Rejected, .badge.Deleted { background: var(--danger-soft); color: var(--danger); }
   .badge.Draft, .badge.Inactive { background: var(--surface-soft); color: var(--muted); }
   .table-footer { padding: 16px 26px; background: var(--surface); font-size: 11px; }
   .children-row > td { background: var(--surface-soft); padding: 0 16px 16px !important; }

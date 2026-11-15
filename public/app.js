@@ -46,7 +46,7 @@ function importForm() {
   importPreview = null;
   const kinds = page === 'master' ? [masterTab] : ['orders', 'payments'];
   const labels = { companies: 'Companies', projects: 'Projects', suppliers: 'Suppliers', currencies: 'Currencies', budgets: 'Approved budgets', orders: 'New requests with first payment', payments: 'Additional payment requests' };
-  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts; each payment request is submitted to Finance separately.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
+  showModal('Import CSV or Excel', `<form data-form="import"><div class="notice">Create new records only. Existing records and budget revisions must be edited individually. Requests are imported as drafts; each payment request is submitted to Finance separately.</div>${field('Import type', `<select name="importKind">${kinds.map(k => `<option value="${k}">${labels[k]}</option>`).join('')}</select>`)}<div class="actions"><button type="button" data-action="importCSV">Download CSV template</button><button type="button" data-action="importXLSX">Download Excel template</button></div><p class="help">Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</p>${field('CSV or XLSX file · maximum 2 MB', '<input name="importFile" type="file" accept=".csv,.xlsx" required>')}<div id="importSupporting" ${kinds[0] === 'orders' ? '' : 'hidden'}>${field('Supporting PDFs for new requests · combined maximum 2 MB', '<input name="importPDFs" type="file" accept="application/pdf,.pdf" multiple>')}<p class="help">For new requests, list attached PDF filenames in Supporting PDFs, separated by |, or leave it blank when there are none. Currency fields use configured three-letter codes. Approved budget, supplier and category names must match Master Data. Blank payment date defaults to today; blank payment currency uses the order currency.</p></div><div id="importPreview" aria-live="polite"></div>${footer('Validate and preview', 'The entire file must pass validation before anything is saved.')}</form>`);
 }
 async function importTemplate(excel) {
   const kind = document.querySelector('[name=importKind]').value, headers = importFields[kind];
@@ -452,7 +452,7 @@ function render() {
     drawer: appSidebar({ ...sidebarProps, scope: scopeFor('drawerCompany'), actor: actorFor('drawerActor'), drawer: true }),
     header: appHeader(),
     banner: demo ? '<div class="demo-banner"><span><strong>Demo workspace</strong>Sample data · browser-local changes<span class="demo-explanation"> · Role switching is for testing only.</span></span><a href="#" data-action="resetDemo">Reset sample data</a></div>' : '',
-    content: page === 'dashboard' ? dashboard() : page === 'projects' ? projectsPage() : page === 'project' ? projectPage() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : page === 'audit' ? auditPage() : settingsPage(),
+    content: page === 'dashboard' ? dashboard() : page === 'projects' ? projectsPage() : page === 'project' ? projectPage() : page === 'requests' ? requestsPage() : page === 'master' ? masterPage() : page === 'users' ? usersPage() : page === 'audit' ? auditPage() : page === 'deleted' ? deletedPage() : settingsPage(),
   });
   $('#navigationDrawer').addEventListener('close', () => $('[data-action=openNavigation]')?.setAttribute('aria-expanded', 'false'));
   restoreDisclosures();
@@ -627,6 +627,8 @@ const ACTION_LABELS = {
   "request.remark": "Remark added", "master.save": "Master data saved", "user.save": "User saved", "settings.save": "Settings saved",
   "import.create": "Records imported", lock: "Record locked", unlock: "Record unlocked",
   "task.save": "Task saved", "task.delete": "Task deleted", "workflow.migrated": "Moved to Finance", "user.migrated": "Role retired",
+  "order.delete": "Request deleted", "request.delete": "Payment request deleted",
+  "order.restore": "Request restored", "request.restore": "Payment request restored",
 };
 const actionLabel = (code) => ACTION_LABELS[code] || (/^[a-z]+\.[a-zA-Z]+$/.test(code) ? code.replace(".", " ").replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : code);
 function orderMatch(o) {
@@ -830,13 +832,81 @@ function auditPage() {
   const pager = pages > 1 ? `<nav class="pager" aria-label="Audit log pages"><button data-action="auditGo" data-n="${auditPageNo - 1}" ${auditPageNo === 1 ? "disabled" : ""} aria-label="Previous page"><span class="pager-back">${icon("chevron")}</span>Previous</button><span class="pager-pages">${nums.map((n, i) => `${i && n - nums[i - 1] > 1 ? '<span class="pager-gap" aria-hidden="true">…</span>' : ""}<button data-action="auditGo" data-n="${n}" ${n === auditPageNo ? 'aria-current="page" class="current"' : ""} aria-label="Page ${n}">${n}</button>`).join("")}</span><button data-action="auditGo" data-n="${auditPageNo + 1}" ${auditPageNo === pages ? "disabled" : ""} aria-label="Next page">Next${icon("chevron")}</button></nav>` : "";
   return `${pageHeader("ADMINISTRATION", "Audit Log", "Every recorded action, newest first. Entries cannot be edited or removed in the portal.")}<div class="filters audit-filters"><div><label for="auditAction">Action</label><select id="auditAction">${choices(actions, f.action, "All actions")}</select></div><div><label for="auditUser">User</label><select id="auditUser">${choices(users, f.user, "All users")}</select></div><div><label for="auditCompany">Company</label><select id="auditCompany">${choices(companies, f.company, "All companies")}</select></div><div><label for="auditFrom">From</label><input id="auditFrom" type="date" value="${esc(f.from)}"></div><div><label for="auditTo">To</label><input id="auditTo" type="date" value="${esc(f.to)}"></div>${active ? '<button class="linkbtn" data-action="auditClear">Clear filters</button>' : ""}</div><div class="list-toolbar"><div class="searchbox">${icon("search")}<input id="auditSearch" value="${esc(auditSearch)}" aria-label="Search the audit log" placeholder="Search action, user, reference or detail"></div><small>${rows.length ? `${start + 1}–${start + shown.length} of ${rows.length}` : "0"} entries${rows.length !== all.length ? ` · ${all.length} in total` : ""}</small></div><section class="panel flush"><div class="table-wrap"><table class="audit-table"><thead><tr><th>Date and time</th><th>Action</th><th>User</th><th>Detail</th><th>Company</th></tr></thead><tbody>${shown.map((x) => `<tr><td class="audit-when">${date(x.at)}</td><td><strong>${esc(actionLabel(x.action))}</strong></td><td>${esc(x.user)}</td><td>${esc(x.detail || "—")}</td><td>${x.companyId ? esc(name("companies", x.companyId)) : "Group"}</td></tr>`).join("")}</tbody></table></div>${!rows.length ? empty(active ? "No matching entries" : "No audit entries yet", active ? "Adjust or clear the filters." : "Recorded actions will appear here.") : ""}<div class="table-footer"><span>Page ${auditPageNo} of ${pages} · ${AUDIT_PAGE_SIZE} per page</span><span>Application audit trail · read-only</span></div></section>${pager}`;
 }
+// Deleted page (Admin only). Lists the requests and payment requests Admin deleted, newest
+// first, and the full log of deletions and restorations. A deleted record counts nowhere
+// until it is restored; its draft payment requests deleted with it come back with it.
+const allOrders = () => [...state.orders, ...(state.deletedOrders || [])];
+const allRequests = () => [...state.requests, ...(state.deletedRequests || [])];
+function deletedRecord(id, kind) {
+  return (kind === "order" ? state.deletedOrders : state.deletedRequests)?.find((x) => x.id === id);
+}
+function deletedPage() {
+  const orders = state.deletedOrders || [], requests = state.deletedRequests || [];
+  const orderOf = (r) => allOrders().find((o) => o.id === r.orderId);
+  const rows = [
+    ...orders.map((o) => ({ kind: "order", x: o, o })),
+    ...requests.filter((r) => !r.deleted.withOrder).map((r) => ({ kind: "request", x: r, o: orderOf(r) })),
+  ].sort((m, n) => Date.parse(n.x.deleted.at) - Date.parse(m.x.deleted.at));
+  const list = rows.length
+    ? `<div class="table-wrap"><table class="work-table deleted-table"><thead><tr><th>Record</th><th>Supplier / PO</th><th>Project / Company</th><th class="right">Amount</th><th>Status</th><th>Deleted</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map(({ kind, x, o }) => {
+        const drafts = kind === "order" ? requests.filter((r) => r.deleted.withOrder === x.id && r.deleted.id === x.deleted.id) : [];
+        const blocked = kind === "request" && o?.deleted;
+        return `<tr><td data-label="Record"><strong>${esc(x.number)}</strong><span class="secondary">${kind === "order" ? "Request" : `Payment request · ${esc(o?.number || "")}`}${drafts.length ? ` · with draft ${drafts.map((r) => esc(r.number)).join(", ")}` : ""}</span></td><td data-label="Supplier / PO">${esc(name("suppliers", o?.supplierId))}<span class="secondary">${esc(o?.po || "")}</span></td><td data-label="Project / Company">${esc(name("projects", o?.projectId))}<span class="secondary">${esc(name("companies", o?.companyId))}</span></td><td data-label="Amount" class="right"><strong><span class="currency">${esc(kind === "order" ? x.currency : x.currency || o?.currency)}</span>${fmt(kind === "order" ? x.total : x.amount)}</strong></td><td data-label="Status">${kind === "order" ? (x.rejectedAt ? badge("Rejected") : '<span class="secondary">—</span>') : badge(x.status)}</td><td data-label="Deleted">${date(x.deleted.at)}<span class="secondary">${esc(x.deleted.by)} · ${esc(x.deleted.reason)}</span></td><td data-label="Actions"><div class="actions" style="margin-top:0"><button data-action="openDeleted" data-kind="${kind}" data-id="${x.id}">Review</button><button class="primary" data-action="restoreDeleted" data-kind="${kind}" data-id="${x.id}" ${blocked ? `disabled title="Restore its request ${esc(o.number)} first"` : ""}>Restore</button></div>${blocked ? `<small class="secondary">Restore ${esc(o.number)} first</small>` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>`
+    : empty("Nothing is deleted", "Requests and payment requests that Admin deletes appear here until they are restored.");
+  const kindOf = (x) => (allOrders().includes(x) ? "Request" : "Payment request");
+  const events = [...allOrders(), ...allRequests()]
+    .flatMap((x) => [...(x.deletionHistory || []), ...(x.deleted ? [x.deleted] : [])].flatMap((e) => [
+      { at: e.at, event: "Deleted", x, by: e.by, reason: e.reason, withOrder: e.withOrder },
+      ...(e.restoredAt ? [{ at: e.restoredAt, event: "Restored", x, by: e.restoredBy, reason: "", withOrder: e.withOrder }] : []),
+    ]))
+    .sort((m, n) => Date.parse(n.at) - Date.parse(m.at));
+  const log = events.length
+    ? `<div class="table-wrap"><table class="work-table deletion-log"><thead><tr><th>Date / Time</th><th>Event</th><th>Record</th><th>By</th><th>Reason</th></tr></thead><tbody>${events.map((e) => `<tr><td data-label="Date / Time">${date(e.at)}</td><td data-label="Event">${badge(e.event)}</td><td data-label="Record"><strong>${esc(e.x.number)}</strong><span class="secondary">${kindOf(e.x)}${e.withOrder ? ` · with ${esc(allOrders().find((o) => o.id === e.withOrder)?.number || "its request")}` : ""}</span></td><td data-label="By">${esc(e.by)}</td><td data-label="Reason">${esc(e.reason || "—")}</td></tr>`).join("")}</tbody></table></div>`
+    : '<p class="help">No deletions recorded yet.</p>';
+  return `${pageHeader("ADMINISTRATION", "Deleted", "Requests and payment requests deleted by Admin. They count nowhere in the portal until restored.")}<section class="panel"><header class="card-head"><h2>Deleted records</h2><small>${rows.length}</small></header><p class="help">A request can be deleted only after its processed payment requests are deleted; its drafts go with it. Restore a request before any payment request deleted under it.</p>${list}</section><section class="panel section-gap"><header class="card-head"><h2>Deletion log</h2><small>${events.length}</small></header>${log}</section>`;
+}
+async function openDeleted(id, kind) {
+  if (selected && selected !== id) await closeModal();
+  if (!$("#modal").open) focusReturn = document.activeElement;
+  await command({ type: "lock", id });
+  selected = id;
+  deletedDetail(id, kind);
+}
+function deletedDetail(id, kind) {
+  const x = deletedRecord(id, kind);
+  if (!x) return closeModal();
+  const o = kind === "order" ? x : allOrders().find((o) => o.id === x.orderId),
+    del = x.deleted,
+    blocked = kind === "request" && o.deleted;
+  const notice = `<div class="notice warn"><strong>Deleted ${date(del.at)} by ${esc(del.by)}</strong><p>${esc(del.reason)}</p>${del.withOrder ? `<p>Deleted together with its request ${esc(o.number)}. Restoring the request restores it.</p>` : ""}</div>`;
+  const restore = del.withOrder
+    ? ""
+    : `<div class="actions"><button class="primary" data-action="restoreDeleted" data-kind="${kind}" data-id="${id}" ${blocked ? "disabled" : ""}>Restore ${kind === "order" ? "request" : "payment request"}</button></div>${blocked ? `<p class="help">Restore its request ${esc(o.number)} first.</p>` : ""}`;
+  const grid = `<div class="detail-grid">${kind === "request" ? detail("Request", esc(o.number)) : ""}${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO", esc(o.po))}${detail("Invoice", esc(o.invoice || "—"))}${detail("Requested by", esc(name("users", x.requestedBy)))}</div>`;
+  if (kind === "order") {
+    const children = allRequests().filter((r) => r.orderId === id);
+    const childRows = children.length
+      ? `<div class="table-wrap"><table><thead><tr><th>Payment request</th><th>Status</th><th class="right">Amount</th><th>Deleted</th></tr></thead><tbody>${children.map((r) => `<tr><td>${esc(r.number)}</td><td>${badge(r.status)}</td><td class="right">${esc(r.currency)} ${fmt(r.amount)}</td><td>${r.deleted ? (r.deleted.id === del.id ? "With this request" : `Separately · ${date(r.deleted.at)}`) : "Not deleted"}</td></tr>`).join("")}</tbody></table></div>`
+      : '<p class="help">No payment requests.</p>';
+    return showModal("Deleted request", `<div class="detail-top"><div><div class="eyebrow">REQUEST</div><div class="detail-number">${esc(x.number)}</div></div>${badge("Deleted")}</div>${notice}<div class="detail-lead"><div><div class="eyebrow">TOTAL ORDER AMOUNT</div><div class="amount"><span>${esc(x.currency)}</span>${fmt(x.total)}</div></div><div class="lead-side"><small>USD equivalent</small><strong>USD ${fmt(x.total / x.rate)}</strong>${x.rejectedAt ? "<small>Rejected before deletion</small>" : ""}</div></div>${restore}${grid}<p class="sub">${esc(x.description)}</p><h3>Budget allocations</h3>${categoryTable(x)}<div class="detail-section"><h3>Supporting documents</h3>${fileList(x.files, "order", id) || '<p class="help">No supporting documents attached.</p>'}</div><div class="detail-section"><h3>Payment Requests</h3>${childRows}</div>`);
+  }
+  showModal("Deleted payment request", `<div class="detail-top"><div><div class="eyebrow">PAYMENT REQUEST</div><div class="detail-number">${esc(x.number)}</div></div>${badge(x.status)} ${badge("Deleted")}</div>${notice}<div class="detail-lead"><div><div class="eyebrow">REQUESTED PAYMENT · ${x.percent}% AT CREATION</div><div class="amount"><span>${esc(x.currency || o.currency)}</span>${fmt(x.amount)}</div><small>${esc(x.terms)}</small></div><div class="lead-side"><small>Full order amount</small><strong>${esc(o.currency)} ${fmt(o.total)}</strong><small>Request date ${esc(x.date)}</small></div></div>${restore}${grid}${x.payment ? `<div class="notice success"><strong>Paid ${esc(x.currency || o.currency)} ${fmt(x.payment.amount)}</strong><br>${esc(x.payment.date)} · ${esc(x.payment.type)} · ${esc(x.payment.by)}</div>${fileList(x.payment.files, "payment", id)}` : ""}<div class="detail-section"><h3>Supporting documents</h3>${fileList(x.files, "request", id) || '<p class="help">No additional supporting documents.</p>'}</div>${x.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + x.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}${reviewHistory(x.history)}`);
+}
+function restoreForm(id, kind) {
+  const x = deletedRecord(id, kind);
+  if (!x) return;
+  const drafts = kind === "order" ? (state.deletedRequests || []).filter((r) => r.deleted.withOrder === id && r.deleted.id === x.deleted.id) : [];
+  const title = kind === "order" ? "Restore request" : "Restore payment request";
+  showModal(title, `<form data-form="restore" data-id="${id}" data-kind="${kind}"><div class="form-intro"><p>${esc(x.number)} · ${kind === "order" ? `The request${drafts.length ? ` and its draft payment request${drafts.length === 1 ? "" : "s"} ${drafts.map((r) => esc(r.number)).join(", ")}` : ""} return to how they were before deletion.` : `The payment request returns with its ${esc(x.status)} status, approvals and payment details.`} It counts again in the dashboard, balances and lists.</p></div>${footer(title, "This action is recorded in the audit trail.")}</form>`);
+}
 function settingsPage() {
   return `${pageHeader("ADMINISTRATION", "Settings", "Reference formats and operational controls.")}<form data-form="settings"><section class="panel">${section("01", "Reference numbering", `<div class="grid2">${field("Request reference format", input("orderFormat", state.settings.orderFormat, "text", 'required maxlength="100"'))}${field("Payment request reference format", input("numberFormat", state.settings.numberFormat, "text", 'required maxlength="100"'))}</div><p class="help">Required tokens: {COMPANY}, {PROJECT}, {SEQ}. Optional: {YYYY}. Separate permanent sequences run for each company and project. Issued references never change.</p>`)}${section("02", "Record locks", field("Lock duration · minutes", input("lockMinutes", 10, "number", "readonly")))}${footer("Save settings", "Sequence counters cannot be edited or reset.")}</section></form><section class="panel section-gap"><div class="section-title"><h2>Active locks</h2></div>${
     Object.entries(state.locks)
       .filter(([id, l]) => l.expires > Date.now())
       .map(
         ([id, l]) =>
-          `<div class="stats-line"><span>${esc(state.orders.find((o) => o.id === id)?.number || state.requests.find((r) => r.id === id)?.number || id)} · ${esc(l.name)}</span><button data-action="unlock" data-id="${id}">Unlock</button></div>`,
+          `<div class="stats-line"><span>${esc(allOrders().find((o) => o.id === id)?.number || allRequests().find((r) => r.id === id)?.number || id)} · ${esc(l.name)}</span><button data-action="unlock" data-id="${id}">Unlock</button></div>`,
       )
       .join("") || '<p class="help">No active locks.</p>'
   }</section>`;
@@ -898,17 +968,20 @@ function orderDetail(id) {
     rs = state.requests.filter((r) => r.orderId === id),
     owner =
       canManageRequest(user, o) && !o.rejectedAt,
-    m = o.amendment;
+    m = o.amendment,
+    // Admin deletes a request only when nothing under it has been processed; drafts go with it.
+    processed = rs.filter((r) => r.status !== "Draft"),
+    admin = user.role === "Admin";
   showModal(
     "Request details",
-    `${returnPaymentId ? `<div class="actions" style="margin-top:0"><button data-action="openRequest" data-id="${returnPaymentId}" data-return-payment><span aria-hidden="true">←</span>Back to Payment Request · ${esc(state.requests.find(r=>r.id===returnPaymentId).number)}</button></div>` : ""}<div class="detail-top"><div><div class="eyebrow">REQUEST</div><div class="detail-number">${esc(o.number)}</div></div>${o.rejectedAt ? badge("Rejected") : ""}</div><div class="detail-lead"><div><div class="eyebrow">TOTAL ORDER AMOUNT</div><div class="amount"><span>${o.currency}</span>${fmt(o.total)}</div></div><div class="lead-side"><small>Remaining to request</small><strong>${o.currency} ${fmt(remainingToRequest(state, o))}</strong><small>USD ${fmt(o.total / o.rate)} full equivalent</small></div></div><div class="actions">${owner && remainingToRequest(state, o) > 0.005 ? `<button class="primary" data-action="newPayment" data-id="${id}">Create Payment Request</button>` : ""}${owner && (!m || ["Draft", "Rejected"].includes(m.status)) ? `<button data-action="editOrder" data-id="${id}">${m?.status === "Draft" ? "Correct amendment" : "Amend request details"}</button>` : ""}${isFinanceAdmin(user) && !o.rejectedAt ? `<button class="danger" data-action="parentReject" data-id="${id}">Reject request</button>` : ""}</div><div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO", esc(o.po))}${detail("Invoice", esc(o.invoice || "—"))}${detail("Requested by", esc(name("users", o.requestedBy)))}</div><p class="sub">${esc(o.description)}</p>${warnings(
+    `${returnPaymentId ? `<div class="actions" style="margin-top:0"><button data-action="openRequest" data-id="${returnPaymentId}" data-return-payment><span aria-hidden="true">←</span>Back to Payment Request · ${esc(state.requests.find(r=>r.id===returnPaymentId).number)}</button></div>` : ""}<div class="detail-top"><div><div class="eyebrow">REQUEST</div><div class="detail-number">${esc(o.number)}</div></div>${o.rejectedAt ? badge("Rejected") : ""}</div><div class="detail-lead"><div><div class="eyebrow">TOTAL ORDER AMOUNT</div><div class="amount"><span>${o.currency}</span>${fmt(o.total)}</div></div><div class="lead-side"><small>Remaining to request</small><strong>${o.currency} ${fmt(remainingToRequest(state, o))}</strong><small>USD ${fmt(o.total / o.rate)} full equivalent</small></div></div><div class="actions">${owner && remainingToRequest(state, o) > 0.005 ? `<button class="primary" data-action="newPayment" data-id="${id}">Create Payment Request</button>` : ""}${owner && (!m || ["Draft", "Rejected"].includes(m.status)) ? `<button data-action="editOrder" data-id="${id}">${m?.status === "Draft" ? "Correct amendment" : "Amend request details"}</button>` : ""}${isFinanceAdmin(user) && !o.rejectedAt ? `<button class="danger" data-action="parentReject" data-id="${id}">Reject request</button>` : ""}${admin ? `<button class="danger" data-action="deleteOrder" data-id="${id}" ${processed.length ? 'disabled aria-describedby="deleteOrderNote"' : ""}>${icon("deleted")}Delete request</button>` : ""}</div>${admin && processed.length ? `<p class="help" id="deleteOrderNote">To delete this request, first delete its processed payment requests: ${processed.map((r) => esc(r.number)).join(", ")}.</p>` : ""}<div class="detail-grid">${detail("Company", esc(name("companies", o.companyId)))}${detail("Project", esc(name("projects", o.projectId)))}${detail("Supplier", esc(name("suppliers", o.supplierId)))}${detail("PO", esc(o.po))}${detail("Invoice", esc(o.invoice || "—"))}${detail("Requested by", esc(name("users", o.requestedBy)))}</div><p class="sub">${esc(o.description)}</p>${warnings(
       state,
       o,
     )
       .map((w) => `<div class="notice warn">${esc(w)}</div>`)
       .join(
         "",
-      )}${m ? amendmentView(o) : ""}<h3>Budget allocations</h3>${categoryTable(o)}<div class="detail-section"><h3>Supporting documents</h3>${fileList(o.files, "order", id)}</div><div class="detail-section"><h3>Payment Requests</h3>${requestTable(rs)}</div>${amendmentHistory(o)}`,
+      )}${m ? amendmentView(o) : ""}<h3>Budget allocations</h3>${categoryTable(o)}<div class="detail-section"><h3>Supporting documents</h3>${fileList(o.files, "order", id) || '<p class="help">No supporting documents attached.</p>'}</div><div class="detail-section"><h3>Payment Requests</h3>${requestTable(rs)}</div>${amendmentHistory(o)}`,
   );
 }
 function fileList(files, kind, id, version = "", side = "data") {
@@ -994,7 +1067,7 @@ function requestDetail(id) {
       .map((w) => `<div class="notice warn">${esc(w)}</div>`)
       .join(
         "",
-      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount with its own supporting PDF."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit to Finance ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" && !fin && canReject(user, r) ? `<div class="actions"><button class="danger" data-action="reject" data-id="${id}">Reject payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${canManageRequest(user, r) ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${isFinanceAdmin(user) ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is reviewed by Finance separately. Corrections return to the requester, who resubmits to Finance.</p>`,
+      )}<div class="detail-section"><div class="section-title"><h3>Evidence & request document</h3><small>${o.files.length} supporting PDFs on main request</small></div><div class="actions" style="margin-top:0"><button data-action="document" data-id="${id}">${icon("requests")}View Payment Request</button><button data-action="openOrder" data-id="${o.id}" data-payment="${r.id}">${icon("master")}Main details & supporting</button></div></div>${draft || review || fin ? `<section class="decision-panel"><h3>${context}</h3><p>${draft ? "Review the amount and terms, then submit this payment request." : review ? "Check the supporting evidence and payment details before making your decision." : r.status === "On Hold" ? "Release the hold when the reason is resolved." : "Record the exact payment amount, with its supporting PDFs if you have them."}</p><div class="actions">${draft ? `<button data-action="editPayment" data-id="${id}">Edit payment terms</button><button class="primary" data-action="submit" data-id="${id}">Submit to Finance ${icon("arrow")}</button>` : ""}${review ? `<button class="primary" data-action="approve" data-id="${id}">${icon("check")}${r.status === "Reviewer" ? "Check & forward" : "Approve"}</button><button data-action="return" data-id="${id}">Return to requester</button><button class="danger" data-action="reject" data-id="${id}">Reject</button>` : ""}${fin ? `<button data-action="remark" data-id="${id}">Add remark</button>${r.status === "On Hold" ? `<button class="primary" data-action="resume" data-id="${id}">Release hold</button>` : `<button data-action="hold" data-id="${id}">${icon("hold")}Put on hold</button><button class="primary" data-action="pay" data-id="${id}">${icon("check")}Record payment</button>`}` : ""}</div></section>` : ""}${fin ? `<div class="actions"><button data-action="return" data-id="${id}">Return for correction</button><button data-action="documents" data-id="${id}">Request additional supporting</button><button class="danger" data-action="reject" data-id="${id}">Reject</button></div>` : ""}${user.role === "Admin" ? `<div class="actions">${!fin && canReject(user, r) ? `<button class="danger" data-action="reject" data-id="${id}">Reject payment request</button>` : ""}<button class="danger" data-action="deleteRequest" data-id="${id}">${icon("deleted")}Delete payment request</button></div>` : ""}${r.status === "Documents Required" ? `<div class="notice"><strong>Additional supporting required</strong><p>${esc(r.documentRequest.description)}</p></div>${canManageRequest(user, r) ? `<button class="primary" data-action="supply" data-id="${id}">Upload requested documents</button>` : ""}` : ""}${fileList(r.files, "request", id)}${r.payment ? `<div class="notice success"><strong>Paid ${r.currency || o.currency} ${fmt(r.payment.amount)}</strong><br>${r.payment.date} · ${r.payment.type} · ${esc(r.payment.by)}</div>${fileList(r.payment.files, "payment", id)}${isFinanceAdmin(user) ? `<button class="danger" data-action="deletePayment" data-id="${id}">Delete Payment</button>` : ""}` : ""}${r.remarks.length ? '<div class="detail-section"><h3>Finance remarks</h3>' + r.remarks.map((m) => `<div class="notice">${esc(m.text)}<br><small>${esc(m.by)} · ${date(m.at)}</small></div>`).join("") + "</div>" : ""}<details class="details-disclosure"><summary>Budget category allocations</summary>${categoryTable(o)}</details><details class="details-disclosure"><summary>Review history <span class="count">${r.history.length}</span></summary>${r.history.length ? r.history.map((h) => `<div class="activity"><i class="dot"></i><div><strong>${esc(h.stage)} · ${esc(h.action)}</strong><p>${esc(h.by)} · ${date(h.at)}</p><p>${esc(h.reason)}</p></div></div>`).join("") : '<p class="help">No review actions recorded yet.</p>'}</details><p class="help">Each payment request is reviewed by Finance separately. Corrections return to the requester, who resubmits to Finance.</p>`,
   );
 }
 // preset: { companyId, projectId } fills the company, project and (when the project has
@@ -1019,7 +1092,7 @@ function orderForm(id, preset = null) {
           o?.currency || "USD",
         )}</select>`,
       )}${field("Full order amount", input("total", o?.total, "number", 'required min="0.01" step="0.01"'))}${field("Description", `<textarea name="description" required maxlength="3000" placeholder="Describe the goods, services or works covered by this order.">${esc(o?.description)}</textarea>`, true)}</div>`,
-    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : scope?.budgetId ? allocationInputs(scope.budgetId) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple ${o ? "" : "required"}><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", "Each payment request goes to Finance on its own.")}</form>`,
+    )}${section("03", "Budget category allocations", `<div id="allocations">${o ? allocationInputs(o.budgetId, o.allocations) : scope?.budgetId ? allocationInputs(scope.budgetId) : '<div class="notice">Select an approved budget above to see its categories.</div>'}</div><div class="allocation-total"><span>Total allocated</span><span id="allocationReadout">${fmt(o?.total || 0)}</span></div><p class="help">Allocate the full amount in the selected order currency. Category totals must match the order. Budget overruns warn without blocking submission.</p>`)}${section("04", "Supporting documents", field("Supporting PDFs · optional · combined limit 2 MB", `<input type="file" name="files" accept="application/pdf,.pdf" multiple><div class="help">${o ? "Choose whether new uploads supplement or replace existing supporting." : "Attach the order’s supporting evidence if you have it. Files belong to this main request."}</div>${o ? '<select name="fileMode" aria-label="Supporting file update"><option value="append">Add to existing documents</option><option value="replace">Replace existing documents</option></select>' : ""}`))}${o ? section("05", "Amendment reason", field("Reason", '<textarea name="reason" required></textarea>')) : section("05", "First payment request", paymentFields(null, null, true))}${footer(o ? "Submit amendment" : "Create Request", "Each payment request goes to Finance on its own.")}</form>`,
   );
   if (o) {
     for (const name of ["companyId", "projectId", "currency"]) {
@@ -1186,6 +1259,8 @@ function reasonForm(id, action) {
       remark: "Add Finance remark",
       documents: "Request additional supporting",
       deletePayment: "Delete Payment",
+      deleteOrder: "Delete request",
+      deleteRequest: "Delete payment request",
       parentReject: "Reject request",
       amendReturn: "Return amendment",
       amendReject: "Reject amendment",
@@ -1195,7 +1270,7 @@ function reasonForm(id, action) {
       state.orders.find((o) => o.id === id);
   showModal(
     titles[action],
-    `<form data-form="reason" data-id="${id}" data-action-type="${action}"><div class="form-intro"><p>${esc(r.number)} · ${action === "documents" ? "Describe the documents needed. The requester can upload them directly back to Finance; existing approvals stay valid." : action === "deletePayment" ? "Payment details and payment supporting PDFs will be permanently cleared. The approved request returns to Pending Payment. A reason is mandatory and remains in the audit trail." : action === "parentReject" ? "All child payment requests must be rejected first. Paid children require Admin payment deletion before rejection." : action === "return" ? "The requester can correct the request and resubmit it to Finance." : action === "reject" ? "Record a clear reason for rejecting this payment request." : action === "hold" ? "Explain what needs to be resolved before payment can proceed." : "Leave context for the Finance team and requester."}</p></div>${field(action === "remark" ? "Remark" : "Reason", `<textarea name="reason" required maxlength="2000" placeholder="Give the team a clear explanation and next step."></textarea>`)}${footer(action === "remark" ? "Add remark" : titles[action], "This action is recorded in the audit trail.")}</form>`,
+    `<form data-form="reason" data-id="${id}" data-action-type="${action}"><div class="form-intro"><p>${esc(r.number)} · ${action === "documents" ? "Describe the documents needed. The requester can upload them directly back to Finance; existing approvals stay valid." : action === "deletePayment" ? "Payment details and payment supporting PDFs will be permanently cleared. The approved request returns to Pending Payment. A reason is mandatory and remains in the audit trail." : action === "deleteOrder" ? `The request${state.requests.some((x) => x.orderId === id) ? " and its draft payment requests" : ""} move to the Deleted page. They stop counting in the dashboard, balances and lists until an Admin restores them.` : action === "deleteRequest" ? `The payment request moves to the Deleted page with its ${esc(r.status)} status and payment details intact. It stops counting in the dashboard, balances and lists until an Admin restores it.` : action === "parentReject" ? "All child payment requests must be rejected first. Paid children require Admin payment deletion before rejection." : action === "return" ? "The requester can correct the request and resubmit it to Finance." : action === "reject" ? "Record a clear reason for rejecting this payment request." : action === "hold" ? "Explain what needs to be resolved before payment can proceed." : "Leave context for the Finance team and requester."}</p></div>${field(action === "remark" ? "Remark" : "Reason", `<textarea name="reason" required maxlength="2000" placeholder="Give the team a clear explanation and next step."></textarea>`)}${footer(action === "remark" ? "Add remark" : titles[action], "This action is recorded in the audit trail.")}</form>`,
   );
 }
 function payForm(id) {
@@ -1203,7 +1278,7 @@ function payForm(id) {
     o = state.orders.find((o) => o.id === r.orderId);
   showModal(
     "Record completed payment",
-    `<form data-form="pay" data-id="${id}"><div class="detail-lead"><div><div class="eyebrow">EXACT PAYMENT REQUIRED</div><div class="amount"><span>${r.currency || o.currency}</span>${fmt(r.amount)}</div></div><div class="lead-side"><strong>${esc(r.number)}</strong><small>${esc(name("suppliers", o.supplierId))}</small></div></div>${section("01", "Payment details", `<div class="grid2">${field("Payment date", input("paymentDate", today(), "date", 'required max="' + today() + '"'))}${field("Payment type", '<select name="paymentType" required><option>Transfer</option><option>Cheque</option><option>TT</option></select>')}</div>`)}${section("02", "Payment evidence", field("Payment supporting PDFs · combined limit 2 MB", '<input name="files" type="file" accept="application/pdf,.pdf" multiple required>'))}<div class="notice">Upload evidence for this payment request. The amount must be settled in full before marking it Paid.</div>${footer("Mark as Paid", "Only Admin can delete a completed payment, with mandatory remarks.")}</form>`,
+    `<form data-form="pay" data-id="${id}"><div class="detail-lead"><div><div class="eyebrow">EXACT PAYMENT REQUIRED</div><div class="amount"><span>${r.currency || o.currency}</span>${fmt(r.amount)}</div></div><div class="lead-side"><strong>${esc(r.number)}</strong><small>${esc(name("suppliers", o.supplierId))}</small></div></div>${section("01", "Payment details", `<div class="grid2">${field("Payment date", input("paymentDate", today(), "date", 'required max="' + today() + '"'))}${field("Payment type", '<select name="paymentType" required><option>Transfer</option><option>Cheque</option><option>TT</option></select>')}</div>`)}${section("02", "Payment evidence", field("Payment supporting PDFs · optional · combined limit 2 MB", '<input name="files" type="file" accept="application/pdf,.pdf" multiple>'))}<div class="notice">Attach evidence for this payment if you have it. The amount must be settled in full before marking it Paid.</div>${footer("Mark as Paid", "Only Admin can delete a completed payment, with mandatory remarks.")}</form>`,
   );
 }
 function documentView(id) {
@@ -1232,10 +1307,10 @@ function renderLogin() {
     toast("ERP sign-in failed — sign in with your portal account.", "error");
   }
 }
-async function readFiles(fd) {
+async function readFiles(fd, required = true) {
   const files = fd.getAll("files").filter((f) => f.size);
-  if (!files.length || files.reduce((a, f) => a + f.size, 0) > 2000000)
-    throw Error("Attach supporting PDFs with a combined size of at most 2 MB");
+  if ((required && !files.length) || files.reduce((a, f) => a + f.size, 0) > 2000000)
+    throw Error(required ? "Attach supporting PDFs with a combined size of at most 2 MB" : "Combined supporting PDFs must not exceed 2 MB");
   return Promise.all(files.map(readPDF));
 }
 async function readPDF(file) {
@@ -1562,12 +1637,16 @@ document.addEventListener("click", async (e) => {
         "remark",
         "documents",
         "deletePayment",
+        "deleteOrder",
+        "deleteRequest",
         "parentReject",
         "amendReturn",
         "amendReject",
       ].includes(a)
     )
       reasonForm(id, a);
+    else if (a === "openDeleted") await openDeleted(id, b.dataset.kind);
+    else if (a === "restoreDeleted") restoreForm(id, b.dataset.kind);
     else if (a === "pay") payForm(id);
     else if (a === "file") await fileDownload(b.dataset);
     else if (a === "document") documentView(id);
@@ -1629,7 +1708,7 @@ document.addEventListener("change", async (e) => {
       user = raw.users.find((u) => u.id === t.value);
       sessionStorage.setItem("demo-actor", user.id);
       state = visibleState(raw, user);
-      const allowed = ["dashboard", "projects", "project", "requests", ...(isFinanceAdmin(user) ? ["master", "audit"] : []), ...(user.role === "Admin" ? ["users", "settings"] : [])];
+      const allowed = ["dashboard", "projects", "project", "requests", ...(isFinanceAdmin(user) ? ["master", "audit"] : []), ...(user.role === "Admin" ? ["users", "deleted", "settings"] : [])];
       if (!allowed.includes(page)) page = "dashboard";
       company = "";
       project = "";
@@ -1865,7 +1944,7 @@ document.addEventListener("submit", async (e) => {
             ...(d.fileMode === "append" ? keep || [] : []),
             ...(await Promise.all(files.map(readPDF))),
           ]
-        : keep;
+        : keep || [];
       d.allocations = state.budgets
         .find((b) => b.id === d.budgetId)
         .categories.map((c) => ({
@@ -1904,23 +1983,37 @@ document.addEventListener("submit", async (e) => {
         type =
           action === "parentReject"
             ? "order.reject"
-            : action === "amendReturn"
-              ? "amendment.return"
-              : action === "amendReject"
-                ? "amendment.reject"
-                : "request." + action;
+            : action === "deleteOrder"
+              ? "order.delete"
+              : action === "deleteRequest"
+                ? "request.delete"
+                : action === "amendReturn"
+                  ? "amendment.return"
+                  : action === "amendReject"
+                    ? "amendment.reject"
+                    : "request." + action;
       await command({ type, id, data: d });
-      if (type.startsWith("order.") || type.startsWith("amendment."))
-        orderDetail(id);
-      else requestDetail(id);
-      toast("Request updated");
+      if (type.endsWith(".delete")) {
+        await closeModal();
+        toast(`${type === "order.delete" ? "Request" : "Payment request"} deleted. Admin can restore it from the Deleted page.`);
+      } else {
+        if (type.startsWith("order.") || type.startsWith("amendment."))
+          orderDetail(id);
+        else requestDetail(id);
+        toast("Request updated");
+      }
+    } else if (kind === "restore") {
+      const recordKind = f.dataset.kind;
+      await command({ type: `${recordKind}.restore`, id });
+      await closeModal();
+      toast(`${recordKind === "order" ? "Request" : "Payment request"} restored. It counts again in the dashboard and balances.`);
     } else if (kind === "support") {
       d.files = await readFiles(fd);
       await command({ type: "request.support", id, data: d });
       requestDetail(id);
       toast("Documents submitted to Finance");
     } else if (kind === "pay") {
-      d.files = await readFiles(fd);
+      d.files = await readFiles(fd, false);
       await command({ type: "request.pay", id, data: d });
       requestDetail(id);
       toast("Payment recorded");

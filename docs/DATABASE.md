@@ -25,6 +25,7 @@ The workspace contains `version`, `companies`, `projects`, `budgets`, `suppliers
 
 - A company owns projects and approved budgets. Each budget holds categories, its saved currency/rate and earlier revisions.
 - An order holds shared details, category allocations and supporting PDFs. A payment request points to its parent with `orderId` and has its own permanent reference, currency snapshot, approvals, history, remarks and payment evidence.
+- An order or payment request deleted by Admin keeps all its data and gains a `deleted` marker (when, by whom, reason; drafts deleted with their order also carry `withOrder`). Restoring moves that marker into `deletionHistory`. Every calculation ignores records with a `deleted` marker, and non-Admin state responses omit them.
 - Parent amendments retain proposals, prior effective values, decisions and supporting PDFs. Archived documents are downloaded only after company-access and active record-lock checks. General state responses omit PDF contents and authentication secrets.
 - `settings` holds reference formats. `counters` preserves independent company/project sequences. Issued references are never regenerated during normal changes.
 - PDF contents are base64 strings inside JSONB in this release. Each upload action has a combined 2 MB limit. Private object storage and normalized tables are future scaling improvements.

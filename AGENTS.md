@@ -12,4 +12,4 @@ Run `npm test` and `npm run build` after workflow or UI changes. Never commit se
 
 # Deployment
 
-The source repository is GitHub. The portal is self-hosted on the internal server at 130.3 behind an HTTPS reverse proxy (this replaces the earlier Vercel choice). Do not create an alternate source repository or hosting service. Follow `docs/DEPLOYMENT.md`. Push only the `dev` branch; `main` changes only through pull requests from `dev` on GitHub (see `CLAUDE.md`).
+The source repository is GitHub. The portal is self-hosted in Docker on the internal server at 192.168.135.39: the `portal` image is built from the repository's `Dockerfile` and runs with PostgreSQL through `compose.yaml`. It is served over plain HTTP on port 3000 until an HTTPS reverse proxy is added (this replaces the earlier Vercel and 130.3 choices). Do not create an alternate source repository or hosting service. Follow `docs/DEPLOYMENT.md`. Push only the `dev` branch; `main` changes only through pull requests from `dev` on GitHub (see `CLAUDE.md`).

@@ -1,0 +1,48 @@
+# Project Monitoring portal + PostgreSQL. Configure .env first (see .env.example and docs/DEPLOYMENT.md), then:
+#   docker compose up -d --build
+# The database lives in the named volume "pgdata". Never run `docker compose down -v`: it deletes the database.
+name: project-monitoring
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # No published port: only the portal container can reach the database.
+    logging: *logging
+
+  portal:
+    build: .
+    image: project-monitoring:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD}@db:5432/portal
+      HOST: 0.0.0.0
+      PORT: "3000"
+    ports:
+      # Plain HTTP on the server's IP. Behind an HTTPS reverse proxy, change to "127.0.0.1:3000:3000".
+      - "${PORTAL_PORT:-3000}:3000"
+    logging: *logging
+
+volumes:
+  pgdata:

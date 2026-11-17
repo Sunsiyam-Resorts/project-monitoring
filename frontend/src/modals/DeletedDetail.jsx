@@ -44,10 +44,10 @@ export function DeletedDetail({ id, kind }) {
     const children = allRequests(state).filter((r) => r.orderId === id);
     return (
       <Modal title="Deleted request">
-        <div className="detail-top"><div><div className="eyebrow">REQUEST</div><div className="detail-number">{x.number}</div></div><Badge status="Deleted" /></div>
+        <div className="detail-top"><div><div className="detail-number">{x.number}</div></div><Badge status="Deleted" /></div>
         {notice}
         <div className="detail-lead">
-          <div><div className="eyebrow">TOTAL ORDER AMOUNT</div><div className="amount"><span>{text(x.currency)}</span>{fmt(x.total)}</div></div>
+          <div><div className="eyebrow">Total order amount</div><div className="amount"><span>{text(x.currency)}</span>{fmt(x.total)}</div></div>
           <div className="lead-side"><small>USD equivalent</small><strong>{`USD ${fmt(x.total / x.rate)}`}</strong>{x.rejectedAt ? <small>Rejected before deletion</small> : null}</div>
         </div>
         {restore}
@@ -80,10 +80,10 @@ export function DeletedDetail({ id, kind }) {
   const currency = text(x.currency || o.currency);
   return (
     <Modal title="Deleted payment request">
-      <div className="detail-top"><div><div className="eyebrow">PAYMENT REQUEST</div><div className="detail-number">{x.number}</div></div><Badge status={x.status} />{" "}<Badge status="Deleted" /></div>
+      <div className="detail-top"><div><div className="detail-number">{x.number}</div></div><Badge status={x.status} />{" "}<Badge status="Deleted" /></div>
       {notice}
       <div className="detail-lead">
-        <div><div className="eyebrow">{`REQUESTED PAYMENT · ${x.percent}% AT CREATION`}</div><div className="amount"><span>{currency}</span>{fmt(x.amount)}</div><small>{text(x.terms)}</small></div>
+        <div><div className="eyebrow">{`Requested payment · ${x.percent}% at creation`}</div><div className="amount"><span>{currency}</span>{fmt(x.amount)}</div><small>{text(x.terms)}</small></div>
         <div className="lead-side"><small>Full order amount</small><strong>{`${text(o.currency)} ${fmt(o.total)}`}</strong><small>{`Request date ${text(x.date)}`}</small></div>
       </div>
       {restore}

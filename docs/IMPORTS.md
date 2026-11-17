@@ -1,6 +1,6 @@
 # CSV and Excel imports
 
-Use **Import CSV / Excel** in Master Data (Admin) or on the Requests tab (Requester). Download the template for the selected type, fill it, upload it, then choose **Validate and preview**. Review the displayed values and choose **Import records**. No records are saved during preview. The server validates again at confirmation; any error rejects the entire batch, without consuming reference numbers.
+Use **Import CSV / Excel** in Master Data (Admin) or on the Requests tab (Finance). Download the template for the selected type, fill it, upload it, then choose **Validate and preview**. Review the displayed values and choose **Import records**. No records are saved during preview. The server validates again at confirmation; any error rejects the entire batch, without consuming reference numbers.
 
 Imports create new records only. Edit existing masters through their normal forms, including mandatory reasons and preserved history for budget revisions. Currency imports cannot replace configured currencies. Imports cannot set request numbers, actors, statuses, approvals, payment history or commitment flags.
 

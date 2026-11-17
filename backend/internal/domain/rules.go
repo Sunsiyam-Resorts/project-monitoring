@@ -20,8 +20,9 @@ import (
 
 var nan = math.NaN()
 
-// Roles: one role per user.
-var Roles = []string{"Requester", "Finance", "Viewer", "Admin"}
+// Roles: one role per user. Finance raises requests and reviews and pays every payment
+// request (never one they raised themselves); Planning works on project tasks only.
+var Roles = []string{"Finance", "Planning", "Viewer", "Admin"}
 
 // Retired approval stages and roles, kept only so migration recognises older data.
 var (
@@ -29,6 +30,9 @@ var (
 	retiredRoles  = []string{"Reviewer", "Approver"}
 	taskStatuses  = []string{"To do", "In progress", "Done"}
 )
+
+// mergedRoles: roles combined into another role; their users keep working under the new one.
+var mergedRoles = map[string]string{"Requester": "Finance"}
 
 // Rules evaluates the workflow rules. NewID is randomId() and Clock is Date.now() where
 // the JavaScript rules read the clock themselves rather than the now argument.
@@ -162,7 +166,7 @@ func isFinanceAdmin(u *User) bool {
 }
 
 func canCreateRequests(u *User) bool {
-	return u != nil && activeUser(u) && strIn(u.Role, "Requester", "Finance", "Admin")
+	return u != nil && activeUser(u) && strIn(u.Role, "Finance", "Admin")
 }
 
 func canManageRequest(u *User, companyID, requestedBy *string) bool {
@@ -174,7 +178,11 @@ func financeActor(u *User, companyID, requestedBy *string) bool {
 	return isFinanceAdmin(u) && access(u, companyID) && !sameStr(u.ID, requestedBy)
 }
 
-func canEditTasks(u *User, companyID *string) bool { return isFinanceAdmin(u) && access(u, companyID) }
+// canEditTasks: project tasks are Planning's work (Admin may also change them); Finance
+// only reads them.
+func canEditTasks(u *User, companyID *string) bool {
+	return u != nil && activeUser(u) && strIn(u.Role, "Planning", "Admin") && access(u, companyID)
+}
 
 func stageActor(u *User, r *Request) bool {
 	return strIn(r.Status, "Finance", "On Hold") && financeActor(u, r.CompanyID, r.RequestedBy)
@@ -312,7 +320,26 @@ func (r *Rules) issue(s *State, o *Order, kind string, now int64) string {
 
 var systemUser = &User{ID: ptr("system"), Name: ptr("System")}
 
+// mergeRoles moves users of a role combined into another (Requester into Finance) on every
+// load, whatever the data version, so no stored user keeps a role that no longer exists.
+func (r *Rules) mergeRoles(s *State, now int64) {
+	for _, u := range s.Users {
+		if u.Role == nil {
+			continue
+		}
+		to, ok := mergedRoles[*u.Role]
+		if !ok {
+			continue
+		}
+		from := *u.Role
+		u.Role = ptr(to)
+		r.audit(s, systemUser, "user.migrated", dynString(u.ID), Undefined,
+			tpl(u.Username)+": "+from+" role combined into "+to, now)
+	}
+}
+
 func (r *Rules) migrate(s *State, now int64) {
+	r.mergeRoles(s, now)
 	if s.Version != nil && *s.Version >= 3 && s.Tasks != nil && s.Counters != nil {
 		if s.Orders == nil {
 			throw("Cannot read properties of undefined (reading 'every')")
@@ -532,6 +559,19 @@ func (r *Rules) visibleState(s *State, u *User) *State {
 		company := field(c, "companyId")
 		return (!truthy(company) || accessDyn(u, company)) && (isFinanceAdmin(u) || truthy(company))
 	})
+	// Planning sees projects and their tasks only: no budgets, requests, suppliers, locks or
+	// financial history.
+	if is(roleOf(u), "Planning") {
+		out.Budgets = []*Budget{}
+		out.Orders = []*Order{}
+		out.Requests = []*Request{}
+		out.Suppliers = []*Supplier{}
+		out.Locks = map[string]*Lock{}
+		out.Audit = filter(out.Audit, func(c *AuditEntry) bool {
+			action, ok := field(c, "action").(string)
+			return ok && strings.HasPrefix(action, "task.")
+		})
+	}
 	admin := is(roleOf(u), "Admin")
 	keys := []string{"id", "name", "username", "role", "companies", "groupAccess", "active"}
 	if admin {
@@ -673,6 +713,7 @@ func checkLock(s *State, u *User, id string, now int64, required bool) {
 
 func (r *Rules) supportingFile(s *State, u *User, q FileQuery, now int64) *File {
 	need(u != nil && activeUser(u), "Active user required")
+	need(!is(u.Role, "Planning"), "Record not available") // Planning has no financial records
 	index, side := q.Index, q.Side
 	if isUndefined(index) {
 		index = 0.0
@@ -745,7 +786,7 @@ func isString(v any) bool { _, ok := v.(string); return ok }
 // ---- orders and payment requests ----
 
 func (r *Rules) validateOrder(s *State, u *User, d any, exclude any) *Order {
-	need(canCreateRequests(u), "Requester, Finance or Admin role required")
+	need(canCreateRequests(u), "Finance or Admin role required")
 	need(accessDyn(u, get(d, "companyId")), "Company access required")
 	companyID, projectID, budgetID := get(d, "companyId"), get(d, "projectId"), get(d, "budgetId")
 	need(slices.ContainsFunc(s.Projects, func(p *Project) bool {
@@ -975,7 +1016,8 @@ func (r *Rules) apply(s *State, u *User, a any, now int64) {
 				}
 			}
 		}
-		need(found && access(u, companyID), "Record not available")
+		// Planning never opens requests (no financial records), so it cannot lock them either.
+		need(found && access(u, companyID) && !is(roleOf(u), "Planning"), "Record not available")
 		// Only Admin opens deleted records (to review them); anyone may let go of a lock.
 		need(t == "unlock" || !deleted || is(roleOf(u), "Admin"), "Record not available")
 		key := lockKey(id)
@@ -1294,7 +1336,7 @@ func (r *Rules) apply(s *State, u *User, a any, now int64) {
 			}
 		}
 		need(task != nil, "Task not found")
-		need(canEditTasks(u, task.CompanyID), "Only Finance or Admin can change project tasks")
+		need(canEditTasks(u, task.CompanyID), "Only Planning or Admin can change project tasks")
 		s.Tasks = slices.DeleteFunc(s.Tasks, func(x *Task) bool { return x == task })
 		company = dynString(task.CompanyID)
 		projectName := "Project"

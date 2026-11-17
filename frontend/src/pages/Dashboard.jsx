@@ -4,9 +4,12 @@ import { Disclosure, Empty, PageHeader, RegionLabel, TableWrap } from "../compon
 import { Filters } from "../components/Filters.jsx";
 import { Overview } from "../components/Overview.jsx";
 import { ActivityCard } from "../components/Activity.jsx";
+import { SegmentBar } from "../components/Charts.jsx";
 import { fmt, word } from "../lib/format.js";
 import { nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
+
+const PAYMENT_PARTS = [["paid", "Paid"], ["outstanding", "Outstanding Payments"], ["hold", "On Hold"], ["balance", "Balance Payments Pending"]];
 
 export function DashboardTable({ headings, children, footer = null }) {
   return (
@@ -59,7 +62,8 @@ export function Dashboard() {
       <Overview company={company} project={project} after={
         <section className="panel workspace-actions" aria-label="Shortcuts">
           <button className="action-tile" data-action="queue" data-target="Finance" onClick={() => actions.queue("Finance")}>Finance payments<Icon name="arrow" /></button>
-          <button className="action-tile primary" data-page="projects" onClick={() => actions.navigate("projects")}>Projects<Icon name="arrow" /></button>
+          <button className="action-tile" data-page="projects" onClick={() => actions.navigate("projects")}>Projects<Icon name="arrow" /></button>
+          <button className="action-tile primary" data-page="budgets" onClick={() => actions.navigate("budgets")}>Budgets<Icon name="arrow" /></button>
         </section>
       } />
       <RegionLabel.Provider value="Project Financial Overview">
@@ -96,9 +100,10 @@ export function Dashboard() {
             </Disclosure>
             <Disclosure title="Payment Status" description="Payment completion and the remaining commitment" id="payments" figure={completion + "%"} unit="paid of utilized">
               <div className="coverage-heading"><strong>{completion + "%"}</strong><span>Payments Completed</span></div>
-              <div className="coverage-track"><span style={{ width: `${Math.min(100, completion)}%` }}></span></div>
-              {[["Paid", k.paid], ["Outstanding Payments", k.outstanding], ["On Hold", k.hold], ["Balance Payments Pending", k.balance]].map(([label, value]) =>
-                <div key={label} className="stats-line"><span>{label}</span><strong>{`USD ${fmt(value)}`}</strong></div>)}
+              <SegmentBar label={`Budget utilized USD ${fmt(k.utilized)}: ${PAYMENT_PARTS.map(([key, label]) => `${label} USD ${fmt(k[key])}`).join("; ")}`}
+                parts={PAYMENT_PARTS.map(([key, label]) => ({ key, value: k[key], title: `${label}: USD ${fmt(k[key])}` }))} />
+              {PAYMENT_PARTS.map(([key, label]) =>
+                <div key={key} className="stats-line" data-key={key}><span>{label}</span><strong>{`USD ${fmt(k[key])}`}</strong></div>)}
             </Disclosure>
             <Disclosure title="Budget Categories" description="Review allocations and category balances · USD" id="categories" figure={categoryRows.length} unit={word(categoryRows.length, "category", "categories")}>
               <DashboardTable headings={["Category / Project", "Approved", "Utilized", "Available"]}>

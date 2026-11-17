@@ -14,36 +14,53 @@
   font-display: swap;
 }
 :root {
-  --accent: #273d30;
-  --accent-hover: #1c2e23;
-  --accent-soft: #eaf0e8;
-  --dark: #111111;
-  --ink: #242722;
-  --secondary: #4e534a;
-  --muted: #65695f;
-  --canvas: #f5f5f0;
+  --accent: #2f6b2b;
+  --accent-hover: #255722;
+  --accent-soft: #e4f0df;
+  --dark: #0b0b0b;
+  --ink: #141713;
+  --secondary: #454a43;
+  --muted: #5e645b;
+  --canvas: #eef1ec;
   --surface: #ffffff;
-  --surface-soft: #f3f4ef;
-  --surface-hover: #f1f4ed;
-  --line: #e2e5dc;
-  --line-strong: #cbd0c4;
-  --focus-ring: #3d6148;
-  --table-head: #f7f8f4;
+  --surface-soft: #f3f5f1;
+  --surface-hover: #edf1ea;
+  --line: #e1e5de;
+  --line-strong: #c8cdc3;
+  --focus-ring: #2f6b2b;
+  --table-head: #ffffff;
   --chart-secondary: #777777;
-  --on-dark: #ffffff;
-  --on-dark-muted: #cccccc;
   --surface-tint: #ffffff0d;
-  --warning: #8b5c16;
-  --warning-soft: #fbf3e3;
+  --warning: #87580f;
+  --warning-soft: #fbf1df;
   --warning-line: #d9bc8a;
-  --danger: #a43d35;
-  --danger-soft: #fcf0ed;
+  --danger: #a13a31;
+  --danger-soft: #fbece9;
   --danger-line: #dfb5ae;
-  --focus-halo: #3d61481a;
+  --focus-halo: #2f6b2b1f;
   --shadow-soft: #00000008;
   --shadow-overlay: #00000026;
   --backdrop: #20251f66;
   --radius: 12px;
+  /* Green workspace (see theme.css): the sage of the sidebar and of primary actions,
+     with near-black text on every sage fill. Shared by both appearances. */
+  --sage: #a2d397;
+  --sage-strong: #8fc483;
+  --sage-hover: #b4ddaa;
+  --on-sage: #0e1a0c;
+  --on-sage-muted: #2d4a27;
+  --primary: var(--sage);
+  --primary-hover: #93c887;
+  --on-primary: var(--on-sage);
+  --card-line: #e1e5de;
+  /* Status chips: solid fills with dark text, the same in both appearances. */
+  --chip-green: #a2d397;
+  --chip-blue: #9cc3f0;
+  --chip-amber: #f2c46d;
+  --chip-red: #ec6a5e;
+  --chip-grey: #e3e6e0;
+  --on-chip: #10140f;
+  --on-chip-grey: #3d423b;
   --radius-sm: var(--radius);
   --shadow: 0 2px 8px #24272203;
   --space-1: 4px;
@@ -55,11 +72,11 @@
   --space-7: 40px;
   --space-8: 48px;
   --radius-pill: var(--radius);
-  --input-line: #8b9083;
-  --success: #386045;
-  --success-soft: #edf4ed;
-  --info: #435c70;
-  --info-soft: #eef2f5;
+  --input-line: #858b80;
+  --success: #2f6b2b;
+  --success-soft: #e4f0df;
+  --info: #345a7a;
+  --info-soft: #e8eff6;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 14px;
@@ -890,18 +907,6 @@ p {
   font-size: 12px;
   color: var(--muted);
 }
-.coverage-track {
-  display: flex;
-  height: 12px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--surface-soft);
-  margin-bottom: 23px;
-}
-.coverage-track span {
-  display: block;
-  background: var(--accent);
-}
 .stats-line {
   display: flex;
   justify-content: space-between;
@@ -1236,7 +1241,6 @@ th:last-child {
   display: block;
   padding: 13px 15px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-soft);
   color: var(--muted);
@@ -1247,13 +1251,11 @@ th:last-child {
 .notice.warn {
   background: var(--warning-soft);
   border-color: var(--warning-line);
-  border-left-color: var(--warning);
   color: var(--warning);
 }
 .notice.error {
   background: var(--danger-soft);
   border-color: var(--danger-line);
-  border-left-color: var(--danger);
   color: var(--danger);
 }
 .notice.success {
@@ -1803,9 +1805,9 @@ dialog::backdrop {
   background: var(--surface);
 }
 .login-art {
-  background: var(--dark);
+  background: var(--sage);
   padding: 50px 9%;
-  color: var(--surface);
+  color: var(--on-sage);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1813,13 +1815,13 @@ dialog::backdrop {
 }
 .login-art .brand {
   padding: 0;
-  color: var(--surface);
+  color: var(--on-sage);
 }
 .login-art .brand-mark {
-  color: var(--on-dark);
+  color: var(--on-sage);
 }
 .login-art .brand span {
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
 }
 .login-art .login-message {
   margin: auto 0;
@@ -1836,19 +1838,19 @@ dialog::backdrop {
   margin-bottom: 24px;
 }
 .login-art .login-message > p {
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
   font-size: 13px;
   max-width: 360px;
   line-height: 1.9;
 }
 .login-art .eyebrow {
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
   font-size: 12px;
   margin-bottom: 20px;
 }
 .login-art .login-foot {
   font-size: 12px;
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
   padding-top: 25px;
   border-top: 1px solid var(--line-strong);
 }
@@ -1862,7 +1864,7 @@ dialog::backdrop {
 }
 .login-graphic .graphic-label {
   font-size: 12px;
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
   letter-spacing: 1.5px;
   margin-bottom: 20px;
 }
@@ -1871,7 +1873,7 @@ dialog::backdrop {
   align-items: center;
   gap: 9px;
   font-size: 12px;
-  color: var(--on-dark);
+  color: var(--on-sage);
   margin-top: 14px;
 }
 .graphic-line > span {
@@ -2834,13 +2836,10 @@ tr.total-row td,
   border-radius: var(--radius);
 }
 .login-art {
-  color: var(--on-dark);
-}
-.login-art .brand-logo {
-  filter: invert(1);
+  color: var(--on-sage);
 }
 .login-art .brand-label {
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
 }
 .login-art .brand {
   align-items: flex-start;
@@ -2849,7 +2848,7 @@ tr.total-row td,
 .login-art .login-foot,
 .login-art .eyebrow,
 .graphic-line {
-  color: var(--on-dark-muted);
+  color: var(--on-sage-muted);
 }
 .docbrand img {
   display: block;
@@ -3117,7 +3116,7 @@ textarea:focus {
   .dashboard-kpi { border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none; padding: 26px; }
   .dashboard-kpi h2, .dashboard-kpi h3 { min-height: 0; margin-bottom: 24px; font-size: 13px; font-weight: 500; }
   .dashboard-kpi-value { font-size: clamp(25px, 2.7vw, 38px); font-weight: 500; gap: 8px; }
-  .dashboard-kpi[data-kpi=available] { background: var(--accent-soft); border-color: #dfe7d9; }
+  .dashboard-kpi[data-kpi=available] { background: var(--accent-soft); border-color: var(--card-line); }
   .payment-kpis { gap: 0; padding: 22px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 24px; }
   .payment-kpis .dashboard-kpi { border: 0; border-right: 1px solid var(--line); border-radius: 0; padding: 2px 22px; background: transparent; }
   .payment-kpis .dashboard-kpi:last-child { border-right: 0; }
@@ -3142,11 +3141,11 @@ textarea:focus {
   .report-body { border-top: 1px solid var(--line); min-width: 0; }
   .report-body > .table-wrap { border: 0; border-radius: 0; box-shadow: none; }
   .report-body > .help, .report-body > .coverage-heading, .report-body > .stats-line { margin: 16px 20px; }
-  .report-body > .coverage-track { margin: 20px; }
+  .report-body > .stack-bar { margin: 20px; }
   .activity { padding: 16px 0; }
   .activity p { overflow-wrap: anywhere; }
   .activity .dot { background: var(--accent); }
-  .tabs { display: flex; gap: 4px; width: fit-content; max-width: 100%; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: #eceedf66; margin-bottom: 24px; }
+  .tabs { display: flex; gap: 4px; width: fit-content; max-width: 100%; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: transparent; margin-bottom: 24px; }
   .tabs button { min-height: 42px; padding: 10px 18px; border: 0; border-radius: var(--radius-pill); font-size: 12px; background: transparent; color: var(--secondary); }
   .tabs button.active { border: 0; background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px var(--shadow-soft); }
   .count { padding: 1px 6px; border-radius: var(--radius-pill); font-size: 11px; background: var(--surface-soft); }
@@ -3157,7 +3156,7 @@ textarea:focus {
   .list-options select { min-height: 44px; border-radius: var(--radius-sm); background: var(--surface); }
   .table-wrap { border-color: var(--line); box-shadow: none; scrollbar-width: thin; }
   th { background: var(--table-head); color: var(--muted); font-size: 11px; font-weight: 550; text-transform: none; letter-spacing: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); }
-  td { padding: 20px; font-size: 13px; border-bottom: 1px solid #eceee7; }
+  td { padding: 20px; font-size: 13px; border-bottom: 1px solid var(--line); }
   td:first-child, th:first-child { padding-left: 26px; }
   td:last-child, th:last-child { padding-right: 26px; }
   td strong { font-weight: 550; }
@@ -3182,7 +3181,7 @@ textarea:focus {
   .empty-icon { width: 48px; height: 48px; background: var(--surface-soft); border-radius: var(--radius); color: var(--muted); }
   .empty h3 { font-size: 15px; margin-top: 16px; }
   .empty p { font-size: 12px; max-width: 360px; }
-  dialog { border-radius: var(--radius); border: 1px solid var(--line); box-shadow: 0 24px 80px #171e1926; }
+  dialog { border-radius: var(--radius); border: 1px solid var(--line); box-shadow: 0 24px 80px var(--shadow-overlay); }
   dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(3px); }
   .modal-head { padding: 22px 28px; background: var(--surface); border-color: var(--line); }
   .modal-head h2 { font-size: 20px; }
@@ -3206,7 +3205,7 @@ textarea:focus {
   .document-link { border-radius: var(--radius); }
   .checks label { border-radius: var(--radius); }
   .login { background: var(--canvas); padding: 20px; gap: 20px; }
-  .login-art { border-radius: var(--radius); background: #26382d; padding: 48px 10%; }
+  .login-art { border-radius: var(--radius); background: var(--sage); padding: 48px 10%; }
   .login-art .login-message h1 { font-size: clamp(32px, 3.3vw, 52px); line-height: 1.15; }
   .login-art .login-message > p { font-size: 14px; line-height: 1.8; }
   .login-graphic { display: none; }
@@ -3348,7 +3347,7 @@ textarea:focus {
   .dashboard-table th { padding-top: 12px; padding-bottom: 12px; }
   .dashboard-table td { padding-top: 13px; padding-bottom: 13px; }
   .dashboard-table td:first-child { min-width: 208px; }
-  .report-body > .coverage-track { margin-bottom: 16px; }
+  .report-body > .stack-bar { margin-bottom: 16px; }
   .report-body > .stats-line { margin: 0 20px; padding: 12px 0; }
   .report-body > .stats-line:last-child { margin-bottom: 8px; }
   .dashboard-table td .linkbtn { min-height: 0; padding: 0; text-align: left; }
@@ -3380,9 +3379,9 @@ textarea:focus {
 }
 /* Select controls: native behaviour, chevron drawn in the shared outline icon style. */
 :root {
-  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2365695f' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  --select-chevron-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23273d30' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  --picker-shadow: rgb(36 39 34 / 18%);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235e645b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --select-chevron-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6b2b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --picker-shadow: rgb(20 23 19 / 18%);
 }
 @media screen {
   /* Closed state mirrors the standard secondary button. */
@@ -3484,39 +3483,8 @@ textarea:focus {
   :root { --rhythm: 20px; --rhythm-tight: 12px; }
   .topbar { display: flex; align-items: center; min-height: 56px; padding: 6px 18px; }
 }
-/* KPI trend charts. Colours validated for colour-vision deficiency; rising candles are
-   hollow and falling ones solid, so direction never depends on colour alone. Budget
-   Utilized and the four payment figures are single ink lines.
-   Wide tiles: the figure takes a fixed share of the tile (sized by the row's longest
-   value) and the chart fills everything else, the full height of the tile's content.
-   Narrow tiles: the chart sits top-right above the figure, or between label and
-   figure on small tablets. Strokes keep a constant width however the chart stretches. */
-:root { --trend-up: #3d9a5f; --trend-down: #a8322c; --trend-flat: var(--muted); --trend-line: var(--ink); }
-@media screen {
-  .dashboard-kpi.has-trend { position: relative; container-type: inline-size; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 20px; align-items: stretch; }
-  .payment-kpis .dashboard-kpi.has-trend { --kpi-min: 20px; --kpi-max: 34px; --pad2: 0px; --share: 0.62; }
-  .has-trend > .kpi-main { display: flex; flex-direction: column; min-width: 0; }
-  .has-trend > .kpi-main > h2, .has-trend > .kpi-main > h3 { padding-right: 0; }
-  :root .has-trend .kpi-main .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(var(--kpi-min), calc((100cqi - var(--pad2)) * var(--share) / (var(--row-len, var(--len)) * 0.54)), var(--kpi-max)); }
-  :root .dashboard-kpi.has-trend > .kpi-trend-figure { position: relative; margin: 0; width: 100%; min-width: 0; min-height: 44px; display: flex; align-items: stretch; }
-  .payment-kpis .has-trend > .kpi-trend-figure { max-height: 60px; align-self: center; height: 100%; }
-  .kpi-trend { display: block; width: 100%; height: 100%; min-height: 44px; overflow: visible; }
-  .kpi-trend, .kpi-trend * { stroke: none; fill: none; }
-  .kpi-trend line, .kpi-trend path, .kpi-trend rect { vector-effect: non-scaling-stroke; }
-  .kpi-trend .candle line { stroke-width: 1.25; }
-  .kpi-trend .candle.up line { stroke: var(--trend-up); }
-  .kpi-trend .candle.up rect:not(.trend-hit) { fill: none; stroke: var(--trend-up); stroke-width: 1.5; }
-  .kpi-trend .candle.down line { stroke: var(--trend-down); }
-  .kpi-trend .candle.down rect:not(.trend-hit) { fill: var(--trend-down); }
-  .kpi-trend .trend-line { fill: none; stroke: var(--trend-line); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .kpi-trend .trend-end { stroke: var(--trend-line); stroke-width: 6; stroke-linecap: round; }
-  .kpi-trend .trend-hit { fill: transparent; }
-  .kpi-trend g:hover rect:not(.trend-hit), .kpi-trend .trend-hit:hover { opacity: 0.85; }
-}
-@media print { .kpi-trend-figure { display: none; } }
 /* Main card: Total Approved Budget, Budget Utilized and Available Budget in one card,
    three equal figure columns above one combined year-to-date chart. */
-:root { --band-line: #8b9083; --hatch: color-mix(in srgb, var(--ink) 40%, transparent); }
 @media screen {
   /* Surface, border and glass come from the shared card rules (same as the payment row). */
   :root .budget-kpis.budget-overview { display: flex; flex-direction: column; container-type: inline-size; padding: 24px 26px 18px; border-radius: var(--radius); }
@@ -3527,41 +3495,22 @@ textarea:focus {
   :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:first-child { padding-left: 0; }
   :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-right: 0; border-right: 0; }
   :root .budget-overview .dashboard-kpi h2 { min-height: 0; max-width: none; margin: 0 0 10px; font-size: 13px; font-weight: 500; }
-  :root .budget-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(22px, calc((100cqi - 96px) / 3 / (var(--row-len) * 0.54)), 48px); }
+  :root .budget-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(16px, calc((100cqi - 144px) / 3 / (var(--row-len) * 0.58)), 48px); }
   /* The chart takes whatever height the card has beyond the figures (it stretches to the payment stack). */
   .overview-chart { margin: 22px 0 0; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
-  .overview-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
-  .overview-legend span { display: inline-flex; align-items: center; gap: 7px; }
-  .overview-legend span::before { content: ""; width: 14px; height: 2px; border-radius: 2px; background: var(--trend-line); }
-  .overview-legend .key-approved::before { background: var(--band-line); }
-  .overview-legend .key-available::before { height: 10px; border-radius: 2px; background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 4px); }
-  /* The plot box: lines on top, the hatched available layer beneath, revealed together. */
-  .overview-plot { position: relative; flex: 1 1 auto; display: flex; min-height: 156px; }
-  .overview-hatch { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 6px); -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
-  .overview-plot > .kpi-trend { position: relative; display: block; width: 100%; flex: 1 1 auto; height: auto; min-height: 0; overflow: visible; }
-  .kpi-trend-overview .overview-approved { fill: none; stroke: var(--band-line); stroke-width: 1.75; stroke-linejoin: round; }
-  .kpi-trend-overview .overview-utilized { fill: none; stroke: var(--trend-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-  .kpi-trend-overview .overview-end-approved, .kpi-trend-overview .overview-end-utilized { stroke-width: 6; stroke-linecap: round; }
-  .kpi-trend-overview .overview-end-approved { stroke: var(--band-line); }
-  .kpi-trend-overview .overview-end-utilized { stroke: var(--trend-line); }
-  .kpi-trend-overview .trend-hit:hover { fill: rgb(127 127 127 / 6%); }
-  .overview-months { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-top: 8px; color: var(--muted); font-size: 11px; }
-  .overview-months span { text-align: right; padding-right: 2px; }
 }
 @media screen and (max-width: 760px) {
   .overview-figures { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi] { padding: 0 0 14px; border-right: 0; border-bottom: 1px solid var(--line); }
   :root .budget-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-bottom: 0; border-bottom: 0; }
-  :root .budget-overview .dashboard-kpi-value { font-size: clamp(22px, calc((100cqi - 8px) / (var(--row-len) * 0.54)), 40px); }
+  :root .budget-overview .dashboard-kpi-value { font-size: clamp(22px, calc((100cqi - 8px) / (var(--row-len) * 0.58)), 40px); }
   :root .budget-kpis.budget-overview { padding: 20px; }
-  .overview-plot { min-height: 132px; }
-  .overview-months span:nth-child(even) { visibility: hidden; }
+  .chart-box { min-height: 160px; }
 }
 @media print { .overview-chart { display: none; } }
 /* Dashboard KPI layout: the main card on the left; on the right the payment card
    (four figures over one combined chart) with the My Actions widget below it. The main
    card stretches to the right column's height. One column under 1100px. */
-:root { --pay-paid: var(--trend-line); --pay-outstanding: #2a78d6; --pay-hold: #eb6834; --pay-balance: #1baf7a; }
 @media screen {
   .kpi-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.46fr); gap: 16px; align-items: stretch; margin-bottom: var(--rhythm); }
   :root .kpi-layout .dashboard-kpis { margin: 0; }
@@ -3574,21 +3523,13 @@ textarea:focus {
   :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:nth-child(even) { padding-right: 0; }
   /* Each label carries its line's colour key, so the figures double as the legend. */
   :root .payment-overview .dashboard-kpi h3 { display: flex; align-items: flex-start; gap: 7px; min-height: 0; max-width: none; margin: 0 0 6px; font-size: 12px; font-weight: 500; }
-  .payment-overview .dashboard-kpi h3::before { content: ""; flex: none; width: 12px; height: 2px; margin-top: 0.62em; border-radius: 2px; background: var(--key, var(--pay-paid)); }
+  .payment-overview .dashboard-kpi h3::before { content: ""; flex: none; width: 10px; height: 10px; margin-top: 0.3em; border-radius: 3px; background: var(--key, var(--pay-paid)); }
   .payment-overview [data-kpi=outstanding] { --key: var(--pay-outstanding); }
   .payment-overview [data-kpi=hold] { --key: var(--pay-hold); }
   .payment-overview [data-kpi=balance] { --key: var(--pay-balance); }
-  :root .payment-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(18px, calc((100cqi - 40px) / 2 / (var(--row-len) * 0.54)), 30px); }
+  :root .payment-overview .dashboard-kpi-value { margin-top: auto; white-space: nowrap; font-size: clamp(18px, calc((100cqi - 64px) / 2 / (var(--row-len) * 0.58)), 30px); }
   .payment-overview .overview-chart { margin-top: 18px; }
-  .payment-overview .overview-plot { min-height: 96px; }
-  .kpi-trend-payments .pay-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-  .kpi-trend-payments .pay-end { stroke-width: 6; stroke-linecap: round; }
-  .kpi-trend-payments .pay-paid { stroke: var(--pay-paid); }
-  .kpi-trend-payments .pay-outstanding { stroke: var(--pay-outstanding); }
-  .kpi-trend-payments .pay-hold { stroke: var(--pay-hold); }
-  .kpi-trend-payments .pay-balance { stroke: var(--pay-balance); }
-  .kpi-trend-payments .trend-hit:hover { fill: rgb(127 127 127 / 6%); }
-  .payment-overview .overview-months span:nth-child(even) { visibility: hidden; }
+  .payment-overview .chart-box { min-height: 140px; }
   /* Shortcuts widget: a card holding two square buttons with large, extra-bold labels
      and a small arrow in the bottom-right corner. */
   :root .kpi-side > .workspace-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 12px; }
@@ -3611,7 +3552,7 @@ textarea:focus {
   :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:nth-child(n) { padding: 0 20px; border-right: 1px solid var(--line); }
   :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:first-child { padding-left: 0; }
   :root .payment-overview .dashboard-kpi.dashboard-kpi[data-kpi]:last-child { padding-right: 0; border-right: 0; }
-  :root .payment-overview .dashboard-kpi-value { font-size: clamp(18px, calc((100cqi - 120px) / 4 / (var(--row-len) * 0.54)), 30px); }
+  :root .payment-overview .dashboard-kpi-value { font-size: clamp(18px, calc((100cqi - 152px) / 4 / (var(--row-len) * 0.58)), 30px); }
 }
 /* Dashboard filter row: reporting currency on the left, Project filter on the right. */
 @media screen {
@@ -3699,13 +3640,6 @@ textarea:focus {
    for In progress (the same diagonal hatch as the main card's available area), and the
    empty track for To do. Figures use the display face, as on the Dashboard. */
 @media screen {
-  .progress-track { display: flex; gap: 2px; height: 8px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--ink) 9%, transparent); }
-  .progress-track i { display: block; height: 100%; flex: none; }
-  .progress-track i[style="width:0.00%"] { display: none; }
-  .progress-track .done, .key.done { background: var(--trend-line); }
-  .progress-track .doing, .key.doing { background: repeating-linear-gradient(-45deg, var(--hatch) 0 1px, transparent 1px 4px); box-shadow: inset 0 0 0 1px var(--hatch); }
-  .key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; }
-  .key.todo { background: color-mix(in srgb, var(--ink) 9%, transparent); }
   .project-flag { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--warning); font-size: 12px; font-weight: 550; }
   .project-flag .ui-icon, .task-overdue .ui-icon { width: 14px; height: 14px; }
 
@@ -3796,12 +3730,14 @@ textarea:focus {
   .odo-number { display: inline-block; height: 1.2em; line-height: 1.2em; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .dashboard-kpi-value .odo-number > .odo { color: transparent; }
   /* Half-size decimals, sitting on the main figure's baseline. */
-  .dashboard-kpi-value .kpi-dec { font: inherit; font-size: 0.5em; color: inherit; letter-spacing: inherit; }
   .dashboard-kpi-value .odo-number > .odo-dec { font-size: 0.5em; vertical-align: baseline; height: auto; line-height: 1.2em; }
-  .dashboard-kpi-value .odo-dec > span { font: inherit; color: inherit; letter-spacing: inherit; display: inline-block; vertical-align: top; height: 1.2em; }
+  .dashboard-kpi-value .odo-dec > span { font: inherit; color: inherit; letter-spacing: inherit; display: inline-block; vertical-align: baseline; height: 1.2em; }
   .dashboard-kpi-value .odo-dec > .odo { color: transparent; }
-  .odo-number > span { display: inline-block; vertical-align: top; height: 1.2em; }
-  .odo { position: relative; overflow: hidden; color: transparent; -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); }
+  /* Every cell sits on the text baseline (clip-path clips the rolling strip without moving
+     the baseline, as overflow: hidden would), and the fade stays clear of the glyphs, so a
+     settled odometer and the plain figure match pixel for pixel. */
+  .odo-number > span { display: inline-block; vertical-align: baseline; height: 1.2em; }
+  .odo { position: relative; clip-path: inset(0); color: transparent; -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
   .odo::before {
     content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9";
     position: absolute; inset: 0 0 auto 0; white-space: pre; text-align: center;
@@ -3860,7 +3796,7 @@ textarea:focus {
 /* Scrollbars: slim, rounded, theme-coloured. Chromium/Safari use the -webkit
    pseudo-elements (which they ignore if the standard properties are set), Firefox
    uses the standard thin scrollbar with the same colours. */
-:root { --scroll-thumb: rgb(39 61 48 / 24%); --scroll-thumb-hover: rgb(39 61 48 / 46%); }
+:root { --scroll-thumb: rgb(20 23 19 / 22%); --scroll-thumb-hover: rgb(20 23 19 / 42%); }
 @supports selector(::-webkit-scrollbar) {
   :root, :root * { scrollbar-width: auto !important; scrollbar-color: auto !important; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -3871,4 +3807,140 @@ textarea:focus {
 }
 @supports not selector(::-webkit-scrollbar) {
   :root, :root * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb-hover) transparent; }
+}
+
+/* Charts (17 November 2026), in the chart style of the Sun Siyam sales dashboard: SVG drawn
+   at the plot's real size, light gridlines with value ticks, the latest month in bold with
+   a marker line and ringed dots, pastel fills with darker edges, and outlined segments on
+   a light track. Each payment colour matches its status chip, and every figure is also
+   written, so colour is never the only signal. */
+:root {
+  --chart-grid: #ecece8;
+  --chart-cross: #dcdcd7;
+  --chart-track: #f4f4f2;
+  --chart-approved: #5f6a5b;
+  --chart-available: #eef2ea;
+  --chart-available-line: #cfd8c8;
+  --green: #bcdda8;
+  --green-line: #7fbe58;
+  --aqua: #95d5e6;
+  --aqua-line: #33aecf;
+  --amber: #f0cc9b;
+  --amber-line: #e39e3f;
+  --lilac: #cac0ef;
+  --lilac-line: #9a86e0;
+  --pay-paid: var(--green);
+  --pay-paid-line: var(--green-line);
+  --pay-outstanding: var(--aqua);
+  --pay-outstanding-line: var(--aqua-line);
+  --pay-hold: var(--amber);
+  --pay-hold-line: var(--amber-line);
+  --pay-balance: var(--lilac);
+  --pay-balance-line: var(--lilac-line);
+}
+@media screen {
+  .chart-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 10px; padding: 0; list-style: none; color: var(--secondary); font-size: 12px; }
+  .chart-key li { display: inline-flex; align-items: center; gap: 6px; }
+  .chart-key li::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--k); box-shadow: inset 0 0 0 1.5px var(--k-line); }
+  .chart-key .key-approved::before { width: 14px; height: 0; border-radius: 2px; border-top: 2.25px solid var(--chart-approved); background: none; box-shadow: none; }
+  .chart-key .key-utilized { --k: var(--green); --k-line: var(--green-line); }
+  .chart-key .key-available { --k: var(--chart-available); --k-line: var(--chart-available-line); }
+
+  /* The plot box takes the card's remaining height; the SVG is drawn at its exact size. */
+  .chart-box { position: relative; flex: 1 1 auto; min-height: 180px; }
+  .chart-box > svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; fill: none; stroke: none; }
+  .lc * { stroke: none; }
+  .overview-chart figcaption { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+  .lc-grid { stroke: var(--chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
+  .lc-tick { fill: var(--muted); font: 500 11px var(--font); font-variant-numeric: tabular-nums; }
+  .lc-tick.on { fill: var(--ink); font-weight: 700; }
+  .lc-cross { stroke: var(--chart-cross); stroke-width: 1; shape-rendering: crispEdges; }
+  .lc-band.lc-utilized { fill: var(--green); }
+  .lc-band.lc-available { fill: var(--chart-available); }
+  .lc-edge { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .lc-edge.lc-utilized { stroke: var(--green-line); }
+  .lc-edge.lc-approved { stroke: var(--chart-approved); stroke-width: 2.25; }
+  .lc-mark { stroke: var(--surface); stroke-width: 2; }
+  .lc-mark.lc-utilized { fill: var(--green-line); }
+  .lc-mark.lc-approved { fill: var(--chart-approved); }
+  .lc-column { transform-box: fill-box; transform-origin: bottom; }
+  .lc-col { fill: var(--seg); stroke: var(--seg-line); stroke-width: 1; }
+  .lc-none { stroke: var(--chart-cross); stroke-width: 2; stroke-dasharray: 3 3; }
+  .lc-hit { fill: transparent; }
+  .lc-hit:hover { fill: color-mix(in srgb, var(--ink) 4%, transparent); }
+
+  .seg-paid, [data-key="paid"] { --seg: var(--pay-paid); --seg-line: var(--pay-paid-line); }
+  .seg-outstanding, [data-key="outstanding"] { --seg: var(--pay-outstanding); --seg-line: var(--pay-outstanding-line); }
+  .seg-hold, [data-key="hold"] { --seg: var(--pay-hold); --seg-line: var(--pay-hold-line); }
+  .seg-balance, [data-key="balance"] { --seg: var(--pay-balance); --seg-line: var(--pay-balance-line); }
+  .payment-overview .dashboard-kpi h3::before { box-shadow: inset 0 0 0 1.5px var(--key-line, var(--pay-paid-line)); }
+  .payment-overview [data-kpi=outstanding] { --key-line: var(--pay-outstanding-line); }
+  .payment-overview [data-kpi=hold] { --key-line: var(--pay-hold-line); }
+  .payment-overview [data-kpi=balance] { --key-line: var(--pay-balance-line); }
+
+  /* Segment bars: outlined parts on a light track (Payment Status, project progress). */
+  .stack-bar { display: flex; gap: 2px; height: 12px; overflow: hidden; border-radius: 4px; background: var(--chart-track); }
+  .stack-bar .seg { display: block; flex: none; height: 100%; border-radius: 3px; background: var(--seg); box-shadow: inset 0 0 0 1.5px var(--seg-line); }
+  .stats-line[data-key] > span { display: inline-flex; align-items: center; gap: 8px; }
+  .stats-line[data-key] > span::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--seg); box-shadow: inset 0 0 0 1.5px var(--seg-line); }
+
+  /* Project progress: Done green, In progress aqua; the empty track is To do. */
+  .progress-track.stack-bar { height: 8px; }
+  .progress-card .progress-track.stack-bar { height: 10px; }
+  .progress-track .done, .key.done { --seg: var(--green); --seg-line: var(--green-line); }
+  .progress-track .doing, .key.doing { --seg: var(--aqua); --seg-line: var(--aqua-line); }
+  .key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; background: var(--seg); box-shadow: inset 0 0 0 1.5px var(--seg-line); }
+  .key.todo { --seg: var(--chart-track); --seg-line: var(--line-strong); }
+}
+@media print { .stack-bar { display: none; } }
+
+/* Cards with a header row and flush tables: text paragraphs keep the card padding; a
+   form footer inside a card spans exactly the card (cards pad 26px, 22px on phones). */
+@media screen {
+  .panel.flush > .help { margin: 0 26px 18px; }
+  .panel > .form-footer { margin: 28px -26px -26px; bottom: -26px; border-radius: 0 0 var(--radius) var(--radius); }
+}
+@media screen and (max-width: 760px) {
+  .panel.flush > .help { margin: 0 22px 16px; }
+  .panel > .form-footer { margin: 24px -22px -22px; bottom: -22px; }
+}
+
+/* Dashboard shortcuts: three tiles (Finance payments, Projects, Budgets) in one row. */
+@media screen {
+  :root .kpi-side > .workspace-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root .kpi-side .action-tile { font-size: clamp(16px, calc(((100cqi - 48px) / 3 - 32px) / 5), 34px); }
+  /* Planning's project page: progress and task activity in the side column. */
+  :root .kpi-side > .activity-card { margin: 0; padding: 0; overflow: hidden; }
+}
+@media screen and (max-width: 1100px) {
+  :root .kpi-side > .workspace-actions { grid-template-columns: repeat(3, 200px); }
+  :root .kpi-side .action-tile { font-size: 28px; }
+}
+@media screen and (max-width: 520px) {
+  :root .kpi-side > .workspace-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root .kpi-side .action-tile { font-size: clamp(14px, calc(((100cqi - 48px) / 3 - 32px) / 5), 30px); }
+}
+
+/* Budgets page: one card per approved budget. Figures in USD, utilized against the
+   approved amount on the segment bar, then the categories. */
+@media screen {
+  .budget-list { display: grid; gap: 16px; }
+  .budget-card .card-head { align-items: center; }
+  .budget-card .card-head > div { min-width: 0; }
+  .budget-card .card-head > button { flex: none; white-space: nowrap; }
+  .budget-card .card-head small { display: block; margin-top: 4px; white-space: normal; }
+  .budget-figures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 4px 26px 0; }
+  .budget-figures div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+  .budget-figures dt { color: var(--muted); font-size: 12px; }
+  .budget-figures dd { margin: 4px 0 0; font: 600 24px/1.15 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .budget-bar { padding: 16px 26px 18px; }
+  .budget-bar .help { margin: 8px 0 0; }
+  .budget-card > .table-wrap { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+}
+@media screen and (max-width: 760px) {
+  .budget-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; padding: 4px 22px 0; }
+  .budget-figures div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .budget-figures dd { font-size: 20px; }
+  .budget-bar { padding: 14px 22px 16px; }
 }

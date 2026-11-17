@@ -46,7 +46,7 @@ test('Master preview is read-only and a duplicate batch rolls back every row', (
   run(s, u, 'companies', rows);
   assert.equal(s.companies.at(-1).code, 'IMPC');
   assert.equal(s.audit.at(-1).action, 'import.create');
-  assert.throws(() => run(s, s.users.find(u => u.role === 'Requester'), 'companies', rows), /role/);
+  assert.throws(() => run(s, s.users.find(u => u.role === 'Planning'), 'companies', rows), /role/);
 });
 
 test('Imports create related master data and preserve existing currency and budget history', () => {

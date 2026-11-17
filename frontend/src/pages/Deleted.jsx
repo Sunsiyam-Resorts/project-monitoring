@@ -27,7 +27,7 @@ export function Deleted() {
     <>
       <PageHeader eyebrow="ADMINISTRATION" title="Deleted" description="Requests and payment requests deleted by Admin. They count nowhere in the portal until restored." />
       <RegionLabel.Provider value="Deleted records">
-        <section className="panel">
+        <section className="panel flush">
           <header className="card-head"><h2>Deleted records</h2><small>{rows.length}</small></header>
           <p className="help">A request can be deleted only after its processed payment requests are deleted; its drafts go with it. Restore a request before any payment request deleted under it.</p>
           {rows.length ? (
@@ -63,7 +63,7 @@ export function Deleted() {
         </section>
       </RegionLabel.Provider>
       <RegionLabel.Provider value="Deletion log">
-        <section className="panel section-gap">
+        <section className="panel flush section-gap">
           <header className="card-head"><h2>Deletion log</h2><small>{events.length}</small></header>
           {events.length ? (
             <TableWrap>

@@ -8,10 +8,11 @@ import { useApp, useData } from "../lib/store.js";
 import { motionOff } from "../lib/motion.js";
 import { BudgetChart, PaymentChart } from "./Charts.jsx";
 
-// Stat figures: the decimals (".00") render at half size.
+// Stat figures: the decimals (".00") render at half size on the same baseline. The plain
+// figure uses the odometer's own wrapper, so nothing moves when a roll hands over to it.
 function Figure({ formatted }) {
   const [whole, dec] = String(formatted).split(".");
-  return dec === undefined ? whole : <>{whole}<span className="kpi-dec">{"." + dec}</span></>;
+  return <span className="odo-number">{whole}{dec === undefined ? null : <span className="odo-dec">{"." + dec}</span>}</span>;
 }
 
 // Odometer: each digit keeps its real character as (transparent) text while CSS rolls a

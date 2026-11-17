@@ -81,28 +81,31 @@ export function animateTables(snap) {
   });
 }
 
-// Trend charts wipe in from left to right on first view and whenever their data changes
-// (for example after a filter change); unchanged charts do not replay.
+// Charts draw in on first view and whenever their data changes (for example after a
+// filter change): areas wipe in from the left, columns rise from the baseline month by
+// month. Unchanged data does not replay, so resizing the window redraws without motion.
 export function revealChart(svg, key, index, shown) {
   if (!svg) return;
-  const drawn = svg.innerHTML;
+  const drawn = svg.dataset.sig ?? svg.innerHTML;
   const changed = shown.get(key) !== drawn;
   shown.set(key, drawn);
-  if (!changed || motionOff() || !svg.animate) return;
-  (svg.closest(".overview-plot") || svg).animate([{ clipPath: "inset(-8px 100% -8px -8px)" }, { clipPath: "inset(-8px -8px -8px -8px)" }],
-    { duration: 2200, delay: Math.min(index, 6) * 120, easing: MOTION_EASE, fill: "backwards" });
+  if (!changed || motionOff()) return;
+  const delay = Math.min(index, 6) * 120;
+  const columns = svg.querySelectorAll("[data-col]");
+  if (columns.length) {
+    columns.forEach((col, i) => col.animate?.([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }],
+      { duration: 900, delay: delay + i * 45, easing: MOTION_EASE, fill: "backwards" }));
+    return;
+  }
+  svg.querySelector(".lc-plot")?.animate?.([{ clipPath: "inset(-8px 100% -8px -8px)" }, { clipPath: "inset(-8px -8px -8px -8px)" }],
+    { duration: 1600, delay, easing: MOTION_EASE, fill: "backwards" });
 }
 
-// Workspace sheet grid parallax and smooth wheel scrolling for the page. The background
-// barely moves (8% of the scroll speed). Keyboard, scrollbar, links, zoom (Ctrl+wheel),
+// Smooth wheel scrolling for the page. Keyboard, scrollbar, links, zoom (Ctrl+wheel),
 // horizontal scrolling, inner scroll areas and open dialogs stay native, and
 // reduced-motion users keep instant scrolling. Returns a cleanup function.
 export function startPageMotion() {
   const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  const setSheetShift = (y) => {
-    const shift = reduce?.matches ? 0 : Math.round(y * 0.92);
-    document.documentElement.style.setProperty("--sheet-shift", `${shift}px`);
-  };
   const ease = 0.14;
   let target = window.scrollY, current = window.scrollY, animating = false, frame = 0;
   const maxScroll = () => document.documentElement.scrollHeight - window.innerHeight;
@@ -125,7 +128,6 @@ export function startPageMotion() {
       animating = false;
     }
     window.scrollTo(0, current);
-    setSheetShift(window.scrollY);
     if (animating) frame = requestAnimationFrame(step);
   };
   const onWheel = (event) => {
@@ -143,18 +145,14 @@ export function startPageMotion() {
   };
   // Keyboard, scrollbar and link scrolling move the page natively; follow them.
   const onScroll = () => {
-    setSheetShift(window.scrollY);
     if (!animating) current = target = window.scrollY;
   };
-  const onReduce = () => setSheetShift(window.scrollY);
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("wheel", onWheel, { passive: false });
-  reduce?.addEventListener?.("change", onReduce);
   return () => {
     cancelAnimationFrame(frame);
     animating = false;
     window.removeEventListener("scroll", onScroll);
     window.removeEventListener("wheel", onWheel);
-    reduce?.removeEventListener?.("change", onReduce);
   };
 }

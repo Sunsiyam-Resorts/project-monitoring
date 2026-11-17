@@ -24,9 +24,9 @@ export function RequestDetail({ id }) {
   const currency = r.currency || o.currency;
   return (
     <Modal title="Payment request">
-      <div className="detail-top"><div><div className="eyebrow">PAYMENT REQUEST</div><div className="detail-number">{r.number}</div></div><Badge status={r.status} /></div>
+      <div className="detail-top"><div><div className="detail-number">{r.number}</div></div><Badge status={r.status} /></div>
       <div className="detail-lead">
-        <div><div className="eyebrow">{`REQUESTED PAYMENT · ${r.percent}% AT CREATION`}</div><div className="amount"><span>{currency}</span>{fmt(r.amount)}</div><small>{text(r.terms)}</small></div>
+        <div><div className="eyebrow">{`Requested payment · ${r.percent}% at creation`}</div><div className="amount"><span>{currency}</span>{fmt(r.amount)}</div><small>{text(r.terms)}</small></div>
         <div className="lead-side"><small>Full order amount</small><strong>{`${o.currency} ${fmt(o.total)}`}</strong><small>{text(o.po)}</small></div>
       </div>
       <div className="detail-grid">

@@ -1,5 +1,17 @@
 // Read-only derivations over the visible workspace state, shared by pages and dialogs.
-import { canManageRequest, stageActor } from "../domain/domain.js";
+import { canManageRequest, isFinanceAdmin, stageActor } from "../domain/domain.js";
+
+// Planning works on project tasks only; every other role sees the financial workspace.
+export const isPlanning = (user) => user?.role === "Planning";
+
+// The pages a role may open, the first being where it lands. The server sends Planning no
+// financial records, so these pages would be empty for it anyway.
+export function allowedPages(user) {
+  if (isPlanning(user)) return ["projects", "project"];
+  return ["dashboard", "projects", "project", "budgets", "requests",
+    ...(isFinanceAdmin(user) ? ["master", "audit"] : []),
+    ...(user?.role === "Admin" ? ["users", "deleted", "settings"] : [])];
+}
 
 export const nameOf = (state, kind, id) => state[kind].find((x) => x.id === id)?.name || "—";
 

@@ -12,7 +12,7 @@
     const resolved = preference === 'system' ? (system.matches ? 'dark' : 'light') : preference;
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.themePreference = preference;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111814' : '#f5f5f0');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#0b0b0b' : '#eef1ec');
     document.querySelectorAll('[data-theme-picker]').forEach(picker => { picker.value = preference; });
     document.querySelectorAll('[data-theme-toggle]').forEach(button => {
       const label = resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';

@@ -20,6 +20,7 @@ const paths = {
   close: <path d="m6 6 12 12M6 18 18 6" />,
   check: <path d="m5 12 4 4L19 6" />,
   hold: <><rect x="4" y="3" width="16" height="18" rx="5" /><path d="M9 8v8m6-8v8" /></>,
+  budgets: <><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M15.5 3.7A9 9 0 0 1 20.3 8.5H15.5V3.7Z" /></>,
   chart: <path d="M4 4v14a2 2 0 0 0 2 2h14M8 15l4-5 4 2 4-6" />,
   menu: <path d="M4 5h16M4 12h12M4 19h16" />,
   logout: <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3m6-13 5 5-5 5M9 12h11" />,

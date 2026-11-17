@@ -6,6 +6,22 @@
 
 **Revision 4 (November 2026) supersedes everything below where they differ.** A payment request goes straight to Finance when it is created, whether on its own, with a new request or by import: there is no Draft stage and no separate Submit to Finance step. Creating it has the effect submitting had: it is with Finance, and the first payment request of an order commits the whole order to its budget. A Draft now arises only when Finance returns a payment request; the requester corrects it and submits it to Finance again. Existing drafts saved before this revision are submitted the same way. Because every payment request is with Finance from the start, Admin deletes a request's payment requests before the request itself unless they are returned drafts.
 
+**Revision 5 (17 November 2026) supersedes everything below where they differ.**
+
+- **Roles:** Finance, Planning, Viewer and Admin.
+- **Requester combined into Finance:** a Finance user raises orders and payment requests and also processes them. The separation of duties stays: nobody acts on a request or amendment they raised themselves, so another Finance user or Admin processes it. Existing Requester accounts become Finance automatically on the next load, with an audit entry for each.
+- **Planning** works on project tasks only:
+  - Only Planning and Admin add, edit and delete tasks. Finance and Viewer read them.
+  - Planning opens only the Projects list and project pages, which show progress and tasks without budget figures.
+  - The server sends Planning no budgets, orders, payment requests, suppliers or record locks, and only task entries from the audit log.
+  - Planning cannot lock a request or download its documents.
+- **Corrections:** correcting a returned (draft) payment request sends it back to Finance in the same step; there is no separate Submit step.
+- **Balance to request:** the tab shows each order's Balance Amount (still to be requested, in the order's currency) next to its Total Amount.
+- **Budgets page:**
+  - It lists every approved budget in the selected company scope, with its Approved Budget, Budget Utilized, Available Budget and share utilized in USD, and each category's approved, utilized and available amounts.
+  - Finance and Admin can add and revise budgets from it, using the Master Data budget form.
+  - The Dashboard shortcuts link to it.
+
 The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). It supersedes the earlier testing-release rules below where they differ, including Planning approvals, financial calculations, amendments, payment deletion, numbering and currencies.
 
 ## Temporary Admin data population access

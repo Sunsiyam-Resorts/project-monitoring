@@ -26,12 +26,13 @@ export function ActivityCard({ activity, note = "Approvals, payments and changes
   );
 }
 
-// Task progress bar: Done (solid) then In progress (hatched); the rest of the track is To do.
+// Task progress on a light track: Done, then In progress; the empty rest is To do.
 export function ProgressBar({ g, label = "" }) {
   const pct = (n) => (g.total ? (n / g.total) * 100 : 0).toFixed(2);
   return (
-    <span className="progress-track" role="img" aria-label={label || (g.total ? `${g.done} done, ${g.inProgress} in progress, ${g.todo} to do` : "No tasks yet")}>
-      <i className="done" style={{ width: `${pct(g.done)}%` }}></i><i className="doing" style={{ width: `${pct(g.inProgress)}%` }}></i>
+    <span className="progress-track stack-bar" role="img" aria-label={label || (g.total ? `${g.done} done, ${g.inProgress} in progress, ${g.todo} to do` : "No tasks yet")}>
+      {g.done ? <i className="seg done" style={{ width: `${pct(g.done)}%` }}></i> : null}
+      {g.inProgress ? <i className="seg doing" style={{ width: `${pct(g.inProgress)}%` }}></i> : null}
     </span>
   );
 }

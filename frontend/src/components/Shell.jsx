@@ -4,10 +4,10 @@ import { isFinanceAdmin } from "../domain/domain.js";
 import { Icon } from "./Icon.jsx";
 import { Brand } from "./ui.jsx";
 import { useApp, useAppState } from "../lib/store.js";
-import { pendingCount } from "../lib/selectors.js";
+import { isPlanning, pendingCount } from "../lib/selectors.js";
 import { animateTables, snapshotTables } from "../lib/motion.js";
 
-const OPERATIONAL = ["dashboard", "projects", "project", "requests"];
+const OPERATIONAL = ["dashboard", "projects", "project", "budgets", "requests"];
 
 // public/theme.js owns the appearance preference: it updates these controls in place, so
 // they only take their starting values from the document here.
@@ -93,7 +93,8 @@ function Sidebar({ drawer = false }) {
       </div>
       <nav className="nav" aria-label={`${drawer ? "Mobile" : "Main"} navigation`}>
         <span className="nav-label">Workspace</span>
-        {item("dashboard", "Dashboard")}{item("projects", "Projects")}{item("requests", "Requests")}
+        {isPlanning(user) ? item("projects", "Projects")
+          : <>{item("dashboard", "Dashboard")}{item("projects", "Projects")}{item("budgets", "Budgets")}{item("requests", "Requests")}</>}
         {manage ? (
           <>
             <span className="nav-label nav-group">Administration</span>

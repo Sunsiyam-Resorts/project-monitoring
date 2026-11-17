@@ -51,7 +51,7 @@ export function PayForm({ id }) {
     <Modal title="Record completed payment">
       <Form kind="pay" data-id={id} onSubmit={(fd) => actions.submitPay(id, fd)}>
         <div className="detail-lead">
-          <div><div className="eyebrow">EXACT PAYMENT REQUIRED</div><div className="amount"><span>{r.currency || o.currency}</span>{fmt(r.amount)}</div></div>
+          <div><div className="eyebrow">Exact payment required</div><div className="amount"><span>{r.currency || o.currency}</span>{fmt(r.amount)}</div></div>
           <div className="lead-side"><strong>{r.number}</strong><small>{nameOf(state, "suppliers", o.supplierId)}</small></div>
         </div>
         <Section number="01" title="Payment details">

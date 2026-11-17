@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createActions } from "./lib/actions.js";
 import { AppContext, DataContext, createStore, useApp, useAppState } from "./lib/store.js";
 import { startPageMotion } from "./lib/motion.js";
+import { startHistory } from "./lib/history.js";
 import { LoadingSkeleton } from "./components/ui.jsx";
 import { Shell } from "./components/Shell.jsx";
 import { ModalHost, ToastHost } from "./modals/ModalHost.jsx";
@@ -15,15 +16,17 @@ import { Users } from "./pages/Users.jsx";
 import { Audit } from "./pages/Audit.jsx";
 import { Deleted } from "./pages/Deleted.jsx";
 import { Settings } from "./pages/Settings.jsx";
+import { Budgets } from "./pages/Budgets.jsx";
 
-const PAGES = { dashboard: Dashboard, projects: Projects, project: ProjectPage, requests: Requests, master: MasterData, users: Users, audit: Audit, deleted: Deleted };
+const PAGES = { dashboard: Dashboard, projects: Projects, project: ProjectPage, budgets: Budgets, requests: Requests, master: MasterData, users: Users, audit: Audit, deleted: Deleted, settings: Settings };
 
-// Background behaviour: start-up, 30-second refresh, cross-tab demo sync, closing menus on
+// Background behaviour: start-up, browser history for pages, 30-second refresh, cross-tab demo sync, closing menus on
 // Escape or outside clicks, the drawer on wide screens, and page scroll motion.
 function useWorkspaceEffects() {
-  const { actions } = useApp();
+  const { actions, store } = useApp();
   useEffect(() => {
     let alive = true;
+    const stopHistory = startHistory(store, actions.restorePage);
     actions.boot(() => alive);
     const timer = setInterval(actions.poll, 30000);
     const menus = () => document.querySelectorAll(".profile-menu[open], .demo-actor[open]");
@@ -47,15 +50,16 @@ function useWorkspaceEffects() {
       document.removeEventListener("click", onClick);
       wide?.removeEventListener?.("change", onWide);
       stopMotion();
+      stopHistory();
       actions.dispose();
     };
-  }, [actions]);
+  }, [actions, store]);
 }
 
 function Workspace() {
   const { state, user, demo, page } = useAppState();
   const data = useMemo(() => ({ state, user, demo }), [state, user, demo]);
-  const Page = PAGES[page] || Settings;
+  const Page = PAGES[page] || Dashboard;
   return (
     <DataContext.Provider value={data}>
       <Shell><Page /></Shell>

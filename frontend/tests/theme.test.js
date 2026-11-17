@@ -7,7 +7,7 @@ function themeWindow(saved, dark = false) {
   const w = new Window({ url: 'http://localhost:3000', settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true } });
   const media = new w.EventTarget(); media.matches = dark;
   w.matchMedia = () => media;
-  w.document.head.innerHTML = '<meta name="theme-color" content="#f5f5f0">';
+  w.document.head.innerHTML = '<meta name="theme-color" content="#eef1ec">';
   w.document.body.innerHTML = '<select data-theme-picker><option>system</option><option>light</option><option>dark</option></select>';
   if (saved !== undefined) w.localStorage.setItem('ss-project-monitoring-appearance', saved);
   w.eval(source);
@@ -21,7 +21,7 @@ test('System appearance follows OS changes; explicit preference overrides them a
   const { w, media } = themeWindow(undefined, true);
   try {
     assert.equal(w.document.documentElement.dataset.theme, 'dark');
-    assert.equal(w.document.querySelector('meta').content, '#111814');
+    assert.equal(w.document.querySelector('meta').content, '#0b0b0b');
     choose(w, 'light');
     media.matches = true; media.dispatchEvent(new w.Event('change'));
     assert.equal(w.document.documentElement.dataset.theme, 'light');
@@ -48,12 +48,12 @@ test('Invalid preferences default to system and unavailable storage does not bre
   } finally { w.close(); }
 });
 test('Dark theme foreground and status token pairs maintain AA text contrast', async () => {
-  const css = await readFile(new URL('../src/styles/dark.css', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../src/styles/theme.css', import.meta.url), 'utf8');
   const color = name => css.match(new RegExp('--' + name + ': (#[a-fA-F0-9]{6});'))[1];
   const luminance = hex => hex.slice(1).match(/../g).map(v => parseInt(v,16)/255).map(v => v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4).reduce((a,v,i) => a+v*[.2126,.7152,.0722][i],0);
   const contrast = (a,b) => (Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
   for (const [foreground, background] of [['ink','canvas'],['ink','surface'],['secondary','surface'],['muted','surface'],['muted','surface-soft'],['accent','accent-soft'],['success','success-soft'],['info','info-soft'],['warning','warning-soft'],['danger','danger-soft']])
     assert.ok(contrast(color(foreground),color(background))>=4.5, `${foreground} on ${background}`);
-  assert.ok(contrast(color('accent'),'#152319')>=4.5, 'Primary action text');
+  assert.ok(contrast(color('accent'),'#0e1a0c')>=4.5, 'Primary action text');
   assert.ok(contrast(color('focus-ring'),color('surface'))>=3, 'Keyboard focus ring');
 });

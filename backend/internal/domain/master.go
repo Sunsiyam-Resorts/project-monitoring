@@ -268,7 +268,7 @@ func (r *Rules) saveTask(s *State, u *User, d any, at string) (entity, company, 
 		}
 	}
 	need(p != nil, "Select a valid project")
-	need(canEditTasks(u, p.CompanyID), "Only Finance or Admin can change project tasks")
+	need(canEditTasks(u, p.CompanyID), "Only Planning or Admin can change project tasks")
 	name := text(get(x, "name"))
 	need(name != "" && utf16Len(name) <= 120, "Task name required (up to 120 characters)")
 	status, ok := get(x, "status").(string)

@@ -12,9 +12,14 @@ Internal Sun Siyam Group staff working at office desktops, daily, handling many 
 
 Each user has exactly one role and explicit company access (or full group access):
 
-- **Requester**: creates orders (parent requests) and their payment requests, which go straight to Finance; corrects and resubmits payment requests Finance returns, and supplies documents Finance asks for.
-- **Finance**: reviews, holds, returns, rejects and pays every submitted payment request, approves amendments, and maintains budgets, master data and project tasks. Full operational access except User Manager and Settings; never acts on its own requests.
-- **Finance**: adds remarks, puts requests on hold, records exact payments with date, type and optional evidence.
+- **Finance** (Requester and Finance combined in November 2026):
+  - Raises orders (parent requests) and their payment requests, which go straight to Finance. Corrects payment requests Finance returns; saving a correction sends it back to Finance. Supplies documents Finance asks for.
+  - Reviews, holds, returns, rejects and pays payment requests, adds remarks, and records exact payments with date, type and optional evidence.
+  - Approves amendments and maintains budgets and master data.
+  - Full operational access except User Manager and Settings.
+  - Never acts on a request they raised themselves; another Finance user or Admin processes it.
+  - Reads project tasks but does not change them.
+- **Planning**: works on project tasks only. It sees the Projects list and each project's progress and tasks, and adds, edits and deletes tasks. The server sends it no budgets, requests, suppliers or financial history.
 - **Viewer**: read-only visibility within company access.
 - **Admin**: master data, users, settings, unlocks, rejection at any stage; temporarily also data entry during the population period.
 
@@ -36,8 +41,8 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 ## Operating Context
 
 - Structure: Company (property) → Project → Approved Budget → Categories. Budgets may be in any configured currency; consolidated totals use saved USD conversions (currency units per USD 1, e.g. MVR 15.42).
-- Workflow: every payment request goes Requester → Finance → Paid; there are no approval teams or levels. Parent amendments are approved by Finance.
-- Pages: Dashboard, Requests (tabs: Requests, Finance, Balance Payments To Be Requested, My Actions), Master Data, User Manager, Audit Log, Deleted (Admin only: deleted requests and payment requests, their log, review and restore), Settings (Admin only).
+- Workflow: every payment request goes straight to Finance → Paid. It is raised by one Finance user and processed by another, or by Admin. There are no approval teams or levels. Parent amendments are approved by Finance.
+- Pages: Dashboard, Projects, Budgets (each approved budget with its utilized and available amounts by category), Requests (tabs: Requests, Finance, Balance to request with each order's Balance Amount, My Actions), Master Data, User Manager, Audit Log, Deleted (Admin only: deleted requests and payment requests, their log, review and restore), Settings (Admin only).
 - Documents: optional supporting PDFs on parents and payment evidence, required only for documents Finance requests (2 MB combined per upload action); a printable A4 payment request document printed or saved as PDF from the browser.
 - Imports: CSV/XLSX order and payment import for data population.
 - Records are locked exclusively for 10 minutes while open; Admin can unlock (audited).
@@ -59,6 +64,7 @@ A purpose-built ledger for Sun Siyam's own approval contract, not a generic proc
 
 - Name: Sun Siyam Project Monitoring Portal (Sun Siyam Group).
 - Supplied logo `frontend/public/logo.svg` and monochrome `frontend/public/icon.svg`. Sun Siyam's identity is recorded in the project as black and white.
+- Interface look (17 November 2026, the user's choice from a reference image): a sage-green sidebar and green primary actions with black and white, in Light and Dark. See `docs/DESIGN.md`, Green workspace.
 - Voice: plain, formal finance language. Precise and neutral, using the agreed terms exactly; no casual phrasing, jokes or marketing tone.
 
 ## Evidence on Hand

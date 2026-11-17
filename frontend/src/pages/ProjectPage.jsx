@@ -9,7 +9,7 @@ import { Overview } from "../components/Overview.jsx";
 import { ActivityCard, ProgressBar } from "../components/Activity.jsx";
 import { DashboardTable } from "./Dashboard.jsx";
 import { fmt, shortDate, word } from "../lib/format.js";
-import { nameOf } from "../lib/selectors.js";
+import { isPlanning, nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
 
 const TASK_ORDER = { "In progress": 0, "To do": 1, Done: 2 };
@@ -81,24 +81,41 @@ export function ProjectPage() {
       (x.action === "task.delete" && x.companyId === p.companyId && (x.detail || "").startsWith(p.name + ":")))
     .sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 6);
   const companyName = nameOf(state, "companies", p.companyId);
+  const back = <button className="back-link" data-action="backProjects" onClick={() => actions.backProjects()}><span className="pager-back"><Icon name="chevron" /></span>All projects</button>;
+  const eyebrow = `${companyName}${p.code ? " · " + p.code : ""}`;
+  const taskCard = (
+    <section className="panel task-card" aria-labelledby="tasksTitle">
+      <header className="card-head">
+        <h2 id="tasksTitle">Tasks</h2>
+        {canEdit ? <button className="primary" data-action="newTask" data-id={p.id} onClick={() => actions.newTask(p.id)}><Icon name="plus" />Add task</button> : <small>{`${ts.length} ${ts.length === 1 ? "task" : "tasks"}`}</small>}
+      </header>
+      {ts.length
+        ? <ol className="task-list">{ts.map((t) => <TaskRow key={t.id} t={t} canEdit={canEdit} day={day} />)}</ol>
+        : <Empty title="No tasks yet" note={canEdit ? "Add the first task to start tracking progress." : "Planning adds tasks to track this project’s progress."} />}
+    </section>
+  );
+
+  // Planning works on tasks only: progress, tasks and task activity, without budget figures.
+  if (isPlanning(user)) return (
+    <>
+      {back}
+      <PageHeader eyebrow={eyebrow} title={p.name} description="Tasks and progress for this project." />
+      <div className="dashboard-bottom">
+        <div className="project-main">{taskCard}</div>
+        <div className="kpi-side"><ProgressCard g={g} /><ActivityCard activity={activity} note="Task changes for this project will appear here." /></div>
+      </div>
+    </>
+  );
 
   return (
     <>
-      <button className="back-link" data-action="backProjects" onClick={() => actions.backProjects()}><span className="pager-back"><Icon name="chevron" /></span>All projects</button>
-      <PageHeader eyebrow={`${companyName}${p.code ? " · " + p.code : ""}`} title={p.name} description="Budget, payments and progress for this project."
+      {back}
+      <PageHeader eyebrow={eyebrow} title={p.name} description="Budget, payments and progress for this project."
         actions={isFinanceAdmin(user) ? <button data-action="editProject" data-id={p.id} onClick={() => actions.editProject(p.id)}>Edit project</button> : null} />
       <Overview company={p.companyId} project={p.id} before={<ProgressCard g={g} />} />
       <div className="dashboard-bottom section-gap">
         <div className="project-main">
-          <section className="panel task-card" aria-labelledby="tasksTitle">
-            <header className="card-head">
-              <h2 id="tasksTitle">Tasks</h2>
-              {canEdit ? <button className="primary" data-action="newTask" data-id={p.id} onClick={() => actions.newTask(p.id)}><Icon name="plus" />Add task</button> : <small>{`${ts.length} ${ts.length === 1 ? "task" : "tasks"}`}</small>}
-            </header>
-            {ts.length
-              ? <ol className="task-list">{ts.map((t) => <TaskRow key={t.id} t={t} canEdit={canEdit} day={day} />)}</ol>
-              : <Empty title="No tasks yet" note={canEdit ? "Add the first task to start tracking progress." : "Finance adds tasks to track this project’s progress."} />}
-          </section>
+          {taskCard}
           <section className="panel requests-card" aria-labelledby="requestsTitle">
             <header className="card-head">
               <h2 id="requestsTitle">Requests</h2>

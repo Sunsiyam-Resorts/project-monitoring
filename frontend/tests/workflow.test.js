@@ -65,6 +65,7 @@ function setup() {
     finance: s.users.find((u) => u.id === "fin"),
     finance2: s.users.find((u) => u.id === "fin2"),
     viewer: s.users.find((u) => u.id === "viewer"),
+    planner: s.users.find((u) => u.id === "planner"),
     admin: s.users[0],
   };
 }
@@ -432,7 +433,7 @@ test("Finance and Admin manage master data and budgets; only Admin manages users
   b.categories[0].amount = 950000;
   x.run(x.finance, "master.save", null, { kind: "budgets", record: b, reason: "Finance revision" });
   assert.equal(x.s.budgets[0].revisions.at(-1).by, x.finance.name);
-  for (const u of [x.requester, x.viewer])
+  for (const u of [x.planner, x.viewer])
     assert.throws(() => x.run(u, "master.save", null, { kind: "companies", record: { name: "X", code: "XX" } }), /Finance or Admin/);
   assert.throws(() => x.run(x.finance, "settings.save", null, {}), /Admin/);
   assert.throws(() => x.run(x.finance, "user.save", null, { record: { ...x.viewer, role: "Admin" } }), /Admin required/);
@@ -576,12 +577,12 @@ test("Finance or Admin can delete a paid payment, with remarks and actual remova
     /cannot review/,
   );
   x.run(x.finance, "unlock", x.r.id);
-  x.lock(x.requester, x.r.id);
+  x.lock(x.viewer, x.r.id);
   assert.throws(
-    () => x.run(x.requester, "request.deletePayment", x.r.id, { reason: "Wrong evidence" }),
+    () => x.run(x.viewer, "request.deletePayment", x.r.id, { reason: "Wrong evidence" }),
     /Only Finance or Admin/,
   );
-  x.run(x.requester, "unlock", x.r.id);
+  x.run(x.viewer, "unlock", x.r.id);
   x.lock(x.finance, x.r.id);
   assert.throws(() => x.run(x.finance, "request.deletePayment", x.r.id), /Reason/);
   x.run(x.finance, "request.deletePayment", x.r.id, { reason: "Incorrect payment entry" });
@@ -831,24 +832,25 @@ test("Retired approval roles cannot be assigned", () => {
   assert.equal(u.approvalLevel, undefined);
 });
 
-test("Only Finance and Admin change project tasks; progress is the share of tasks Done", () => {
+test("Only Planning and Admin change project tasks; Finance reads them; progress is the share of tasks Done", () => {
   const x = setup();
   const before = projectProgress(x.s, "p1");
   assert.equal(before.total, 17);
   assert.equal(before.done, 8);
   assert.equal(before.pct, 47);
   const record = { projectId: "p1", name: "Commissioning", status: "To do", due: "2027-06-30", owner: "MEP contractor" };
-  for (const u of [x.requester, x.viewer])
-    assert.throws(() => x.run(u, "task.save", null, { record }), /Only Finance or Admin/);
-  assert.throws(() => x.run({ ...x.finance, groupAccess: false, companies: ["c2"] }, "task.save", null, { record }), /Only Finance or Admin/);
-  assert.throws(() => x.run(x.finance, "task.save", null, { record: { ...record, name: " " } }), /Task name/);
-  assert.throws(() => x.run(x.finance, "task.save", null, { record: { ...record, status: "Blocked" } }), /status/);
-  assert.throws(() => x.run(x.finance, "task.save", null, { record: { ...record, due: "30/06/2027" } }), /due date/);
-  assert.throws(() => x.run(x.finance, "task.save", null, { record: { ...record, projectId: "nope" } }), /valid project/);
-  x.run(x.finance, "task.save", null, { record });
+  for (const u of [x.finance, x.requester, x.viewer])
+    assert.throws(() => x.run(u, "task.save", null, { record }), /Only Planning or Admin/);
+  assert.throws(() => x.run({ ...x.planner, groupAccess: false, companies: ["c2"] }, "task.save", null, { record }), /Only Planning or Admin/);
+  assert.throws(() => x.run({ ...x.planner, active: false }, "task.save", null, { record }), /inactive/);
+  assert.throws(() => x.run(x.planner, "task.save", null, { record: { ...record, name: " " } }), /Task name/);
+  assert.throws(() => x.run(x.planner, "task.save", null, { record: { ...record, status: "Blocked" } }), /status/);
+  assert.throws(() => x.run(x.planner, "task.save", null, { record: { ...record, due: "30/06/2027" } }), /due date/);
+  assert.throws(() => x.run(x.planner, "task.save", null, { record: { ...record, projectId: "nope" } }), /valid project/);
+  x.run(x.planner, "task.save", null, { record });
   const t = x.s.tasks.at(-1);
   assert.equal(t.companyId, "c1");
-  assert.equal(t.createdBy, x.finance.id);
+  assert.equal(t.createdBy, x.planner.id);
   assert.equal(x.s.audit.at(-1).action, "task.save");
   assert.equal(x.s.audit.at(-1).entity, t.id);
   assert.equal(projectProgress(x.s, "p1").pct, 44);
@@ -857,10 +859,10 @@ test("Only Finance and Admin change project tasks; progress is the share of task
   assert.equal(saved.projectId, "p1", "a task cannot move project");
   assert.ok(saved.completedAt);
   assert.equal(projectProgress(x.s, "p1").pct, 50);
-  x.run(x.finance, "task.save", null, { record: { ...saved, status: "In progress" } });
+  x.run(x.planner, "task.save", null, { record: { ...saved, status: "In progress" } });
   assert.equal(x.s.tasks.find((y) => y.id === t.id).completedAt, undefined);
-  assert.throws(() => x.run(x.requester, "task.delete", t.id), /Only Finance or Admin/);
-  x.run(x.finance, "task.delete", t.id);
+  assert.throws(() => x.run(x.finance, "task.delete", t.id), /Only Planning or Admin/);
+  x.run(x.planner, "task.delete", t.id);
   assert.ok(!x.s.tasks.some((y) => y.id === t.id));
   assert.equal(x.s.audit.at(-1).action, "task.delete");
   assert.equal(projectProgress(x.s, "p1").pct, 47);
@@ -1074,4 +1076,37 @@ test("A request with processed payment requests cannot be deleted; its drafts go
   x.run(x.admin, "request.restore", r2.id);
   assert.equal(kpis(x.s).outstanding, 20000);
   assert.equal(remainingToRequest(x.s, x.o), 50000);
+});
+
+test("Requester is combined into Finance: migration moves those users to Finance with an audit entry", () => {
+  const s = demoState();
+  const before = s.audit.length;
+  s.users.push({ id: "oldreq", name: "Old Requester", username: "oldreq", email: "oldreq@example.test", role: "Requester", companies: ["c1"], active: true });
+  migrateState(s, now);
+  assert.equal(s.users.find((u) => u.id === "oldreq").role, "Finance");
+  const entry = s.audit.slice(before).find((a) => a.action === "user.migrated" && a.entity === "oldreq");
+  assert.match(entry.detail, /oldreq: Requester role combined into Finance/);
+  migrateState(s, now);
+  assert.equal(s.audit.filter((a) => a.entity === "oldreq").length, 1, "migration runs once");
+  const x = setup();
+  assert.throws(() => x.run(x.admin, "user.save", null, { record: { ...x.viewer, role: "Requester" } }), /single role/);
+  x.run(x.admin, "user.save", null, { record: { ...x.viewer, role: "Planning" } });
+  assert.equal(x.s.users.find((u) => u.id === x.viewer.id).role, "Planning");
+});
+
+test("Planning sees projects and tasks only, and cannot raise requests or touch financial records", () => {
+  const x = setup();
+  const v = visibleState(x.s, x.planner);
+  assert.ok(v.projects.length > 0 && v.tasks.length > 0);
+  for (const k of ["budgets", "orders", "requests", "suppliers"]) assert.deepEqual(v[k], [], k);
+  assert.deepEqual(v.locks, {});
+  x.run(x.planner, "task.save", null, { record: { projectId: "p1", name: "Snagging", status: "To do" } });
+  const seen = visibleState(x.s, x.planner).audit;
+  assert.ok(seen.length > 0 && seen.every((a) => a.action.startsWith("task.")));
+  assert.ok(visibleState(x.s, x.finance).audit.some((a) => a.action === "order.create"));
+  assert.throws(() => x.run(x.planner, "order.create", null, x.payload), /Finance or Admin role required/);
+  assert.throws(() => x.run(x.planner, "master.save", null, { kind: "companies", record: { name: "X", code: "XX" } }), /Finance or Admin/);
+  x.run(x.requester, "unlock", x.r.id);
+  assert.throws(() => x.run(x.planner, "lock", x.r.id), /Record not available/);
+  assert.throws(() => supportingFile(x.s, x.planner, { id: x.o.id, kind: "order" }, now), /Record not available/);
 });

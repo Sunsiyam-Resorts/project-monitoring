@@ -27,9 +27,9 @@ export function OrderDetail({ id, returnPaymentId }) {
           </BusyButton>
         </div>
       ) : null}
-      <div className="detail-top"><div><div className="eyebrow">REQUEST</div><div className="detail-number">{o.number}</div></div>{o.rejectedAt ? <Badge status="Rejected" /> : null}</div>
+      <div className="detail-top"><div><div className="detail-number">{o.number}</div></div>{o.rejectedAt ? <Badge status="Rejected" /> : null}</div>
       <div className="detail-lead">
-        <div><div className="eyebrow">TOTAL ORDER AMOUNT</div><div className="amount"><span>{o.currency}</span>{fmt(o.total)}</div></div>
+        <div><div className="eyebrow">Total order amount</div><div className="amount"><span>{o.currency}</span>{fmt(o.total)}</div></div>
         <div className="lead-side"><small>Remaining to request</small><strong>{`${o.currency} ${fmt(remaining)}`}</strong><small>{`USD ${fmt(o.total / o.rate)} full equivalent`}</small></div>
       </div>
       <div className="actions">

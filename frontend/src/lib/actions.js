@@ -3,12 +3,12 @@
 // Components call the guarded entry points (errors become toasts); dialog forms call the
 // submit* functions, which throw so the form can show the message.
 import { flushSync } from "react-dom";
-import { apply, migrateState, visibleState, supportingFile, isFinanceAdmin } from "../domain/domain.js";
+import { apply, migrateState, visibleState, supportingFile } from "../domain/domain.js";
 import { demoState } from "../domain/demo.js";
 import { api } from "./api.js";
 import { csvExport, downloadPDF, readFiles, readPDF } from "./files.js";
 import { importTemplate } from "./excel.js";
-import { deletedRecord } from "./selectors.js";
+import { allowedPages, deletedRecord } from "./selectors.js";
 import { emptyAuditFilter } from "./store.js";
 
 export const STORE_KEY = "ss-project-monitoring-demo-v1";
@@ -167,8 +167,8 @@ export function createActions(store) {
     const s = get();
     const user = s.raw.users.find((u) => u.id === id);
     sessionStorage.setItem(ACTOR_KEY, user.id);
-    const allowed = ["dashboard", "projects", "project", "requests", ...(isFinanceAdmin(user) ? ["master", "audit"] : []), ...(user.role === "Admin" ? ["users", "deleted", "settings"] : [])];
-    set({ user, state: visibleState(s.raw, user), page: allowed.includes(get().page) ? get().page : "dashboard", company: "", project: "", drawerOpen: false });
+    const allowed = allowedPages(user);
+    set({ user, state: visibleState(s.raw, user), page: allowed.includes(get().page) ? get().page : allowed[0], company: "", project: "", drawerOpen: false });
   }
 
   // ---- Navigation and list controls -----------------------------------------------------
@@ -196,6 +196,15 @@ export function createActions(store) {
 
   function openProject(projectId) {
     commit({ projectId, page: "project" });
+    window.scrollTo({ top: 0, behavior: "instant" });
+    focus($("#pageTitle"));
+  }
+
+  // Back and Forward in the browser: close any dialog (releasing its lock) and the drawer,
+  // then show the page that history entry recorded.
+  async function restorePage(target) {
+    if (get().modal) await closeModal();
+    commit({ page: target.page, ...(target.projectId ? { projectId: target.projectId } : {}), drawerOpen: false });
     window.scrollTo({ top: 0, behavior: "instant" });
     focus($("#pageTitle"));
   }
@@ -252,6 +261,7 @@ export function createActions(store) {
     else if (id === "projectSearch") set({ projectSearch: value });
     else if (id === "auditSearch") set({ auditSearch: value, auditPageNo: 1 });
     else if (id === "userSearch") set({ userSearch: value });
+    else if (id === "budgetSearch") set({ budgetSearch: value });
     else set({ search: value });
     const box = document.getElementById(id);
     if (box && document.activeElement !== box) box.focus();
@@ -324,6 +334,12 @@ export function createActions(store) {
 
   function restoreForm(id, kind) {
     if (deletedRecord(get().state, id, kind)) showModal("restoreForm", { id, kind });
+  }
+
+  // The Budgets page adds and revises budgets with the Master Data budget form.
+  function budgetForm(id) {
+    set({ masterTab: "budgets" });
+    masterForm(id);
   }
 
   function newProject(id) {
@@ -412,12 +428,15 @@ export function createActions(store) {
     toast(id ? "Amendment submitted to Finance" : "Request and first payment request created");
   }
 
+  // A new payment request goes straight to Finance. Correcting a returned (draft) one sends
+  // it back to Finance in the same step: there is no separate submit.
   async function submitPayment(id, orderId, fd) {
     const d = Object.fromEntries(fd);
     await command({ type: id ? "request.edit" : "request.create", id, data: { ...d, orderId } });
+    if (id) await command({ type: "request.submit", id });
     const s = get();
     await openRecord(id || (s.demo ? s.raw.requests.at(-1).id : s.state.requests.at(-1).id), "request");
-    toast(id ? "Payment request saved" : "Payment request submitted to Finance");
+    toast(id ? "Payment request corrected and sent to Finance" : "Payment request submitted to Finance");
   }
 
   async function submitReason(id, action, fd) {
@@ -556,6 +575,8 @@ export function createActions(store) {
     print: g(() => window.print()),
     amendApprove: g(amendApprove),
     newProject: g(() => newProject()), editProject: g((id) => newProject(id)),
+    newBudget: g(() => budgetForm()), editBudget: g((id) => budgetForm(id)),
+    restorePage: g(restorePage),
     projectOrder: g(projectOrder), projectPayment: g(projectPayment),
     newTask: g((projectId) => taskForm(projectId)), editTask: g((id) => taskForm(null, id)),
     deleteTask: g((id) => showModal("taskDelete", { id })),

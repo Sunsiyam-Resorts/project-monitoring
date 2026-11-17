@@ -23,10 +23,11 @@ For live login, copy `.env.example` to `.env` in the repository root (the backen
 ## Included
 
 - Dashboard: group/company/project scope, USD KPIs, project and category comparisons, CSV export and recent activity.
-- Projects: every project with its task progress; each project page shows its budget, payments, progress, tasks, breakdowns and activity. Finance and Admin add and update tasks.
+- Projects: every project with its task progress; each project page shows its budget, payments, progress, tasks, breakdowns and activity. Planning and Admin add and update tasks; Finance reads them.
 - Requests: main orders, individual payment requests, personal action queue, date/company/project/status filters, and committed balances not yet received by Finance.
 - Master Data: companies, projects, approved USD budgets and category revisions, shared suppliers, currencies.
-- User Manager: one role (Requester, Finance, Viewer or Admin), company/group access, activation and initial passwords.
+- Budgets: every approved budget with its utilized and available amounts, by category.
+- User Manager: one role (Finance, Planning, Viewer or Admin), company/group access, activation and initial passwords. Planning works on project tasks only.
 - Deleted (Admin only): Admin deletes requests and payment requests, which then count nowhere; the page lists them with a deletion and restoration log, for review and restore.
 - Settings: permanent payment sequence with configurable display format, 10-minute locks, Admin unlock and full audit trail.
 - Per-payment printable A4 document, separate approvals and separate payment PDFs.

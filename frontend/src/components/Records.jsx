@@ -1,5 +1,6 @@
 // Record tables shared by the Requests page and the record dialogs.
 import { Fragment } from "react";
+import { remainingToRequest } from "../domain/domain.js";
 import { Badge, BusyButton, Empty, RegionLabel, RowAction, TableWrap, text } from "./ui.jsx";
 import { fmt, date } from "../lib/format.js";
 import { attention, nameOf } from "../lib/selectors.js";
@@ -45,7 +46,7 @@ export function OrdersTable({ os, view = "requests", all }) {
   return (
     <TableWrap>
       <table className="work-table">
-        <thead><tr><th scope="col">Request Reference</th><th scope="col">Supplier / PO</th><th scope="col">Project / Company</th><th scope="col" className="right">Total Amount</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th scope="col">Request Reference</th><th scope="col">Supplier / PO</th><th scope="col">Project / Company</th><th scope="col" className="right">Total Amount</th>{view === "balance" ? <th scope="col" className="right">Balance Amount</th> : null}<th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {os.map((o) => {
             const open = expanded.includes(o.id);
@@ -57,6 +58,7 @@ export function OrdersTable({ os, view = "requests", all }) {
                   <td data-label="Supplier / PO">{nameOf(state, "suppliers", o.supplierId)}<span className="secondary">{o.po}</span></td>
                   <td data-label="Project / Company">{nameOf(state, "projects", o.projectId)}<span className="secondary">{nameOf(state, "companies", o.companyId)}</span></td>
                   <td data-label="Total Amount" className="right"><span className="currency">{o.currency}</span>{fmt(o.total)}</td>
+                  {view === "balance" ? <td data-label="Balance Amount" className="right"><strong><span className="currency">{o.currency}</span>{fmt(remainingToRequest(state, o))}</strong></td> : null}
                   <td>
                     {view === "balance"
                       ? <RowAction action="openOrder" id={o.id} label={"Open " + o.number} busy onRun={() => actions.openOrder(o.id)} />

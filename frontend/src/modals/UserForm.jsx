@@ -25,7 +25,7 @@ export function UserForm({ id }) {
           <div className="grid2">
             <Field label="Single role"><select name="role" id="userRole" defaultValue={u?.role || ROLES[0]}>{ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></Field>
           </div>
-          <p className="help">Requesters raise orders and payment requests. Finance reviews and pays them, and manages budgets, master data and project tasks. Viewers can only read.</p>
+          <p className="help">Finance raises requests and payment requests, reviews and pays them (never one they raised themselves), and manages budgets and master data. Planning manages project tasks only. Viewers can only read.</p>
         </Section>
         <Section number="03" title="Company access">
           <div className="checks">

@@ -16,13 +16,16 @@ All demo records and uploaded demo changes remain in the current browser. Start 
 
 1. As Admin, inspect all five pages. Test group/company/project dashboards. Review category balances and export summary.
 2. Under Master Data, add a company and project, then an approved budget with several USD categories. Add a supplier and currency. Revise a budget and check the old amounts and reason are preserved.
-3. Switch to Project Requester. Create a parent with one company/project/budget, supplier, unique PO/invoice, full amount, category allocations and, optionally, a PDF. Open it and create a 30% child payment request. It goes straight to Finance; there is no Submit step.
+3. Switch to Project Requester (a Finance user since Revision 5). Create a parent with one company/project/budget, supplier, unique PO/invoice, full amount, category allocations and, optionally, a PDF. Open it and create a 30% child payment request. It goes straight to Finance; there is no Submit step.
 4. Switch to Finance Officer. The child is in the Finance tab and Finance payments shortcut; there is no approval step.
 5. Verify the parent full amount is committed, although only 30% was requested. Finance's Not received by Finance tab should show the remaining 70%.
 6. Switch to Finance Officer. Add a remark, put the child on hold with a reason, release the hold, and record the exact payment with date/type and, optionally, a PDF.
 7. Return to the original Requester and create another part or the remaining balance under the same parent. Verify independent empty approvals and no double commitment.
-8. As Finance Officer, open Projects, open a project, add a task, change a task status inline and delete one. Progress (Done ÷ all tasks) updates on the project page and the Projects list, and each change appears in the Audit Log. As Group Viewer the same pages show no task controls. On the project page, use New request (company, project and budget are preset) and use Payment request on an order with value left to request; the new payment request opens already with Finance.
-9. Return a child from Finance with a reason. Confirm it returns to requester Draft, allows correction, and resubmission goes straight back to Finance. Check earlier review history.
+8. As Project Planner (Planning), only Projects is in the navigation.
+   - The project cards and project page show progress and tasks, with no budget or payment figures.
+   - Add a task, change a task status inline and delete one. Progress (Done ÷ all tasks) updates on the project page and the Projects list, and each change appears in the Audit Log.
+   - As Finance Officer and as Group Viewer, the same pages show the tasks with no task controls. On the project page, use New request (company, project and budget are preset) and use Payment request on an order with value left to request; the new payment request opens already with Finance.
+9. Return a child from Finance with a reason. Confirm it returns to the requester as Draft. Correct it: Submit to Finance saves the correction and sends it straight back to Finance in one step. Check the earlier review history.
 10. Try a duplicate parent PO in the same company from another requester; try the same invoice under the same supplier. Both should be blocked. A child reuses the parent's PO without duplicate warnings.
 11. Allocate an order above a category budget. Confirm warning and instruction to inform Finance, with submission still allowed.
 12. View Payment Request and Print / Save as PDF. Check names, dates, child approvals, terms, amount, main details and Finance information.
@@ -62,4 +65,9 @@ Use REVIEW-1.md as the current contract. Check these scenarios with separate tes
 11. Create a request and a payment request without any PDF and record its payment without evidence. Then ask for additional documents: the requester must attach at least one PDF.
 12. As Admin, open a request with a submitted or paid payment request: Delete request is disabled and names the payment requests to delete first. Delete a paid payment request with a reason; Paid, Outstanding, the trend charts and the remaining balance drop by its amount, and it disappears from every tab for every user. Delete a request holding only a draft: both disappear.
 13. On the Deleted page, check both records, the draft listed with its request and the log of each deletion. Review a record and open its PDFs. Restore the payment request and the request: they return with their earlier status and every figure is back. Restoring a payment request before its deleted request, after its PO was reused, or beyond the order balance must fail with a clear message.
-14. As Finance, Requester and Viewer, confirm there is no Deleted page and no delete button.
+14. As Finance, Planning and Viewer, confirm there is no Deleted page and no delete button.
+15. Open Budgets from the navigation and from the Dashboard shortcut.
+   - Each approved budget shows approved, utilized and available amounts in USD and its categories.
+   - Finance and Admin see Add budget and Edit / Revise; Viewer does not.
+16. In Requests → Balance to request, check that Balance Amount equals Total Amount less what has been requested.
+17. Open Dashboard, Projects, a project and Budgets in turn, then use the browser Back and Forward buttons: they move between these portal pages, and Back with a dialog open closes it. Reload on Budgets: after sign-in the portal reopens Budgets.

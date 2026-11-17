@@ -3,7 +3,7 @@ import { Icon } from "../components/Icon.jsx";
 import { Empty, PageHeader } from "../components/ui.jsx";
 import { ProgressBar } from "../components/Activity.jsx";
 import { fmt } from "../lib/format.js";
-import { nameOf } from "../lib/selectors.js";
+import { isPlanning, nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
 
 // Projects: every visible project as a card with its task progress and budget position.
@@ -13,14 +13,15 @@ export function Projects() {
   const { company, projectSearch } = useAppState();
   const q = projectSearch.trim().toLowerCase();
   const all = state.projects.filter((p) => !company || p.companyId === company);
+  const planning = isPlanning(user);
   const ps = all.filter((p) => !q || [p.name, p.code, nameOf(state, "companies", p.companyId)].join(" ").toLowerCase().includes(q));
   return (
     <>
-      <PageHeader eyebrow="PORTFOLIO" title="Projects" description="Progress from each project’s tasks, beside its budget position."
+      <PageHeader eyebrow="PORTFOLIO" title="Projects" description={planning ? "Progress from each project’s tasks." : "Progress from each project’s tasks, beside its budget position."}
         actions={isFinanceAdmin(user) ? <button className="primary" data-action="newProject" onClick={() => actions.newProject()}><Icon name="plus" />Add project</button> : null} />
       <div className="list-toolbar">
         <div className="searchbox"><Icon name="search" /><input id="projectSearch" value={projectSearch} onChange={(e) => actions.setSearch("projectSearch", e.target.value)} aria-label="Search projects" placeholder="Search project, code or company" /></div>
-        <small>{`${ps.length} of ${all.length} projects · budgets in USD`}</small>
+        <small>{`${ps.length} of ${all.length} projects${planning ? "" : " · budgets in USD"}`}</small>
       </div>
       {ps.length ? (
         <div className="project-grid">
@@ -36,7 +37,7 @@ export function Projects() {
                 <ProgressBar g={g} />
                 <div className="project-foot">
                   <span>{g.total ? `${g.done} of ${g.total} done` : "No tasks yet"}{g.overdue ? <>{" · "}<span className="project-late"><Icon name="clock" />{`${g.overdue} overdue`}</span></> : null}</span>
-                  <span><strong>{fmt(k.available)}</strong> available</span>
+                  {planning ? null : <span><strong>{fmt(k.available)}</strong> available</span>}
                 </div>
               </article>
             );

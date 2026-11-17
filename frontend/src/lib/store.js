@@ -1,6 +1,7 @@
 // One small external store per mounted app. Components read it through useAppState()
 // (useSyncExternalStore); the action layer (actions.js) is the only writer.
 import { createContext, useContext, useSyncExternalStore } from "react";
+import { allowedPages } from "./selectors.js";
 
 export const emptyAuditFilter = () => ({ action: "", user: "", company: "", from: "", to: "" });
 
@@ -14,7 +15,7 @@ export function initialState() {
     // Navigation, scope and list controls (kept for the session, like the legacy module variables).
     page: "dashboard", tab: "requests", masterTab: "companies",
     company: "", project: "", from: "", to: "", search: "", statusFilter: "", financeOnly: false,
-    sortOrder: "date-desc", masterSearch: "", userSearch: "", projectSearch: "", projectId: "",
+    sortOrder: "date-desc", masterSearch: "", userSearch: "", projectSearch: "", budgetSearch: "", projectId: "",
     auditSearch: "", auditFilter: emptyAuditFilter(), auditPageNo: 1,
     filtersExpanded: false,
     expanded: [],
@@ -27,9 +28,12 @@ export function initialState() {
   };
 }
 
-// The selected company must stay visible to the user; a vanished project page falls back to the list.
+// The selected company must stay visible to the user; a vanished project page falls back to
+// the list; a page the user's role may not open falls back to the role's first page.
 function normalise(s) {
   if (!s.state) return s;
+  const pages = allowedPages(s.user);
+  if (s.user && !pages.includes(s.page)) s = { ...s, page: pages[0] };
   if (s.company && !s.state.companies.some((c) => c.id === s.company)) s = { ...s, company: "", project: "" };
   if (s.page === "project" && !s.state.projects.some((p) => p.id === s.projectId)) s = { ...s, page: "projects" };
   return s;

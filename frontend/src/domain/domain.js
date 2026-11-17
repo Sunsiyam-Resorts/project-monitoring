@@ -1,17 +1,20 @@
 import { importFields, importCommand } from './import-data.js';
 import { randomId } from './ids.js';
 export { randomId };
-// One role per user. Finance reviews and pays every payment request directly; there are
-// no approval teams or approval levels.
+// One role per user. Finance raises requests and reviews and pays every payment request
+// (never one they raised themselves); there are no approval teams or approval levels.
+// Planning works on project tasks only. Viewers read; Admin administers.
 export const ROLES = [
-  "Requester",
   "Finance",
+  "Planning",
   "Viewer",
   "Admin",
 ];
 // Retired approval stages and roles, kept only so migration can recognise older data.
 export const RETIRED_STAGES = ["Reviewer", "Approval 1", "Approval 2"];
 export const RETIRED_ROLES = ["Reviewer", "Approver"];
+// Roles combined into another role: their users keep working under the new one.
+export const MERGED_ROLES = { Requester: "Finance" };
 export const TASK_STATUSES = ["To do", "In progress", "Done"];
 export const STAGES = [
   "Draft",
@@ -69,7 +72,7 @@ export const access = (u, c) =>
   !!u && (u.groupAccess || (u.companies || []).includes(c));
 // Finance and Admin have full operational access (everything except users and settings).
 export const isFinanceAdmin = (u) => !!u && u.active !== false && ["Finance", "Admin"].includes(u.role);
-export const canCreateRequests = (u) => !!u && u.active !== false && ["Requester", "Finance", "Admin"].includes(u.role);
+export const canCreateRequests = (u) => !!u && u.active !== false && ["Finance", "Admin"].includes(u.role);
 export const canManageRequest = (u, r) => canCreateRequests(u) && access(u, r.companyId) &&
   (isFinanceAdmin(u) || u.id === r.requestedBy);
 export function roleFor(u, r, role) {
@@ -79,7 +82,8 @@ export function roleFor(u, r, role) {
 // the company, never on a record they requested themselves (separation of duties).
 export const financeActor = (u, r) =>
   isFinanceAdmin(u) && access(u, r.companyId) && u.id !== r.requestedBy;
-export const canEditTasks = (u, companyId) => isFinanceAdmin(u) && access(u, companyId);
+// Project tasks are Planning's work (Admin may also change them); Finance only reads them.
+export const canEditTasks = (u, companyId) => !!u && u.active !== false && ["Planning", "Admin"].includes(u.role) && access(u, companyId);
 // Project progress is the share of its tasks that are Done; null when it has no tasks.
 export function projectProgress(s, projectId, now = Date.now()) {
   const ts = (s.tasks || []).filter((t) => t.projectId === projectId);
@@ -377,7 +381,18 @@ function issue(s, o, kind, now) {
   s.counters[key] = n;
   return number;
 }
+// Roles combined into another (Requester into Finance) move on every load, whatever the
+// data version, so no stored user keeps a role that no longer exists.
+function mergeRoles(s, now) {
+  for (const u of s.users || []) {
+    if (!Object.hasOwn(MERGED_ROLES, u.role)) continue;
+    const from = u.role;
+    u.role = MERGED_ROLES[from];
+    audit(s, SYSTEM, "user.migrated", u.id, undefined, `${u.username}: ${from} role combined into ${u.role}`, now);
+  }
+}
 export function migrateState(s, now = Date.now()) {
+  mergeRoles(s, now);
   if (
     s.version >= 3 &&
     Array.isArray(s.tasks) &&
@@ -503,6 +518,16 @@ export function visibleState(s, u) {
       active,
     }),
   );
+  // Planning sees projects and their tasks only: no budgets, requests, suppliers, locks or
+  // financial history.
+  if (u.role === "Planning") {
+    out.budgets = [];
+    out.orders = [];
+    out.requests = [];
+    out.suppliers = [];
+    out.locks = {};
+    out.audit = out.audit.filter((c) => typeof c.action === "string" && c.action.startsWith("task."));
+  }
   if (u.role !== "Admin")
     out.users = out.users.filter(
       (x) =>
@@ -591,6 +616,7 @@ function checkLock(s, u, id, now, required = true) {
 }
 export function supportingFile(s, u, { id, kind, index = 0, version, side = "data" }, now = Date.now()) {
   need(u && u.active !== false, "Active user required");
+  need(u.role !== "Planning", "Record not available"); // Planning has no financial records
   need(Number.isInteger(Number(index)) && Number(index) >= 0, "Invalid file index");
   const parent = ["order", "amendment", "amendment-history", "amendment-attempt"].includes(kind);
   need(parent || ["request", "payment"].includes(kind), "Invalid document type");
@@ -613,7 +639,7 @@ export function supportingFile(s, u, { id, kind, index = 0, version, side = "dat
   return file;
 }
 function validateOrder(s, u, d, exclude) {
-  need(canCreateRequests(u), "Requester, Finance or Admin role required");
+  need(canCreateRequests(u), "Finance or Admin role required");
   need(access(u, d.companyId), "Company access required");
   need(
     s.projects.some((p) => p.id === d.projectId && p.companyId === d.companyId),
@@ -811,7 +837,8 @@ export function apply(s, u, a, now = Date.now()) {
     const rec =
       s.requests.find((x) => x.id === a.id) ||
       s.orders.find((x) => x.id === a.id);
-    need(rec && access(u, rec.companyId), "Record not available");
+    // Planning never opens requests (no financial records), so it cannot lock them either.
+    need(rec && access(u, rec.companyId) && u.role !== "Planning", "Record not available");
     // Only Admin opens deleted records (to review them); anyone may let go of a lock.
     need(a.type === "unlock" || !rec.deleted || u.role === "Admin", "Record not available");
     const l = s.locks[a.id];
@@ -1361,7 +1388,7 @@ export function apply(s, u, a, now = Date.now()) {
     need(!x.id || prev, "Task not found");
     const p = s.projects.find((p) => p.id === (prev ? prev.projectId : x.projectId));
     need(p, "Select a valid project");
-    need(canEditTasks(u, p.companyId), "Only Finance or Admin can change project tasks");
+    need(canEditTasks(u, p.companyId), "Only Planning or Admin can change project tasks");
     const taskName = text(x.name);
     need(taskName && taskName.length <= 120, "Task name required (up to 120 characters)");
     need(TASK_STATUSES.includes(x.status), "Select a task status");
@@ -1388,7 +1415,7 @@ export function apply(s, u, a, now = Date.now()) {
   } else if (a.type === "task.delete") {
     const t = s.tasks.find((t) => t.id === a.id);
     need(t, "Task not found");
-    need(canEditTasks(u, t.companyId), "Only Finance or Admin can change project tasks");
+    need(canEditTasks(u, t.companyId), "Only Planning or Admin can change project tasks");
     s.tasks.splice(s.tasks.indexOf(t), 1);
     company = t.companyId;
     detail = `${s.projects.find((p) => p.id === t.projectId)?.name || "Project"}: ${t.name}`;

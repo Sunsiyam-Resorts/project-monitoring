@@ -67,8 +67,8 @@ export function demoState({ history = false } = {}) {
       active: true,
     },
     ...[
-      { id: "req0", name: "Project Requester", role: "Requester" },
-      { id: "req1", name: "Site Requester", role: "Requester" },
+      { id: "req0", name: "Project Requester", role: "Finance" },
+      { id: "req1", name: "Site Requester", role: "Finance" },
     ]
       .map((u) => ({
         ...u,
@@ -93,6 +93,16 @@ export function demoState({ history = false } = {}) {
       username: "finance2",
       email: "finance2@example.com",
       role: "Finance",
+      groupAccess: true,
+      companies: [],
+      active: true,
+    },
+    {
+      id: "planner",
+      name: "Project Planner",
+      username: "planner",
+      email: "planner@example.com",
+      role: "Planning",
       groupAccess: true,
       companies: [],
       active: true,

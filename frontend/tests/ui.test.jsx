@@ -32,11 +32,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const flush = () => act(() => sleep(20));
 const wait = (ms) => act(() => sleep(ms));
 
-async function app(seed, handleFetch, { withoutRandomUUID = false } = {}) {
+async function app(seed, handleFetch, { withoutRandomUUID = false, keepUrl = false } = {}) {
   document.body.innerHTML =
     '<div id="app"></div><dialog id="modal" aria-modal="true"></dialog><div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>';
   localStorage.clear();
   sessionStorage.clear();
+  // Every test starts on a fresh URL: no page from an earlier test in the history entry.
+  if (!keepUrl) history.replaceState(null, "", location.href.split("#")[0]);
   window.dispatchEvent(new StorageEvent("storage", { key: null }));
   const restore = { fetch: window.fetch, createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
   if (withoutRandomUUID) Object.defineProperty(window.crypto, "randomUUID", { value: undefined, configurable: true });
@@ -201,12 +203,16 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.deepEqual([...w.document.querySelectorAll('.payment-overview h3')].map(x=>x.textContent), ['Paid','Outstanding Payments','On Hold','Balance Payments Pending']);
   // REVIEW-1 (amended): tiles add only a year-to-date trend chart, no other text.
   assert.equal(w.document.querySelectorAll('.dashboard-kpis p,.dashboard-kpis small').length, 0);
-  // One main card: three figures above one combined chart; four payment trend lines.
+  // One main card: three figures above one area chart; payment columns split into the four buckets.
   assert.equal(w.document.querySelectorAll('.budget-overview .dashboard-kpi').length, 3);
   assert.equal(w.document.querySelectorAll('.budget-overview .kpi-trend-overview').length, 1);
   assert.match(w.document.querySelector('.kpi-trend-overview').getAttribute('aria-label'), /approved budget USD .+; utilized USD .+; available USD .+/);
   assert.equal(w.document.querySelectorAll('.payment-overview .kpi-trend-payments').length, 1);
-  assert.equal(w.document.querySelectorAll('.payment-overview .pay-line').length, 4);
+  const months = w.document.querySelectorAll('.budget-overview .lc-hit').length;
+  assert.ok(months > 0);
+  assert.ok(w.document.querySelector('.budget-overview .lc-band.lc-utilized') && w.document.querySelector('.budget-overview .lc-edge.lc-approved'));
+  assert.equal(w.document.querySelectorAll('.payment-overview .lc-column').length, months);
+  for (const key of ["paid", "outstanding", "hold", "balance"]) assert.ok(w.document.querySelector('.payment-overview .lc-col.seg-' + key), key);
   assert.match(w.document.querySelector('.kpi-trend-payments').getAttribute('aria-label'), /Paid USD .+; Outstanding Payments USD .+; On Hold USD .+; Balance Payments Pending USD .+/);
   // Shortcuts: Finance payments and Projects (My Actions is no longer a shortcut).
   assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-target=Finance]'));
@@ -238,13 +244,20 @@ test("All five pages and document render, scoped role switching works", async ()
   actor.value = "viewer";
   fire(actor, new w.Event("change", { bubbles: true }));
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "requests"]);
-  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 3);
+  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests"]);
+  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 4);
+  // Planning works on project tasks only: Projects is its only page.
+  const actorP = w.document.querySelector("#actor");
+  actorP.value = "planner";
+  fire(actorP, new w.Event("change", { bubbles: true }));
+  await flush();
+  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["projects"]);
+  assert.equal(w.document.querySelector("#pageTitle").textContent, "Projects");
   const actorF = w.document.querySelector("#actor");
   actorF.value = "fin";
   fire(actorF, new w.Event("change", { bubbles: true }));
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "requests", "master", "audit"]);
+  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests", "master", "audit"]);
   click(w, "[data-page=dashboard]");
   assert.match(w.document.body.textContent, /All/);
   const actor2 = w.document.querySelector("#actor");
@@ -434,7 +447,7 @@ test("Submitting goes straight to Finance, and a Finance return goes back to the
     await actor(w, "req0");
     click(w, "[data-page=requests]");
     click(w, "[data-tab=inbox]");
-    var expand = w.document.querySelector('[data-action=expand][aria-expanded="false"]');
+    var expand = w.document.querySelector(`[data-action=expand][data-id="${seed.requests[0].orderId}"][aria-expanded="false"]`);
     if (expand) click(w, expand);
     click(w, "[data-action=openRequest][data-id=r0]");
     await flush();
@@ -458,6 +471,22 @@ test("Submitting goes straight to Finance, and a Finance return goes back to the
     const saved = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
     assert.equal(saved.requests[0].status, "Draft");
     assert.equal(saved.requests[0].history.at(-1).reason, "Clarify the advance terms");
+    // Correcting the returned request sends it back to Finance in the same step.
+    click(w, "[data-action=close]");
+    await flush();
+    await actor(w, "req0");
+    click(w, "[data-tab=inbox]");
+    const again = w.document.querySelector(`[data-action=expand][data-id="${seed.requests[0].orderId}"][aria-expanded="false"]`);
+    if (again) click(w, again);
+    click(w, "[data-action=openRequest][data-id=r0]");
+    await flush();
+    click(w, "[data-action=editPayment]");
+    assert.match(w.document.querySelector("[data-form=payment] .form-footer").textContent, /Submit to Finance/);
+    submit(w, "[data-form=payment]");
+    await flush();
+    const resent = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
+    assert.equal(resent.requests[0].status, "Finance", w.document.querySelector("#toast").textContent);
+    assert.match(w.document.querySelector("#toast").textContent, /sent to Finance/);
   } finally {
     w.close();
     await w.happyDOM.abort();
@@ -476,10 +505,10 @@ test("Validation errors remain inside the form and submitted draft details are n
     click(w, "[data-page=requests]");
     click(w, "[data-tab=inbox]");
     var expand = w.document.querySelector(
-      '[data-action=expand][aria-expanded="false"]',
+      `[data-action=expand][data-id="${seed.requests[0].orderId}"][aria-expanded="false"]`,
     );
     if (expand) click(w, expand);
-    click(w, "[data-action=openRequest]");
+    click(w, `[data-action=openRequest][data-id="${seed.requests[0].id}"]`);
     await flush();
     click(w, "[data-action=editPayment]");
     const percent = w.document.querySelector("#paymentPercent");
@@ -618,6 +647,16 @@ test("Core text and primary controls meet WCAG AA contrast against their surface
     [color("muted"), "#f3f7ef"],
     ["#ffffff", color("accent")],
     [color("accent"), color("accent-soft")],
+    [color("on-sage"), color("sage")],
+    [color("on-sage"), color("sage-strong")],
+    [color("on-sage-muted"), color("sage")],
+    [color("on-sage-muted"), color("sage-strong")],
+    [color("on-sage"), color("primary-hover")],
+    [color("on-chip"), color("chip-green")],
+    [color("on-chip"), color("chip-blue")],
+    [color("on-chip"), color("chip-amber")],
+    [color("on-chip"), color("chip-red")],
+    [color("on-chip-grey"), color("chip-grey")],
     [color("danger"), color("danger-soft")],
     [color("warning"), color("warning-soft")],
     [color("success"), color("success-soft")],
@@ -1009,7 +1048,7 @@ test('Admin creates requests that go straight to Finance and adds further indepe
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
-test('Projects list and project pages show task progress; only Finance and Admin edit tasks', async () => {
+test('Projects list and project pages show task progress; only Planning and Admin edit tasks', async () => {
   const w = await app();
   try {
     click(w, '[data-action=demo]');
@@ -1041,30 +1080,8 @@ test('Projects list and project pages show task progress; only Finance and Admin
     assert.match(w.document.querySelector('.progress-figure').textContent, /^47%$/);
     assert.equal(w.document.querySelectorAll('.task-row').length, 17);
     assert.ok(w.document.querySelector('.explore-card [data-disclosure=payments]'));
-    // Add a task through the form.
-    click(w, '[data-action=newTask]');
-    const f = w.document.querySelector('[data-form=task]');
-    f.elements.name.value = 'Commissioning';
-    f.elements.status.value = 'Done';
-    submit(w, '[data-form=task]');
-    await flush();
-    assert.equal(w.document.querySelectorAll('.task-row').length, 18);
-    assert.match(w.document.querySelector('.progress-figure').textContent, /^50%$/);
-    // Inline status change saves straight away.
-    const select = w.document.querySelector('.task-status');
-    select.value = 'Done';
-    fire(select, new w.Event('change', { bubbles: true }));
-    await flush();
-    assert.match(w.document.querySelector('.progress-figure').textContent, /^56%$/);
-    let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-    assert.equal(saved.tasks.filter((t) => t.projectId === 'p1' && t.status === 'Done').length, 10);
-    assert.ok(saved.audit.some((a) => a.action === 'task.save' && a.user === 'Finance Officer'));
-    // Delete with an in-page confirmation.
-    const added = saved.tasks.find((t) => t.name === 'Commissioning');
-    click(w, `[data-action=deleteTask][data-id="${added.id}"]`);
-    submit(w, '[data-form=taskDelete]');
-    await flush();
-    assert.equal(w.document.querySelectorAll('.task-row').length, 17);
+    // Finance reads the tasks but cannot change them.
+    assert.equal(w.document.querySelector('.task-status,[data-action=newTask],[data-action=editTask],[data-action=deleteTask]'), null);
     // Payment requests from the project page: a new request is preset to this project, and
     // an order with value left to request takes a further payment request directly.
     click(w, '[data-action=projectOrder]');
@@ -1087,12 +1104,46 @@ test('Projects list and project pages show task progress; only Finance and Admin
     fire(pf.elements.percent, new w.Event('input', { bubbles: true }));
     submit(w, '[data-form=payment]');
     await flush();
-    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
     assert.equal(saved.requests.length, before + 1, w.document.querySelector('#modal').textContent.slice(0, 300));
     assert.equal(saved.requests.at(-1).orderId, orderId);
     assert.equal(saved.requests.at(-1).status, 'Finance');
     click(w, '[data-action=close]');
     await flush();
+    // Planning: projects and tasks only, without budget figures; it adds and changes tasks.
+    await actor(w, 'planner');
+    click(w, '[data-page=projects]');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Projects');
+    assert.doesNotMatch(w.document.querySelector('.project-card .project-foot').textContent, /available/);
+    click(w, '[data-action=openProject][data-id=p1]');
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Tropical Maldives Project');
+    assert.equal(w.document.querySelector('.budget-overview,.payment-overview,.requests-card,.explore-card'), null);
+    assert.ok(w.document.querySelector('.kpi-side > .progress-card'));
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^47%$/);
+    // Add a task through the form.
+    click(w, '[data-action=newTask]');
+    const f = w.document.querySelector('[data-form=task]');
+    f.elements.name.value = 'Commissioning';
+    f.elements.status.value = 'Done';
+    submit(w, '[data-form=task]');
+    await flush();
+    assert.equal(w.document.querySelectorAll('.task-row').length, 18);
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^50%$/);
+    // Inline status change saves straight away.
+    const select = w.document.querySelector('.task-status');
+    select.value = 'Done';
+    fire(select, new w.Event('change', { bubbles: true }));
+    await flush();
+    assert.match(w.document.querySelector('.progress-figure').textContent, /^56%$/);
+    saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
+    assert.equal(saved.tasks.filter((t) => t.projectId === 'p1' && t.status === 'Done').length, 10);
+    assert.ok(saved.audit.some((a) => a.action === 'task.save' && a.user === 'Project Planner'));
+    // Delete with an in-page confirmation.
+    const added = saved.tasks.find((t) => t.name === 'Commissioning');
+    click(w, `[data-action=deleteTask][data-id="${added.id}"]`);
+    submit(w, '[data-form=taskDelete]');
+    await flush();
+    assert.equal(w.document.querySelectorAll('.task-row').length, 17);
     click(w, '[data-action=backProjects]');
     assert.equal(w.document.querySelector('#pageTitle').textContent, 'Projects');
     // A Viewer sees progress but no task controls.
@@ -1184,4 +1235,71 @@ test("Admin deletes payment requests and requests, reviews them on the Deleted p
     w.close();
     await w.happyDOM.abort();
   }
+});
+
+test("Budgets page lists each approved budget; the Balance to request tab shows the balance amount", async () => {
+  const w = await app();
+  try {
+    click(w, "[data-action=demo]");
+    await actor(w, "fin");
+    click(w, ".kpi-side > .workspace-actions [data-page=budgets]");
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Budgets");
+    const cards = w.document.querySelectorAll(".budget-card");
+    assert.ok(cards.length > 0);
+    assert.deepEqual([...cards[0].querySelectorAll(".budget-figures dt")].map((x) => x.textContent), ["Approved Budget", "Budget Utilized", "Available Budget", "Utilized"]);
+    assert.ok(cards[0].querySelector(".dashboard-table tbody tr"));
+    assert.ok(w.document.querySelector("[data-action=newBudget]"));
+    type(w, w.document.querySelector("#budgetSearch"), "no such budget");
+    await flush();
+    assert.equal(w.document.querySelectorAll(".budget-card").length, 0);
+    click(w, "[data-page=requests]");
+    click(w, "[data-tab=balance]");
+    const heads = [...w.document.querySelectorAll(".work-table thead th")].map((th) => th.textContent);
+    assert.deepEqual(heads.slice(3, 5), ["Total Amount", "Balance Amount"]);
+    assert.match(w.document.querySelector('.work-table tbody td[data-label="Balance Amount"]').textContent, /^[A-Z]{3}[\d,]+\.\d{2}$/);
+    await actor(w, "viewer");
+    click(w, "[data-page=budgets]");
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Budgets");
+    assert.equal(w.document.querySelector("[data-action=newBudget],[data-action=editBudget]"), null);
+  } finally { w.close(); await w.happyDOM.abort(); }
+});
+
+test("Browser Back and Forward move between portal pages, and the URL reopens the page", async () => {
+  const w = await app();
+  const title = () => w.document.querySelector("#pageTitle").textContent;
+  const back = async () => { w.history.back(); await new Promise((r) => setTimeout(r, 30)); await flush(); };
+  try {
+    click(w, "[data-action=demo]");
+    await flush();
+    assert.equal(w.location.hash, "#dashboard");
+    click(w, "[data-page=projects]");
+    click(w, "[data-action=openProject][data-id=p1]");
+    assert.equal(w.location.hash, "#project/p1");
+    click(w, "[data-page=budgets]");
+    assert.equal(title(), "Budgets");
+    await back();
+    assert.equal(title(), "Tropical Maldives Project");
+    await back();
+    assert.equal(title(), "Projects");
+    // (happy-dom does not implement history.forward(); Forward is checked in a real browser.)
+    click(w, "[data-action=openProject][data-id=p1]");
+    assert.equal(title(), "Tropical Maldives Project");
+    // Going Back with a dialog open closes it and shows the previous page.
+    click(w, "[data-page=requests]");
+    click(w, "[data-action=openOrder]");
+    await flush();
+    assert.ok(w.document.querySelector("#modal[open]"));
+    await back();
+    assert.equal(title(), "Tropical Maldives Project");
+    assert.equal(w.document.querySelector("#modal[open]"), null);
+  } finally { w.close(); await w.happyDOM.abort(); }
+  // A reload on a page URL reopens that page.
+  history.replaceState(null, "", location.href.split("#")[0] + "#budgets");
+  const w2 = await app(undefined, undefined, { keepUrl: true });
+  try {
+    click(w2, "[data-action=demo]");
+    await flush();
+    assert.equal(w2.document.querySelector("#pageTitle").textContent, "Budgets");
+    assert.equal(w2.location.hash, "#budgets");
+  } finally { w2.close(); await w2.happyDOM.abort(); }
 });

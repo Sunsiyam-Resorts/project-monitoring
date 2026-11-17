@@ -63,7 +63,8 @@ function fixture() {
   s.users.push(
     u('admin', 'Admin', { groupAccess: true }), u('admin2', 'Admin', { companies: ['c1'] }),
     u('fin', 'Finance', { groupAccess: true }), u('fin2', 'Finance', { companies: ['c1'] }),
-    u('req', 'Requester', { companies: ['c1'] }), u('req2', 'Requester', { companies: ['c1', 'c2'] }),
+    u('req', 'Finance', { companies: ['c1'] }), u('req2', 'Finance', { companies: ['c1', 'c2'] }),
+    u('plan', 'Planning', { companies: ['c1'] }), u('plan2', 'Planning', { groupAccess: true }), u('oldreq', 'Requester', { companies: ['c1'] }),
     u('view', 'Viewer', { groupAccess: true }), u('gone', 'Finance', { groupAccess: true, active: false }),
   );
   s.tasks.push({ id: 't1', companyId: 'c1', projectId: 'p1', name: 'Survey', status: 'Done', due: '2026-03-01', owner: 'Site', createdAt: '2026-01-02T00:00:00.000Z', createdBy: 'fin', updatedAt: '2026-03-01T00:00:00.000Z', completedAt: '2026-03-01T00:00:00.000Z' });
@@ -125,7 +126,7 @@ function actor(s, roles, companyId, notRequester) {
   const ok = s.users.filter((u) => u.active !== false && roles.includes(u.role) && (u.groupAccess || (u.companies || []).includes(companyId)) && u.id !== notRequester);
   return ok.length && chance(0.9) ? pick(ok) : pick(s.users);
 }
-const managers = ['Requester', 'Finance', 'Admin'], financeRoles = ['Finance', 'Admin'];
+const managers = ['Finance', 'Admin'], financeRoles = ['Finance', 'Admin'];
 
 // A valid lifecycle step, chosen from what the state allows.
 function lifecycle(s) {
@@ -151,7 +152,7 @@ function lifecycle(s) {
     const withFiles = [...s.orders, ...s.requests].filter((x) => x.files?.length || x.payment?.files?.length || x.amendments?.length || x.amendment);
     const t = pick(withFiles);
     if (!t) return;
-    const u = actor(s, ['Admin', 'Finance', 'Requester', 'Viewer'], t.companyId);
+    const u = actor(s, ['Admin', 'Finance', 'Planning', 'Viewer'], t.companyId);
     run(s, u, { type: 'lock', id: t.id });
     const m = pick([...(t.amendments || []), ...(t.amendmentAttempts || [])]);
     const kind = t.orderId ? pick(['request', 'payment']) : pick(['order', 'amendment', ...(m ? ['amendment-history', 'amendment-attempt'] : [])]);
@@ -299,7 +300,7 @@ function step(s) {
     case 'master': return run(s, chance(0.7) ? pick(s.users.filter((x) => ['Finance', 'Admin'].includes(x.role))) : user, masterCommand(s));
     case 'user.save': return run(s, user.role === 'Admin' || chance(0.3) ? user : s.users[0], userCommand(s));
     case 'task': {
-      const actor = chance(0.7) ? pick(s.users.filter((x) => ['Finance', 'Admin'].includes(x.role))) : user;
+      const actor = chance(0.7) ? pick(s.users.filter((x) => ['Planning', 'Admin'].includes(x.role))) : user;
       const t = s.tasks.length && chance(0.5) ? pick(s.tasks) : null;
       if (t && chance(0.3)) return run(s, actor, { type: 'task.delete', id: chance(0.9) ? t.id : 'nope' });
       const record = t ? { ...t } : { projectId: pick([...s.projects.map((p) => p.id), 'nope']) };
@@ -328,7 +329,7 @@ function step(s) {
       { type: 'master.save', data: { kind: 'secrets', record: { name: 'x' } } }, { type: 'user.save', data: {} }, { type: 'task.save' },
       { type: 'request.nothing', id: r?.id }, { type: 'settings.save', id: 'entity-from-client', data: { orderFormat: '{COMPANY}-{PROJECT}-W-{SEQ}', numberFormat: '{COMPANY}-{PROJECT}-V-{SEQ}', lockMinutes: 10 } }]));
     case 'view': {
-      const u = chance(0.9) ? pick(s.users) : { id: 'outsider', role: 'Requester', companies: ['c2'], active: true };
+      const u = chance(0.9) ? pick(s.users) : { id: 'outsider', role: pick(['Requester', 'Planning']), companies: ['c2'], active: true };
       try { D.visibleState(s, u); } catch {}
       return;
     }
@@ -368,8 +369,8 @@ function masterCommand(s) {
 function userCommand(s) {
   const prev = chance(0.5) ? structuredClone(pick(s.users)) : null;
   const n = int(1, 99);
-  const record = prev ?? { name: `Fictional user ${n}`, username: `user${n}`, email: `user${n}@example.test`, role: 'Requester', companies: ['c1'] };
-  if (chance(0.4)) record.role = pick(['Requester', 'Finance', 'Viewer', 'Admin', 'Reviewer', 'Boss']);
+  const record = prev ?? { name: `Fictional user ${n}`, username: `user${n}`, email: `user${n}@example.test`, role: 'Finance', companies: ['c1'] };
+  if (chance(0.4)) record.role = pick(['Requester', 'Finance', 'Planning', 'Viewer', 'Admin', 'Reviewer', 'Boss']);
   if (chance(0.2)) record.active = pick([false, true, 'no']);
   if (chance(0.2)) record.companies = pick([[], ['c2'], ['cx'], undefined, 'c1']);
   if (chance(0.2)) record.groupAccess = pick([true, false, 1]);
@@ -448,6 +449,7 @@ function legacyState() {
   s.companies.push({ id: 'c3', name: pick(['  fictional lagoon   retreat', 'Fictional Lagoon Resort', 'Ünïcode Örtlich', '🌴 Palm', 'a']) });
   s.projects.push({ id: 'p4', companyId: 'c3', name: 'Villa Upgrade' });
   for (const b of s.budgets) if (chance(0.5)) { delete b.currency; delete b.rate; }
+  s.users.push({ id: 'oldreq', name: 'Old Requester', username: 'oldreq', email: 'oldreq@example.test', role: 'Requester', companies: ['c1'], active: true });
   s.users.push({ id: 'rev', name: 'Old Reviewer', username: 'rev', email: 'rev@example.test', role: pick(['Reviewer', 'Approver']), team: 'Planning', approvalLevel: 1, companies: ['c1'], active: true });
   for (let i = 1; i <= int(1, 4); i++) {
     const o = { id: 'lo' + i, companyId: 'c1', projectId: pick(['p1', 'p2']), budgetId: 'b1', supplierId: 's1', currency: 'USD', rate: 1, total: 1000, po: 'LPO-' + i, invoice: '', description: 'Legacy fictional order',
@@ -474,7 +476,7 @@ for (let e = 0; e < episodes; e++) {
   if (e % 5 === 4) s.settings.lockMinutes = 10;
   const steps = int(30, 60);
   for (let i = 0; i < steps; i++) step(s);
-  for (const u of s.users.slice(0, 5)) D.visibleState(s, u);
+  for (const u of s.users) { try { D.visibleState(s, u); } catch {} }
 }
 
 const outDir = new URL('../../../backend/internal/domain/testdata/', import.meta.url);

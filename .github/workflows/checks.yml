@@ -3,14 +3,64 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
-  test:
+  frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: portal_test
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: fictional-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # Re-record the JavaScript workflow rules from the current frontend tests, so the Go parity test
+      # fails whenever the two copies of the rules (frontend/src/domain, backend/internal/domain) drift apart.
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run traces
+        working-directory: frontend
+      - run: go vet ./...
+        working-directory: backend
+      - run: go test ./...
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://portal:fictional-test-password@localhost:5432/portal_test?sslmode=disable
+      - run: go build -o portal ./cmd/portal
+        working-directory: backend
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t project-monitoring:ci .

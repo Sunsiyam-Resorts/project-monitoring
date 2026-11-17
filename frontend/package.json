@@ -1,0 +1,27 @@
+{
+  "name": "sun-siyam-project-monitoring-frontend",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "traces": "node scripts/traces/record.mjs && node scripts/traces/fuzz.mjs"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.3.0",
+    "happy-dom": "^21.0.4",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

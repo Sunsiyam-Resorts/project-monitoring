@@ -1,4 +1,5 @@
-# Project Monitoring portal + PostgreSQL, served at https://project.ssrsys.com through the server's Cloudflare Tunnel.
+# Project Monitoring portal (Go backend serving the React frontend, built from the Dockerfile) + PostgreSQL,
+# served at https://project.ssrsys.com through the server's Cloudflare Tunnel.
 # Configure .env first (see .env.example and docs/DEPLOYMENT.md), then:
 #   docker compose up -d --build
 # The database lives in the named volume "pgdata". Never run `docker compose down -v`: it deletes the database.
@@ -41,7 +42,7 @@ services:
       HOST: 0.0.0.0
       PORT: "3000"
       # Users reach the portal over HTTPS (https://project.ssrsys.com via the server's Cloudflare Tunnel),
-      # so the session cookie is marked Secure.
+      # so the session cookie is marked Secure. (The variable keeps its Node.js-era name.)
       NODE_ENV: production
     ports:
       # Reachable only from the server itself, where cloudflared forwards to http://localhost:3080.

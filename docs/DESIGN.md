@@ -1,3 +1,108 @@
+> **File locations (November 2026).** The interface is now a Vite + React app in `frontend/`. The files named below moved: `public/app.js`, `public/ui.js` and `public/icons.js` became React components under `frontend/src/`; `public/domain.js` and `public/demo.js` are in `frontend/src/domain/`; the stylesheets are in `frontend/src/styles/`; `public/theme.js`, `public/logo.svg`, `public/icon.svg` and `public/fonts/` are in `frontend/public/`. The design decisions recorded here are unchanged.
+
+# Browser Back and Forward — 17 November 2026
+
+Each portal page, and each project page, is now a browser history entry with its own address: `#dashboard`, `#projects`, `#project/<id>`, `#budgets`, `#requests` and so on.
+- **Back and Forward:** these move between portal pages instead of leaving the portal. Going Back while a dialog is open closes the dialog (releasing its record lock) and the navigation drawer.
+- **Reloads and bookmarks:** reloading or bookmarking a page reopens that page after sign-in.
+- **Access:** a page the role may not open, or a project it cannot see, falls back as usual.
+- **Not history entries:** dialogs, tabs and filters.
+- **Signing out:** removes the page from the address.
+
+The hash keeps addresses working without server changes; the code is in `frontend/src/lib/history.js`.
+
+# Budgets page, Planning view and three shortcuts — 17 November 2026
+
+- **Budgets page:** a new page in the navigation, between Projects and Requests, with its own icon.
+  - One card per approved budget, largest first, within the selected company.
+  - The card header gives the budget name with project and company, plus Edit / Revise for Finance and Admin.
+  - Below it are four figures in USD: Approved Budget, Budget Utilized, Available Budget and the share utilized.
+  - A segment bar shows utilized against approved.
+  - A note gives the approval currency and rate, any overrun ("inform Finance") and the number and date of revisions.
+  - The categories table shows approved, utilized, available and % utilized.
+  - A search box filters by budget, project or company. Add budget opens the Master Data budget form.
+- **Dashboard shortcuts:** three tiles in one row: Finance payments, Projects and Budgets. Budgets is the green call to action.
+- **Balance to request:** the table adds a right-aligned Balance Amount column (bold, in the order's currency) after Total Amount.
+- **Planning:**
+  - The navigation shows only Projects.
+  - Project cards drop the available amount.
+  - The project page shows the tasks card beside a side column with the progress card and task activity; there is no budget, payment or request card.
+
+# Charts in the sales dashboard style — 17 November 2026
+
+The charts follow the Sun Siyam sales dashboard (sales.ssrsys.com/demo), at the user's request, and replace a short-lived dense-bar version. The figures, their definitions and the accessible summaries are unchanged.
+
+- **Drawing:** SVG at the plot's real pixel size, so lines and text are crisp.
+  - Light gridlines with value ticks (`2M`, `500K`).
+  - Month ticks along the bottom, with the latest month in bold.
+  - A thin marker line at the latest month, with white-ringed dots on its values.
+- **Fills:** pastels with a darker edge, using the sales dashboard's colours:
+  - Green `#bcdda8` with edge `#7fbe58`.
+  - Aqua `#95d5e6` / `#33aecf`.
+  - Amber `#f0cc9b` / `#e39e3f`.
+  - Lilac `#cac0ef` / `#9a86e0`.
+  - Keys are small squares with the same fill and edge.
+- **Main budget card:** a stacked area chart.
+  - The green band is Budget Utilized.
+  - The pale band above it, up to the approved budget line (darker, 2.25 px), is Available Budget.
+  - A caption under the chart says so.
+- **Payment card:** one column per month, split from the bottom into Paid (green), Outstanding Payments (aqua), On Hold (amber) and Balance Payments Pending (lilac). The four always add up to Budget Utilized. The figure labels carry the same keys.
+- **Payment Status and project progress:** outlined segments on a light track, the sales dashboard's segment bar.
+  - Payment Status shows the four buckets.
+  - Progress shows Done (green) and In progress (aqua); the empty track is To do.
+- **Dark:** the same shapes and pastels on charcoal, with darker gridlines and track, and a light approved-budget line.
+- **Hover and motion:**
+  - Hovering a month shades it, and its tooltip gives the month's values.
+  - On first view and after a filter change, the area wipes in from the left and the columns rise. Resizing the window redraws without motion. Nothing moves when reduced motion is set.
+- **Unchanged:** each payment colour matches its status chip, and every amount is also written, so colour is never the only signal.
+- **Smaller fixes in the same pass:**
+  - The payment card's figure size allows for the decimals and column padding, so ".00" stays on the figure's line.
+  - The figures' decimals no longer jump when the rolling animation ends.
+    - The rolling digits and the plain figure now share one layout: every digit sits on the text baseline, and the strip is clipped with `clip-path` rather than `overflow: hidden`, which moved the baseline.
+    - The decimals follow the number directly, with no gap.
+    - The roll's top and bottom fade no longer dims the digits.
+  - The Deleted page's card headings line up with their text.
+  - The Settings form footer fits its card.
+  - The old candle, line and bar chart styles and the unused background-grid scroll effect were removed.
+
+# Green workspace — 17 November 2026
+
+The interface follows a reference image supplied in chat: a sage-green sidebar, a black workspace with charcoal cards, and green pill actions. It replaces the frosted-glass cards, tinted background and spreadsheet grid. Layout, navigation, controls, wording and every figure are unchanged. Light, Dark and System appearance remain. Dark follows the picture, and Light uses the same sidebar with a pale canvas and white cards. The typeface stays Inter (Apple's system font on Apple devices).
+
+- **Files:** `frontend/src/styles/theme.css` holds the look and the Dark tokens; it replaces `glass.css` and `dark.css`. The Light tokens are at the top of `style.css`.
+- **Sidebar (both appearances):** sage `#a2d397` from edge to edge, with near-black text `#0e1a0c` and a muted dark green `#2d4a27` for labels.
+  - The active page is a full-width darker band `#8fc483`.
+  - The pending count is a black disc.
+  - The company selector is a black field.
+  - The demo user selector, the account and the theme button sit in a black card at the foot.
+  - Keyboard focus in the sidebar is drawn in the dark text colour, because sage on sage would not show.
+- **Dark:** canvas `#0b0b0b`, cards `#1a1a1a`, hairlines `#2b2b2b`, text `#f4f5f2`, muted text `#9c9e98`. Sage is used for links, focus and accents.
+- **Light:** canvas `#eef1ec`, white cards, text `#141713`, muted text `#5e645b`. Dark green `#2f6b2b` is used for links and focus, because sage is too light for text on white.
+- **Buttons:** pills.
+  - Primary is sage with near-black text.
+  - Secondary is a white pill with a hairline in Light and a `#262626` pill in Dark.
+  - Icon buttons are circles.
+- **Tabs:** plain labels with a 2px underline under the active tab. The active count is an inverted disc. On phones the row scrolls sideways without a visible scrollbar.
+- **Dialog labels:** the small labels above record numbers and amounts are in sentence case ("Payment request", "Total order amount"), muted, with no capitals or letter-spacing. Dialog action buttons have room below them before the record details.
+- **Status chips:** small solid blocks with dark text, the same in both appearances:
+  - Paid, Active and Committed are green.
+  - Finance stages are blue.
+  - On Hold and Documents required are amber.
+  - Rejected and Deleted are red.
+  - Draft and Inactive are grey.
+  - The status is always written, so colour is never the only signal.
+- **Notices:** a hairline all round, with no thick coloured left edge.
+- **Charts:** see Charts in the sales dashboard style, above.
+- **Dashboard shortcuts:** the Projects tile is sage and Finance payments is a quiet tile.
+- **Main budget card figures:** their size now allows for the middle column's padding on both sides, so Budget Utilized no longer pushes its decimals onto a second line.
+- **Sign-in:** the message panel is sage with dark text, and the small all-caps labels above the headings are hidden.
+- **Unchanged:** print and the printable request preview remain white, as before.
+
+Validation: frontend tests pass, with new contrast checks for sage text and status chips, and the build passes. Headless Chrome screenshots were checked for these screens:
+- The Dashboard, Projects, Requests, Master Data and sign-in pages, in Dark and Light, at 1440 px.
+- The request and payment request dialogs.
+- Phone width (390 px), including the navigation drawer.
+
 # Main budget card — 5 November 2026
 
 Total Approved Budget, Budget Utilized and Available Budget now share one main card: three equal figure columns separated by thin dividers, above one full-width year-to-date chart. The chart is zero-based; approved budget is a grey line, utilized an ink line, and available the soft green band between them, with a small legend, month labels, and a per-month tooltip giving all three values. The figures are sections of the card, so the earlier per-card frosted tint on Available Budget is not used here. The available area between the approved and utilized lines is shaded with diagonal ink hatching (an HTML layer masked to the band so the hatching stays at 45° however the chart stretches), not a colour fill. Paid, Outstanding Payments, On Hold and Balance Payments Pending share one payment card to the right of the main card: four figures (2×2, or one row when the card is full width) over one combined chart, one line each — Paid in ink, Outstanding blue #2a78d6, On Hold orange #eb6834, Balance aqua #1baf7a (dark: #3987e5, #d95926, #199e70; validated for colour-vision deficiency). Each label carries its line colour, so the figures are the legend. Below the payment card, a separate card holds two square shortcut buttons, Finance payments and Projects, labelled in large extra-bold type with a small arrow in the bottom-right corner; there is no other text. Under 1100px everything stacks in one column. On the Dashboard the filter row is one horizontal line: the reporting currency on the left, then on the right the Project filter (no visible label; its blank option reads "All projects", and there is no Clear filters link) followed by Export summary, all centred on the same axis at the same height.

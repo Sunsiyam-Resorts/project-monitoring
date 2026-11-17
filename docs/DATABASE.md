@@ -1,12 +1,12 @@
 # PostgreSQL setup and developer handover
 
-The live portal uses PostgreSQL through `pg`. On the server, the `portal` container (see [DEPLOYMENT.md](DEPLOYMENT.md)) runs the application and API and connects to the `db` PostgreSQL container using `DATABASE_URL`, which `compose.yaml` sets. Browser demo data stays in browser storage and never seeds the live database.
+The live portal uses PostgreSQL through the Go driver pgx (`backend/`). On the server, the `portal` container (see [DEPLOYMENT.md](DEPLOYMENT.md)) runs the application and API and connects to the `db` PostgreSQL container using `DATABASE_URL`, which `compose.yaml` sets. Browser demo data stays in browser storage and never seeds the live database.
 
 ## Initial setup
 
 1. On the server, `compose.yaml` creates the PostgreSQL database and application login from `POSTGRES_PASSWORD`. For local work or another PostgreSQL, create a database and application login yourself; use a TLS-enabled connection URL when the database is on another machine. Pooled connections are supported. The application login needs permission to create and read/write the four tables below in its configured schema.
 2. Configure the variables listed in [DEPLOYMENT.md](DEPLOYMENT.md): `DATABASE_URL`, `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `AUTH_ENCRYPTION_KEY`, `RESEND_API_KEY` and `MAIL_FROM`. For local work, copy `.env.example` to the ignored `.env` file and fill it locally. Keep credentials out of GitHub.
-3. Run `npm ci` and `npm run dev` locally, or start the containers on the server with `docker compose up -d --build`. On the first API request needing storage, `lib/store.mjs` creates its tables. When no workspace exists, it inserts the initial workspace and Admin using a salted password hash. Keep the bootstrap Admin variables configured on later deployments; changing their values does not update an existing account.
+3. Run the backend locally (see [PORTAL.md](../PORTAL.md)), or start the containers on the server with `docker compose up -d --build`. On the first API request needing storage, the backend's store creates its tables. When no workspace exists, it inserts the initial workspace and Admin using a salted password hash. Keep the bootstrap Admin variables configured on later deployments; changing their values does not update an existing account.
 4. Sign in using the configured Admin account. Choose **Scan QR code** or **Enter setup key** to enroll an authenticator, then verify its six-digit code. Both methods configure the same time-based authenticator. Subsequent sign-ins still require password and authenticator verification.
 5. Add master data and users through the Admin screens. Run the live acceptance checks in [DEPLOYMENT.md](DEPLOYMENT.md) before using real records.
 
@@ -25,6 +25,7 @@ The workspace contains `version`, `companies`, `projects`, `budgets`, `suppliers
 
 - A company owns projects and approved budgets. Each budget holds categories, its saved currency/rate and earlier revisions.
 - An order holds shared details, category allocations and supporting PDFs. A payment request points to its parent with `orderId` and has its own permanent reference, currency snapshot, approvals, history, remarks and payment evidence.
+- An order or payment request deleted by Admin keeps all its data and gains a `deleted` marker (when, by whom, reason; drafts deleted with their order also carry `withOrder`). Restoring moves that marker into `deletionHistory`. Every calculation ignores records with a `deleted` marker, and non-Admin state responses omit them.
 - Parent amendments retain proposals, prior effective values, decisions and supporting PDFs. Archived documents are downloaded only after company-access and active record-lock checks. General state responses omit PDF contents and authentication secrets.
 - `settings` holds reference formats. `counters` preserves independent company/project sequences. Issued references are never regenerated during normal changes.
 - PDF contents are base64 strings inside JSONB in this release. Each upload action has a combined 2 MB limit. Private object storage and normalized tables are future scaling improvements.

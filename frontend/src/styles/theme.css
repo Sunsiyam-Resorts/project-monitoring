@@ -1,0 +1,275 @@
+/* Green workspace — November 2026. A sage-green sidebar beside the workspace, charcoal
+   cards on near-black in Dark (a pale canvas with white cards in Light), green pill
+   actions with dark text, and small solid status chips. Layout, navigation and controls
+   are unchanged; this file sets the look on top of style.css. Print keeps the light
+   A4 styles: every rule here is screen-only. */
+
+/* Appearance controls are shared by both themes. */
+.ui-icon { stroke-width: 1.75; }
+.theme-toggle > span { display: inline-flex; }
+.theme-toggle .theme-sun { display: none; }
+[data-theme="dark"] .theme-toggle .theme-moon { display: none; }
+[data-theme="dark"] .theme-toggle .theme-sun { display: inline-flex; }
+.appearance-control { display: grid; gap: 6px; margin-top: 16px; }
+.appearance-control label { margin: 0; font-size: 12px; }
+.appearance-control select { width: 100%; min-height: 44px; font-size: 13px; }
+.login-appearance { position: absolute; top: 34px; right: 44px; z-index: 2; }
+.login-appearance .appearance-control { display: flex; align-items: center; gap: 10px; margin: 0; }
+.login-appearance select { width: 112px; }
+@media screen and (max-width: 760px) {
+  .topbar .header-scope { min-width: 0; }
+  .topbar .top-right { gap: 6px; }
+  .login-appearance { top: 26px; right: 30px; }
+  .login-appearance label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .login-appearance select { width: 104px; font-size: 16px; }
+  .login-mobile-brand { padding-right: 116px; }
+}
+@media print {
+  .login-appearance, .appearance-control { display: none !important; }
+}
+
+/* Dark appearance: near-black canvas, charcoal cards, white text, sage accents. */
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #0b0b0b;
+    --surface: #1a1a1a;
+    --surface-soft: #232323;
+    --surface-hover: #262626;
+    --ink: #f4f5f2;
+    --secondary: #c9cbc6;
+    --muted: #9c9e98;
+    --accent: #a2d397;
+    --accent-hover: #b6deac;
+    --accent-soft: #1f2b1c;
+    --line: #2b2b2b;
+    --line-strong: #3b3b3b;
+    --card-line: #1f1f1f;
+    --input-line: #6d6d69;
+    --focus-ring: #a2d397;
+    --focus-halo: #a2d39726;
+    --table-head: #1a1a1a;
+    --chart-secondary: #8a8c86;
+    --primary-hover: #b4ddaa;
+    --chip-grey: #3a3a3a;
+    --on-chip-grey: #e6e7e3;
+    --success: #a2d397;
+    --success-soft: #1f2b1c;
+    --info: #a9c9ef;
+    --info-soft: #1b2633;
+    --warning: #f0c674;
+    --warning-soft: #33291a;
+    --warning-line: #6f5a33;
+    --danger: #f3a197;
+    --danger-soft: #3a201d;
+    --danger-line: #7a4640;
+    --shadow-soft: #00000033;
+    --shadow-overlay: #00000080;
+    --backdrop: #000000a6;
+    --picker-shadow: rgb(0 0 0 / 60%);
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239c9e98' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    --select-chevron-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f4f5f2' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    --scroll-thumb: rgb(244 245 242 / 16%);
+    --scroll-thumb-hover: rgb(244 245 242 / 34%);
+    --chart-grid: #262626;
+    --chart-cross: #3b3b3b;
+    --chart-track: #262626;
+    --chart-approved: #c9cbc6;
+    --chart-available: #2a2d28;
+    --chart-available-line: #3a4036;
+  }
+  /* Printable request previews stay paper-like; print itself uses the light tokens. */
+  :root[data-theme="dark"] .printdoc {
+    color-scheme: light;
+    --surface: #ffffff;
+    --surface-soft: #f3f5f1;
+    --ink: #141713;
+    --secondary: #454a43;
+    --muted: #5e645b;
+    --accent: #2f6b2b;
+    --accent-soft: #e4f0df;
+    --line: #e1e5de;
+    --table-head: #ffffff;
+    background: var(--surface);
+    color: var(--ink);
+  }
+}
+
+@media screen {
+  body { background: var(--canvas); color: var(--ink); }
+  ::selection { background: var(--sage); color: var(--on-sage); }
+  input, textarea { caret-color: var(--accent); }
+
+  /* Type: heavier titles and figures, as in the reference. */
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; }
+  h2 { font-weight: 650; }
+  .page-head .sub { margin-top: 6px; color: var(--muted); }
+  .dashboard-kpi-value, .report-figure b, .project-pct, .progress-figure b,
+  .activity-entry time b, .progress-counts dd, .detail-lead .amount { font-weight: 600; letter-spacing: -0.035em; }
+
+  /* Buttons: pills. Primary is sage with dark text; secondary is a quiet pill. */
+  :root { --button-bg: var(--surface); --button-line: var(--line-strong); --button-hover: var(--surface-hover); }
+  :root[data-theme="dark"] { --button-bg: #262626; --button-line: #262626; --button-hover: #303030; }
+  button { border-radius: 999px; border-color: var(--button-line); background: var(--button-bg); }
+  button:hover { border-color: var(--button-line); background: var(--button-hover); }
+  button.danger, button.danger:hover { border-color: var(--danger-line); }
+  button.primary, button.primary:hover { color: var(--on-primary); }
+  button.primary { background: var(--primary); border-color: var(--primary); }
+  button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  .icon-button { border-radius: 50%; }
+  .pager button.current { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+  .linkbtn { font-weight: 650; }
+  :root .filters > button, :root .list-toolbar button { border-radius: 999px; }
+
+  /* Field labels in dialogs (record type, amount): sentence case, muted, no tracking. */
+  .eyebrow { margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+  .detail-lead + .actions { margin-bottom: 24px; }
+  .modal-body .detail-grid + .sub { margin: 16px 0 28px; }
+
+  /* Sidebar: sage from edge to edge; the active page is a full-width darker band. */
+  .sidebar {
+    --focus-ring: var(--on-sage);
+    --focus-halo: rgb(14 26 12 / 22%);
+    padding: 26px 0 14px;
+    background: var(--sage);
+    color: var(--on-sage);
+    border-right: 0;
+  }
+  .sidebar .brand { padding: 0 24px 22px; }
+  .sidebar .brand-label { color: var(--on-sage-muted); font-weight: 650; }
+  .sidebar-scope { margin: -4px 16px 14px; padding: 0 0 16px; border-bottom-color: rgb(14 26 12 / 16%); }
+  .sidebar .property-switcher label { color: var(--on-sage-muted); font-weight: 650; }
+  :root .sidebar .property-switcher select:not([multiple]) {
+    border-color: transparent;
+    border-radius: var(--radius);
+    background-color: var(--dark);
+    background-image: var(--chevron-on-dark);
+    color: #f4f5f2;
+  }
+  :root .sidebar .property-switcher select:not([multiple]):hover,
+  :root .sidebar .property-switcher select:not([multiple]):focus { background-color: #1f1f1f; background-image: var(--chevron-on-dark); border-color: transparent; }
+  .sidebar .admin-scope { border: 1px solid rgb(14 26 12 / 22%); color: var(--on-sage); font-weight: 600; }
+  .sidebar .nav { gap: 2px; }
+  .sidebar .nav-label { margin: 6px 0 6px; padding-left: 24px; color: var(--on-sage-muted); font-size: 11px; font-weight: 650; }
+  .sidebar .nav-group { margin-top: 18px; }
+  .sidebar .nav button { min-height: 44px; padding: 10px 24px; gap: 12px; border: 0; border-radius: 0; background: transparent; color: var(--on-sage); font-size: 13px; font-weight: 600; }
+  .sidebar .nav button:hover { background: rgb(14 26 12 / 7%); color: var(--on-sage); }
+  .sidebar .nav button.active { background: var(--sage-strong); color: var(--on-sage); font-weight: 700; }
+  .sidebar .nav button:focus-visible { outline-offset: -3px; }
+  .sidebar .nav-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--dark); color: #f4f5f2; font-size: 11px; font-weight: 700; line-height: 1; }
+
+  /* Account: a black card at the foot of the sidebar. */
+  .sidebar .sidebar-foot {
+    --focus-ring: var(--sage);
+    margin: auto 12px 0;
+    padding: 12px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--dark);
+    color: #f4f5f2;
+  }
+  .sidebar .sidebar-demo label { color: #b9bcb5; }
+  :root .sidebar .sidebar-demo select:not([multiple]) { border-color: #3b3b3b; background-color: #1f1f1f; background-image: var(--chevron-on-dark); color: #f4f5f2; }
+  :root .sidebar .sidebar-demo select:not([multiple]):hover,
+  :root .sidebar .sidebar-demo select:not([multiple]):focus { background-color: #262626; background-image: var(--chevron-on-dark); }
+  .sidebar .sidebar-account .profile-menu > summary:hover,
+  .sidebar .sidebar-account .profile-menu[open] > summary { background: #1f1f1f; }
+  .sidebar .profile-name small { color: #a9aca5; }
+  .sidebar .avatar { background: var(--sage); color: var(--on-sage); font-weight: 700; }
+  .sidebar .sidebar-account .theme-toggle { border-color: #3b3b3b; background: #1f1f1f; color: #f4f5f2; }
+  .sidebar .sidebar-account .theme-toggle:hover { background: #2a2a2a; box-shadow: none; }
+  .sidebar .profile-popover { --focus-ring: var(--accent); color: var(--ink); }
+  .sidebar .profile-popover small { color: var(--muted); }
+  :root { --chevron-on-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f4f5f2' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+
+  /* Workspace. */
+  .main { background: var(--canvas); }
+  .topbar { background: var(--canvas); border-bottom-color: var(--line); }
+  .demo-banner { padding: 10px 16px; border: 1px solid var(--card-line); background: var(--surface); color: var(--muted); font-size: 12px; }
+  .demo-banner strong { color: var(--ink); font-size: 12px; font-weight: 700; }
+  .demo-banner a { color: var(--accent); font-size: 12px; font-weight: 650; text-decoration: none; }
+  .demo-banner a:hover { text-decoration: underline; }
+
+  /* Cards: flat charcoal (white in Light); no glass, tint or shadow. */
+  .panel, .budget-kpis, .report-disclosure, .login-panel, .advanced-filters, .table-wrap,
+  .payment-kpis, :root .kpi-side > .workspace-actions, :root .kpi-side > .progress-card {
+    background: var(--surface);
+    border-color: var(--card-line);
+    box-shadow: none;
+  }
+  :root .budget-kpis.budget-overview, :root .budget-kpis.payment-overview { border: 1px solid var(--card-line); }
+  .budget-kpis .dashboard-kpi { background: transparent; box-shadow: none; }
+  .card-head h2 { font-weight: 700; }
+  :root .project-card:hover { border-color: var(--line-strong); }
+
+  /* Dashboard shortcuts: the green tile is the call to action, as in the reference. */
+  :root .kpi-side .action-tile { border: 0; border-radius: var(--radius); background: var(--surface-soft); color: var(--ink); }
+  :root .kpi-side .action-tile:hover { background: var(--surface-hover); }
+  :root .kpi-side .action-tile.primary { background: var(--primary); color: var(--on-primary); }
+  :root .kpi-side .action-tile.primary:hover { background: var(--primary-hover); }
+
+  /* Tabs: plain labels with an underline under the active one. */
+  .tabs { gap: 26px; width: auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: inset 0 -1px 0 var(--line); }
+  .tabs button { min-height: 44px; padding: 10px 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 550; box-shadow: none; }
+  .tabs button:hover { background: transparent; color: var(--ink); }
+  /* The underline is an inset shadow: an earlier rule removes the active tab's border. */
+  .tabs button.active { background: transparent; color: var(--ink); font-weight: 700; box-shadow: inset 0 -2px 0 var(--ink); }
+  .tabs .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--chip-grey); color: var(--on-chip-grey); line-height: 1; }
+  .tabs button.active .count { background: var(--ink); color: var(--canvas); }
+
+  /* Tables: the header sits on the card; rows divided by hairlines. */
+  th { background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
+  td { border-bottom-color: var(--line); }
+  tbody tr:hover { background: var(--surface-hover); }
+  .table-footer { background: transparent; }
+
+  /* Status chips: small solid blocks with dark text; the status is always written. */
+  .badge { border: 0; border-radius: 6px; padding: 3px 8px; background: var(--chip-grey); color: var(--on-chip-grey); font-size: 11px; font-weight: 650; }
+  .badge.Paid, .badge.Active, .badge.Committed { background: var(--chip-green); color: var(--on-chip); }
+  .badge.Finance, .badge.Reviewer, .badge.Approval1, .badge.Approval2 { background: var(--chip-blue); color: var(--on-chip); }
+  .badge.OnHold, .badge.DocumentsRequired { background: var(--chip-amber); color: var(--on-chip); }
+  .badge.Rejected, .badge.Deleted { background: var(--chip-red); color: var(--on-chip); }
+  .badge.Draft, .badge.Inactive { background: var(--chip-grey); color: var(--on-chip-grey); }
+
+  .currency-label strong, .unit-label { background: var(--chip-grey); color: var(--on-chip-grey); }
+
+  /* Fields. */
+  input, select, textarea { background-color: var(--surface); }
+  input[type="file"] { background: var(--surface-soft); }
+  input::file-selector-button { border-radius: 999px; color: var(--ink); background: var(--surface); border-color: var(--input-line); }
+  .notice.success { color: var(--success); background: var(--success-soft); border-color: transparent; }
+
+  /* Dialogs and menus. */
+  dialog { background: var(--surface); border-color: var(--line); border-radius: 16px; }
+  dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+  .modal-head, .form-footer { background: var(--surface); }
+  .detail-lead, .decision-panel { background: var(--accent-soft); border: 0; }
+  .profile-popover, .actor-popover { background: var(--surface); border-color: var(--line); }
+  #toast { border-color: var(--dark); background: var(--dark); color: #f4f5f2; }
+
+  /* Sign-in: the sage panel beside the sign-in card. */
+  .login { background: var(--canvas); }
+  :root .login-art { background: var(--sage); color: var(--on-sage); }
+  .login-art .eyebrow, .login-card .eyebrow { display: none; }
+  .login-art h1 { color: var(--on-sage); font-weight: 700; letter-spacing: -0.03em; }
+  .login-art .login-message > p, .login-art .login-foot { color: var(--on-sage-muted); }
+  .login-art .login-foot { border-top-color: rgb(14 26 12 / 20%); }
+  .login-card h2 { font-weight: 700; letter-spacing: -0.025em; }
+
+  /* Dark only: the logo on dark ground, a sage toast. */
+  :root[data-theme="dark"] .login-mobile-brand .brand-logo { filter: invert(1); }
+  :root[data-theme="dark"] #toast { border-color: var(--sage); background: var(--sage); color: var(--on-sage); }
+  :root[data-theme="dark"] #toast[data-kind="error"] { border-color: var(--chip-red); background: var(--chip-red); color: var(--on-chip); }
+}
+@media screen and (max-width: 760px) {
+  .tabs { gap: 20px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .navigation-drawer .drawer-sidebar { padding: 22px 0 14px; }
+  .drawer-sidebar .sidebar-brand { padding-right: 16px; }
+  .drawer-sidebar .nav button { padding: 12px 24px; }
+  .drawer-sidebar .sidebar-scope { width: auto; }
+  :root .drawer-sidebar .sidebar-foot { width: auto; }
+  .work-table tr { background: var(--surface); }
+  .work-table tr.children-row { background: transparent; }
+  :root .navigation-drawer[open] { background: var(--sage); }
+}

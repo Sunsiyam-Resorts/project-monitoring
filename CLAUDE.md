@@ -4,6 +4,10 @@ Project rules for this repository are in [AGENTS.md](AGENTS.md); read it and `do
 
 @AGENTS.md
 
+## Interface components
+
+- Use shadcn/ui components, customised to the portal theme, for all UI. **Never create a custom component when shadcn has one.** Add missing ones with `npx shadcn add` and restyle them in `frontend/src/components/ui/` (details in `AGENTS.md`, Interface components).
+
 ## Branches and pushing
 
 - The GitHub repository is `Sunsiyam-Resorts/project-monitoring`.

@@ -1,12 +1,17 @@
 // Short dialogs: reasons for workflow decisions, payment recording, requested documents,
 // restoring deleted records and project tasks.
 import { TASK_STATUSES, today } from "../domain/domain.js";
-import { Field, Input, Section, text } from "../components/ui.jsx";
+import { Field, FieldGrid, FormSelect, Input, Section, TextArea, text } from "../components/ui.jsx";
+import { Notice, RecordLead } from "../components/detail.jsx";
 import { Footer, Form } from "../components/Form.jsx";
 import { fmt } from "../lib/format.js";
 import { deletedRecord, nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
+import { Input as ShadcnInput } from "@/components/ui/input";
 import { Modal } from "./ModalHost.jsx";
+
+const Intro = ({ children }) => <p className="form-intro mb-5 text-[13px] text-muted-foreground">{children}</p>;
+const PDFs = ({ required }) => <ShadcnInput name="files" type="file" accept="application/pdf,.pdf" multiple required={required} />;
 
 const TITLES = {
   return: "Return to requester", reject: "Reject request", hold: "Place payment on hold", remark: "Add Finance remark",
@@ -31,9 +36,9 @@ export function ReasonForm({ id, action }) {
   return (
     <Modal title={TITLES[action]}>
       <Form kind="reason" data-id={id} data-action-type={action} onSubmit={(fd) => actions.submitReason(id, action, fd)}>
-        <div className="form-intro"><p>{`${text(r.number)} · ${intro}`}</p></div>
+        <Intro>{`${text(r.number)} · ${intro}`}</Intro>
         <Field label={action === "remark" ? "Remark" : "Reason"}>
-          <textarea name="reason" required maxLength={2000} placeholder="Give the team a clear explanation and next step."></textarea>
+          <TextArea name="reason" required maxLength={2000} placeholder="Give the team a clear explanation and next step." />
         </Field>
         <Footer label={action === "remark" ? "Add remark" : TITLES[action]} note="This action is recorded in the audit trail." />
       </Form>
@@ -50,20 +55,20 @@ export function PayForm({ id }) {
   return (
     <Modal title="Record completed payment">
       <Form kind="pay" data-id={id} onSubmit={(fd) => actions.submitPay(id, fd)}>
-        <div className="detail-lead">
-          <div><div className="eyebrow">Exact payment required</div><div className="amount"><span>{r.currency || o.currency}</span>{fmt(r.amount)}</div></div>
-          <div className="lead-side"><strong>{r.number}</strong><small>{nameOf(state, "suppliers", o.supplierId)}</small></div>
-        </div>
+        <RecordLead eyebrow="Exact payment required" currency={r.currency || o.currency} amount={fmt(r.amount)}
+          side={<><strong>{r.number}</strong><small>{nameOf(state, "suppliers", o.supplierId)}</small></>} />
+        <div className="grid gap-7">
         <Section number="01" title="Payment details">
-          <div className="grid2">
+          <FieldGrid>
             <Field label="Payment date"><Input name="paymentDate" value={today()} type="date" required max={today()} /></Field>
-            <Field label="Payment type"><select name="paymentType" required><option>Transfer</option><option>Cheque</option><option>TT</option></select></Field>
-          </div>
+            <Field label="Payment type"><FormSelect name="paymentType" id="paymentType" required defaultValue="Transfer" options={["Transfer", "Cheque", "TT"].map((x) => ({ value: x, label: x }))} /></Field>
+          </FieldGrid>
         </Section>
         <Section number="02" title="Payment evidence">
-          <Field label="Payment supporting PDFs · optional · combined limit 2 MB"><input name="files" type="file" accept="application/pdf,.pdf" multiple /></Field>
+          <Field label="Payment supporting PDFs · optional · combined limit 2 MB"><PDFs /></Field>
         </Section>
-        <div className="notice">Attach evidence for this payment if you have it. The amount must be settled in full before marking it Paid.</div>
+        </div>
+        <Notice>Attach evidence for this payment if you have it. The amount must be settled in full before marking it Paid.</Notice>
         <Footer label="Mark as Paid" note="Only Admin can delete a completed payment, with mandatory remarks." />
       </Form>
     </Modal>
@@ -75,7 +80,7 @@ export function SupplyForm({ id }) {
   return (
     <Modal title="Supply requested documents">
       <Form kind="support" data-id={id} onSubmit={(fd) => actions.submitSupport(id, fd)}>
-        <Field label="Supporting PDFs · combined limit 2 MB"><input name="files" type="file" accept="application/pdf,.pdf" multiple required /></Field>
+        <Field label="Supporting PDFs · combined limit 2 MB"><PDFs required /></Field>
         <Footer label="Submit to Finance" note="Document upload goes directly back to Finance." />
       </Form>
     </Modal>
@@ -95,7 +100,7 @@ export function RestoreForm({ id, kind }) {
   return (
     <Modal title={title}>
       <Form kind="restore" data-id={id} data-kind={kind} onSubmit={() => actions.submitRestore(id, kind)}>
-        <div className="form-intro"><p>{`${text(x.number)} · ${what} It counts again in the dashboard, balances and lists.`}</p></div>
+        <Intro>{`${text(x.number)} · ${what} It counts again in the dashboard, balances and lists.`}</Intro>
         <Footer label={title} note="This action is recorded in the audit trail." />
       </Form>
     </Modal>
@@ -112,12 +117,12 @@ export function TaskForm({ projectId, id }) {
     <Modal title={t ? "Edit task" : "Add task"}>
       <Form kind="task" data-id={id || ""} data-project={p.id} onSubmit={(fd) => actions.submitTask(id || "", p.id, fd)}>
         <Section number="01" title="Task">
-          <div className="grid2">
+          <FieldGrid>
             <Field label="Task name" wide><Input name="name" value={t?.name} required maxLength={120} /></Field>
-            <Field label="Status"><select name="status" defaultValue={t?.status || "To do"}>{TASK_STATUSES.map((x) => <option key={x}>{x}</option>)}</select></Field>
+            <Field label="Status"><FormSelect name="status" id="taskStatus" defaultValue={t?.status || "To do"} options={TASK_STATUSES.map((x) => ({ value: x, label: x }))} /></Field>
             <Field label="Due date · optional"><Input name="due" value={t?.due} type="date" /></Field>
             <Field label="Owner · optional" wide><Input name="owner" value={t?.owner} maxLength={80} /></Field>
-          </div>
+          </FieldGrid>
         </Section>
         <Footer label={t ? "Save task" : "Add task"} note={`${p.name} · progress counts the tasks marked Done.`} />
       </Form>
@@ -133,7 +138,7 @@ export function TaskDeleteForm({ id }) {
   return (
     <Modal title="Delete task">
       <Form kind="taskDelete" data-id={id} onSubmit={() => actions.submitTaskDelete(id)}>
-        <div className="form-intro"><p>{`Delete “${t.name}”? Project progress is recalculated without it. The deletion is recorded in the audit log.`}</p></div>
+        <Intro>{`Delete “${t.name}”? Project progress is recalculated without it. The deletion is recorded in the audit log.`}</Intro>
         <Footer label="Delete task" note="This cannot be undone." />
       </Form>
     </Modal>

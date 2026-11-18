@@ -12,6 +12,8 @@ export function initialState() {
     state: null, user: null, raw: null, demo: false,
     // Sign-in flow.
     loginStep: "password", loginChallenge: "", enrollKey: "", enrollQr: "", enrollMethod: "qr", loginSeq: 0,
+    // Why the sign-in screen is showing (inactivity, an ended session); cleared on sign-in.
+    loginNotice: "",
     // Navigation, scope and list controls (kept for the session, like the legacy module variables).
     page: "dashboard", tab: "requests", masterTab: "companies",
     company: "", project: "", from: "", to: "", search: "", statusFilter: "", financeOnly: false,

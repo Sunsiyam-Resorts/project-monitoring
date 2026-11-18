@@ -1,12 +1,18 @@
 // View Payment Request: the printable A4 document. Print / Save as PDF uses the browser.
 import { parentAmount } from "../domain/domain.js";
-import { Badge, BusyButton, Detail, text } from "../components/ui.jsx";
+import { Icon } from "../components/Icon.jsx";
+import { Badge, BusyButton, DataTable, Detail, DetailGrid, text } from "../components/ui.jsx";
+import { ActionRow, SectionTitle } from "../components/detail.jsx";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/tables.jsx";
 import { CategoryTable, ReviewHistory } from "../components/Records.jsx";
 import { date, fmt } from "../lib/format.js";
 import { nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
+import { Button } from "@/components/ui/button";
 import { Modal } from "./ModalHost.jsx";
 import { SupportingReferences } from "./parts.jsx";
+
+const BOXED = "rounded-xl border border-border";
 
 export function DocumentView({ id, generatedAt }) {
   const { actions } = useApp();
@@ -18,16 +24,16 @@ export function DocumentView({ id, generatedAt }) {
   const currency = r.currency || o.currency;
   return (
     <Modal title="View Payment Request">
-      <div className="noprint actions" style={{ marginTop: 0, marginBottom: "20px" }}>
-        <button className="primary" data-action="print" onClick={() => actions.print()}>Print / Save as PDF</button>
+      <ActionRow className="noprint mt-0 mb-5">
+        <Button data-action="print" onClick={() => actions.print()}><Icon name="print" />Print / Save as PDF</Button>
         <BusyButton data-action="openRequest" data-id={id} onRun={() => actions.openRequest(id)}>Back to request</BusyButton>
-      </div>
-      <article className="printdoc">
-        <div className="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75" /></div>
-        <small>GROUP PROJECT MONITORING</small>
-        <h1>PAYMENT REQUEST</h1>
-        <div className="detail-top"><strong>{r.number}</strong><Badge status={r.status} /></div>
-        <div className="detail-grid">
+      </ActionRow>
+      <article className="printdoc grid gap-4 rounded-xl border border-border p-8 text-[12px] leading-normal max-sm:p-5">
+        <div className="docbrand"><img src="/logo.svg" alt="Sun Siyam" width="94" height="75" className="h-[75px] w-[94px] object-contain object-left" /></div>
+        <small className="text-[10px] font-semibold tracking-[0.13em] text-muted-foreground">GROUP PROJECT MONITORING</small>
+        <h1 className="font-display text-2xl font-bold tracking-[0.02em]">PAYMENT REQUEST</h1>
+        <div className="detail-top flex items-center justify-between gap-4 border-y border-border py-3"><strong className="text-[15px]">{r.number}</strong><Badge status={r.status} /></div>
+        <DetailGrid>
           <Detail label="Company">{nameOf(state, "companies", o.companyId)}</Detail>
           <Detail label="Project">{nameOf(state, "projects", o.projectId)}</Detail>
           <Detail label="Date">{`${r.date}`}</Detail>
@@ -38,38 +44,39 @@ export function DocumentView({ id, generatedAt }) {
           <Detail label="Payment currency">{`${currency}`}</Detail>
           <Detail label="Saved payment rate">{`1 USD = ${fmt(r.rate)} ${currency}`}</Detail>
           <Detail label="Approved budget">{nameOf(state, "budgets", o.budgetId)}</Detail>
-        </div>
-        <h3>Description</h3>
-        <p>{o.description}</p>
+        </DetailGrid>
+        <SectionTitle className="mt-2">Description</SectionTitle>
+        <p className="text-[13px]">{o.description}</p>
         <CategoryTable o={o} />
-        <table style={{ marginTop: "18px" }}>
-          <tbody>
-            <tr><td>Full order amount</td><td className="right">{`${o.currency} ${fmt(o.total)}`}</td></tr>
-            <tr><td>Other instalments paid to date</td><td className="right">{`${o.currency} ${fmt(prior)}`}</td></tr>
-            <tr><td><strong>{`This payment request · ${r.percent}% at creation`}</strong></td><td className="right"><strong>{`${currency} ${fmt(r.amount)}`}</strong></td></tr>
-            <tr><td>Payment terms</td><td>{text(r.terms)}</td></tr>
-          </tbody>
-        </table>
-        <h3 style={{ marginTop: "22px" }}>Request & payment · this payment request only</h3>
-        <table>
-          <thead><tr><th scope="col">Stage</th><th scope="col">Name</th><th scope="col">Date / Time</th></tr></thead>
-          <tbody>
-            <tr><td>Requested by</td><td>{nameOf(state, "users", r.requestedBy)}</td><td>{date(r.createdAt)}</td></tr>
-            {r.approvals.map((x, i) => <tr key={i}><td>{x.stage === "Reviewer" ? "Checked by" : text(x.stage)}</td><td>{text(x.by)}</td><td>{date(x.at)}</td></tr>)}
-            {r.finalApprovedAt ? <tr><td>Submitted to Finance</td><td>{nameOf(state, "users", r.requestedBy)}</td><td>{date(r.finalApprovedAt)}</td></tr> : null}
-            {r.payment ? <tr><td>Paid by</td><td>{text(r.payment.by)}</td><td>{`${r.payment.date} · ${r.payment.type}`}</td></tr> : null}
-          </tbody>
-        </table>
+        <DataTable containerClassName={BOXED}>
+          <TableBody>
+            <TableRow><TableCell>Full order amount</TableCell><TableCell className="text-right">{`${o.currency} ${fmt(o.total)}`}</TableCell></TableRow>
+            <TableRow><TableCell>Other instalments paid to date</TableCell><TableCell className="text-right">{`${o.currency} ${fmt(prior)}`}</TableCell></TableRow>
+            <TableRow><TableCell><strong>{`This payment request · ${r.percent}% at creation`}</strong></TableCell><TableCell className="text-right"><strong>{`${currency} ${fmt(r.amount)}`}</strong></TableCell></TableRow>
+            <TableRow><TableCell>Payment terms</TableCell><TableCell className="whitespace-normal">{text(r.terms)}</TableCell></TableRow>
+          </TableBody>
+        </DataTable>
+        <SectionTitle className="mt-2">Request & payment · this payment request only</SectionTitle>
+        <DataTable containerClassName={BOXED}>
+          <TableHeader><TableRow><TableHead scope="col">Stage</TableHead><TableHead scope="col">Name</TableHead><TableHead scope="col">Date / Time</TableHead></TableRow></TableHeader>
+          <TableBody>
+            <TableRow><TableCell>Requested by</TableCell><TableCell>{nameOf(state, "users", r.requestedBy)}</TableCell><TableCell>{date(r.createdAt)}</TableCell></TableRow>
+            {r.approvals.map((x, i) => <TableRow key={i}><TableCell>{x.stage === "Reviewer" ? "Checked by" : text(x.stage)}</TableCell><TableCell>{text(x.by)}</TableCell><TableCell>{date(x.at)}</TableCell></TableRow>)}
+            {r.finalApprovedAt ? <TableRow><TableCell>Submitted to Finance</TableCell><TableCell>{nameOf(state, "users", r.requestedBy)}</TableCell><TableCell>{date(r.finalApprovedAt)}</TableCell></TableRow> : null}
+            {r.payment ? <TableRow><TableCell>Paid by</TableCell><TableCell>{text(r.payment.by)}</TableCell><TableCell>{`${r.payment.date} · ${r.payment.type}`}</TableCell></TableRow> : null}
+          </TableBody>
+        </DataTable>
         {r.remarks.length ? (
           <>
-            <h3 style={{ marginTop: "22px" }}>Finance remarks</h3>
-            {r.remarks.map((m, i) => <p key={i}>{`${text(m.text)} — ${text(m.by)}`}</p>)}
+            <SectionTitle className="mt-2">Finance remarks</SectionTitle>
+            {r.remarks.map((m, i) => <p key={i} className="text-[13px]">{`${text(m.text)} — ${text(m.by)}`}</p>)}
           </>
         ) : null}
         <SupportingReferences o={o} r={r} />
         <ReviewHistory history={r.history} />
-        <div className="docfooter">{`System-generated document · ${r.number} · Generated ${date(generatedAt)}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}`}</div>
+        <div className="docfooter mt-4 border-t border-border pt-3 text-[10px] text-muted-foreground">{`System-generated document · ${r.number} · Generated ${date(generatedAt)}${demo ? " · DEMO SAMPLE — FOR TESTING ONLY" : ""}`}</div>
       </article>
     </Modal>
   );
 }
+

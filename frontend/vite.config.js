@@ -1,11 +1,14 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { tracePlugin } from './scripts/traces/plugin.mjs';
 
 // `npm run dev` serves the UI on http://127.0.0.1:5173 and forwards /api to the Go backend
 // (default http://127.0.0.1:3000; set PORTAL_API to change it).
 export default defineConfig({
-  plugins: [react(), tracePlugin()],
+  plugins: [react(), tailwindcss(), tracePlugin()],
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     host: '127.0.0.1',
     port: 5173,

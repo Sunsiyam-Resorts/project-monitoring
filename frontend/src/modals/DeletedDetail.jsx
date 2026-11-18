@@ -1,10 +1,13 @@
 // Admin reviews a deleted request or payment request, including its documents, and can
 // restore it to exactly the status it had.
-import { Badge, Detail, FileList, TableWrap, text } from "../components/ui.jsx";
+import { Badge, DataTable, Detail, DetailGrid, FileList, Help, text } from "../components/ui.jsx";
+import { ActionRow, DetailSection, Notice, RecordLead, RecordTop } from "../components/detail.jsx";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/tables.jsx";
 import { CategoryTable, ReviewHistory } from "../components/Records.jsx";
 import { date, fmt } from "../lib/format.js";
 import { allOrders, allRequests, deletedRecord, nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
+import { Button } from "@/components/ui/button";
 import { Modal } from "./ModalHost.jsx";
 
 export function DeletedDetail({ id, kind }) {
@@ -15,22 +18,21 @@ export function DeletedDetail({ id, kind }) {
   const o = kind === "order" ? x : allOrders(state).find((o) => o.id === x.orderId);
   const del = x.deleted, blocked = kind === "request" && o.deleted;
   const notice = (
-    <div className="notice warn">
-      <strong>{`Deleted ${date(del.at)} by ${text(del.by)}`}</strong>
+    <Notice tone="warning" className="mt-0 mb-5" title={`Deleted ${date(del.at)} by ${text(del.by)}`}>
       <p>{del.reason}</p>
       {del.withOrder ? <p>{`Deleted together with its request ${text(o.number)}. Restoring the request restores it.`}</p> : null}
-    </div>
+    </Notice>
   );
   const restore = del.withOrder ? null : (
     <>
-      <div className="actions">
-        <button className="primary" data-action="restoreDeleted" data-kind={kind} data-id={id} disabled={!!blocked} onClick={() => actions.restoreForm(id, kind)}>{`Restore ${kind === "order" ? "request" : "payment request"}`}</button>
-      </div>
-      {blocked ? <p className="help">{`Restore its request ${text(o.number)} first.`}</p> : null}
+      <ActionRow className="mt-0 mb-6">
+        <Button className="primary" data-action="restoreDeleted" data-kind={kind} data-id={id} disabled={!!blocked} onClick={() => actions.restoreForm(id, kind)}>{`Restore ${kind === "order" ? "request" : "payment request"}`}</Button>
+      </ActionRow>
+      {blocked ? <Help className="-mt-3 mb-6">{`Restore its request ${text(o.number)} first.`}</Help> : null}
     </>
   );
   const grid = (
-    <div className="detail-grid">
+    <DetailGrid>
       {kind === "request" ? <Detail label="Request">{text(o.number)}</Detail> : null}
       <Detail label="Company">{nameOf(state, "companies", o.companyId)}</Detail>
       <Detail label="Project">{nameOf(state, "projects", o.projectId)}</Detail>
@@ -38,68 +40,59 @@ export function DeletedDetail({ id, kind }) {
       <Detail label="PO">{text(o.po)}</Detail>
       <Detail label="Invoice">{o.invoice || "—"}</Detail>
       <Detail label="Requested by">{nameOf(state, "users", x.requestedBy)}</Detail>
-    </div>
+    </DetailGrid>
   );
   if (kind === "order") {
     const children = allRequests(state).filter((r) => r.orderId === id);
     return (
       <Modal title="Deleted request">
-        <div className="detail-top"><div><div className="detail-number">{x.number}</div></div><Badge status="Deleted" /></div>
+        <RecordTop number={x.number}><Badge status="Deleted" /></RecordTop>
         {notice}
-        <div className="detail-lead">
-          <div><div className="eyebrow">Total order amount</div><div className="amount"><span>{text(x.currency)}</span>{fmt(x.total)}</div></div>
-          <div className="lead-side"><small>USD equivalent</small><strong>{`USD ${fmt(x.total / x.rate)}`}</strong>{x.rejectedAt ? <small>Rejected before deletion</small> : null}</div>
-        </div>
+        <RecordLead eyebrow="Total order amount" currency={text(x.currency)} amount={fmt(x.total)}
+          side={<><small>USD equivalent</small><strong>{`USD ${fmt(x.total / x.rate)}`}</strong>{x.rejectedAt ? <small>Rejected before deletion</small> : null}</>} />
         {restore}
         {grid}
-        <p className="sub">{x.description}</p>
-        <h3>Budget allocations</h3>
-        <CategoryTable o={x} />
-        <div className="detail-section"><h3>Supporting documents</h3>{x.files?.length ? <FileList files={x.files} kind="order" id={id} /> : <p className="help">No supporting documents attached.</p>}</div>
-        <div className="detail-section">
-          <h3>Payment Requests</h3>
+        <p className="sub mt-5 text-[13px] text-muted-foreground">{x.description}</p>
+        <DetailSection title="Budget allocations"><CategoryTable o={x} /></DetailSection>
+        <DetailSection title="Supporting documents">{x.files?.length ? <FileList files={x.files} kind="order" id={id} /> : <Help>No supporting documents attached.</Help>}</DetailSection>
+        <DetailSection title="Payment Requests">
           {children.length ? (
-            <TableWrap>
-              <table>
-                <thead><tr><th scope="col">Payment request</th><th scope="col">Status</th><th scope="col" className="right">Amount</th><th scope="col">Deleted</th></tr></thead>
-                <tbody>
-                  {children.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.number}</td><td><Badge status={r.status} /></td><td className="right">{`${text(r.currency)} ${fmt(r.amount)}`}</td>
-                      <td>{r.deleted ? (r.deleted.id === del.id ? "With this request" : `Separately · ${date(r.deleted.at)}`) : "Not deleted"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
-          ) : <p className="help">No payment requests.</p>}
-        </div>
+            <DataTable containerClassName="rounded-xl border border-border">
+              <TableHeader><TableRow><TableHead scope="col">Payment request</TableHead><TableHead scope="col">Status</TableHead><TableHead scope="col" className="text-right">Amount</TableHead><TableHead scope="col">Deleted</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {children.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>{r.number}</TableCell><TableCell><Badge status={r.status} /></TableCell><TableCell className="text-right">{`${text(r.currency)} ${fmt(r.amount)}`}</TableCell>
+                    <TableCell>{r.deleted ? (r.deleted.id === del.id ? "With this request" : `Separately · ${date(r.deleted.at)}`) : "Not deleted"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </DataTable>
+          ) : <Help>No payment requests.</Help>}
+        </DetailSection>
       </Modal>
     );
   }
   const currency = text(x.currency || o.currency);
   return (
     <Modal title="Deleted payment request">
-      <div className="detail-top"><div><div className="detail-number">{x.number}</div></div><Badge status={x.status} />{" "}<Badge status="Deleted" /></div>
+      <RecordTop number={x.number}><div className="flex gap-1.5"><Badge status={x.status} /><Badge status="Deleted" /></div></RecordTop>
       {notice}
-      <div className="detail-lead">
-        <div><div className="eyebrow">{`Requested payment · ${x.percent}% at creation`}</div><div className="amount"><span>{currency}</span>{fmt(x.amount)}</div><small>{text(x.terms)}</small></div>
-        <div className="lead-side"><small>Full order amount</small><strong>{`${text(o.currency)} ${fmt(o.total)}`}</strong><small>{`Request date ${text(x.date)}`}</small></div>
-      </div>
+      <RecordLead eyebrow={`Requested payment · ${x.percent}% at creation`} currency={currency} amount={fmt(x.amount)} note={text(x.terms)}
+        side={<><small>Full order amount</small><strong>{`${text(o.currency)} ${fmt(o.total)}`}</strong><small>{`Request date ${text(x.date)}`}</small></>} />
       {restore}
       {grid}
       {x.payment ? (
         <>
-          <div className="notice success"><strong>{`Paid ${currency} ${fmt(x.payment.amount)}`}</strong><br />{`${text(x.payment.date)} · ${text(x.payment.type)} · ${text(x.payment.by)}`}</div>
-          <FileList files={x.payment.files} kind="payment" id={id} />
+          <Notice tone="success" title={`Paid ${currency} ${fmt(x.payment.amount)}`}>{`${text(x.payment.date)} · ${text(x.payment.type)} · ${text(x.payment.by)}`}</Notice>
+          {x.payment.files?.length ? <div className="mt-3"><FileList files={x.payment.files} kind="payment" id={id} /></div> : null}
         </>
       ) : null}
-      <div className="detail-section"><h3>Supporting documents</h3>{x.files?.length ? <FileList files={x.files} kind="request" id={id} /> : <p className="help">No additional supporting documents.</p>}</div>
+      <DetailSection title="Supporting documents">{x.files?.length ? <FileList files={x.files} kind="request" id={id} /> : <Help>No additional supporting documents.</Help>}</DetailSection>
       {x.remarks.length ? (
-        <div className="detail-section">
-          <h3>Finance remarks</h3>
-          {x.remarks.map((m, i) => <div key={i} className="notice">{text(m.text)}<br /><small>{`${text(m.by)} · ${date(m.at)}`}</small></div>)}
-        </div>
+        <DetailSection title="Finance remarks">
+          {x.remarks.map((m, i) => <Notice key={i} className="mt-0" title={text(m.text)}>{`${text(m.by)} · ${date(m.at)}`}</Notice>)}
+        </DetailSection>
       ) : null}
       <ReviewHistory history={x.history} />
     </Modal>

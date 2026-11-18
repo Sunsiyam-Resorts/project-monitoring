@@ -17,7 +17,7 @@ The optional [database-example.sql](database-example.sql) creates the same table
 | Table | Purpose |
 | --- | --- |
 | `portal_state` | One workspace row (`id = 1`) containing the business state as JSONB. |
-| `portal_sessions` | Hashed session tokens, application user IDs and eight-hour expirations. |
+| `portal_sessions` | Hashed session tokens, application user IDs and expirations 15 minutes after the last activity. |
 | `portal_challenges` | Hashed challenge tokens and ten-minute enrollment, sign-in and email-reset challenges. |
 | `portal_throttle` | Authentication attempt counts and fifteen-minute windows. |
 

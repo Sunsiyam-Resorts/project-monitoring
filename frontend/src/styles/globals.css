@@ -1,0 +1,306 @@
+/* Sun Siyam Project Monitoring — Tailwind v4 + shadcn/ui theme.
+   Every screen is built from the shadcn components in src/components/ui, customised to this
+   theme: a sage-green sidebar, charcoal cards on near-black in Dark (white cards on a pale
+   canvas in Light), green pill actions with dark text, small solid status chips, and charts in
+   the sales-dashboard style. Appearance (Light / Dark / System) is set by public/theme.js on
+   <html data-theme>; print keeps the white A4 document (print.css). */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter Tight";
+  src: url("/fonts/InterTight-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Light: pale canvas, white cards, dark ink. */
+  --background: #eef1ec;
+  --foreground: #141713;
+  --card: #ffffff;
+  --card-foreground: #141713;
+  --popover: #ffffff;
+  --popover-foreground: #141713;
+  --primary: #a2d397;
+  --primary-hover: #93c887;
+  --primary-foreground: #0e1a0c;
+  --secondary: #ffffff;
+  --secondary-hover: #edf1ea;
+  --secondary-foreground: #141713;
+  --muted: #f3f5f1;
+  --muted-foreground: #5e645b;
+  --accent: #edf1ea;
+  --accent-foreground: #141713;
+  --destructive: #a13a31;
+  --destructive-foreground: #ffffff;
+  --border: #e1e5de;
+  --input: #858b80;
+  --ring: #2f6b2b;
+  --link: #2f6b2b;
+  --soft: #e4f0df; /* green-tinted panels: detail leads, decision panels, total rows */
+  --soft-foreground: #141713;
+  /* Notices */
+  --success: #2f6b2b;
+  --success-soft: #e4f0df;
+  --info: #345a7a;
+  --info-soft: #e8eff6;
+  --warning: #87580f;
+  --warning-soft: #fbf1df;
+  --danger: #a13a31;
+  --danger-soft: #fbece9;
+  /* Status chips: solid fills with dark text, the same in both appearances. */
+  --chip-green: #a2d397;
+  --chip-blue: #9cc3f0;
+  --chip-amber: #f2c46d;
+  --chip-red: #ec6a5e;
+  --chip-grey: #e3e6e0;
+  --chip-foreground: #10140f;
+  --chip-grey-foreground: #3d423b;
+  /* Charts (sales-dashboard pastels with darker edges). */
+  --chart-1: #bcdda8;
+  --chart-1-line: #7fbe58;
+  --chart-2: #95d5e6;
+  --chart-2-line: #33aecf;
+  --chart-3: #f0cc9b;
+  --chart-3-line: #e39e3f;
+  --chart-4: #cac0ef;
+  --chart-4-line: #9a86e0;
+  --chart-5: #f3c2cd;
+  --chart-5-line: #e98aa0;
+  --chart-grid: #ecece8;
+  --chart-cross: #dcdcd7;
+  --chart-track: #f4f4f2;
+  --chart-approved: #5f6a5b;
+  --chart-available: #eef2ea;
+  /* Sidebar: sage from edge to edge in both appearances, with a black account card. */
+  --sidebar: #a2d397;
+  --sidebar-foreground: #0e1a0c;
+  --sidebar-muted: #2d4a27;
+  --sidebar-primary: #0b0b0b;
+  --sidebar-primary-foreground: #f4f5f2;
+  --sidebar-accent: #8fc483;
+  --sidebar-accent-foreground: #0e1a0c;
+  --sidebar-border: rgb(14 26 12 / 16%);
+  --sidebar-ring: #0e1a0c;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  /* Dark: near-black canvas, charcoal cards, white ink, sage accents. */
+  --background: #0b0b0b;
+  --foreground: #f4f5f2;
+  --card: #1a1a1a;
+  --card-foreground: #f4f5f2;
+  --popover: #1f1f1f;
+  --popover-foreground: #f4f5f2;
+  --primary: #a2d397;
+  --primary-hover: #b4ddaa;
+  --primary-foreground: #0e1a0c;
+  --secondary: #262626;
+  --secondary-hover: #303030;
+  --secondary-foreground: #f4f5f2;
+  --muted: #232323;
+  --muted-foreground: #9c9e98;
+  --accent: #262626;
+  --accent-foreground: #f4f5f2;
+  --destructive: #f3a197;
+  --destructive-foreground: #240905;
+  --border: #2b2b2b;
+  --input: #6d6d69;
+  --ring: #a2d397;
+  --link: #a2d397;
+  --soft: #1f2b1c;
+  --soft-foreground: #f4f5f2;
+  --success: #a2d397;
+  --success-soft: #1f2b1c;
+  --info: #a9c9ef;
+  --info-soft: #1b2633;
+  --warning: #f0c674;
+  --warning-soft: #33291a;
+  --danger: #f3a197;
+  --danger-soft: #3a201d;
+  --chip-grey: #3a3a3a;
+  --chip-grey-foreground: #e6e7e3;
+  --chart-grid: #262626;
+  --chart-cross: #3b3b3b;
+  --chart-track: #262626;
+  --chart-approved: #c9cbc6;
+  --chart-available: #2a2d28;
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Tight", "Inter", Arial, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-soft: var(--soft);
+  --color-soft-foreground: var(--soft-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-chip-green: var(--chip-green);
+  --color-chip-blue: var(--chip-blue);
+  --color-chip-amber: var(--chip-amber);
+  --color-chip-red: var(--chip-red);
+  --color-chip-grey: var(--chip-grey);
+  --color-chip-foreground: var(--chip-foreground);
+  --color-chip-grey-foreground: var(--chip-grey-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-track: var(--chart-track);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-padding-top: 24px;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font: 14px/1.5 var(--font-sans);
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+  }
+  ::selection {
+    background: var(--sidebar);
+    color: var(--sidebar-foreground);
+  }
+  input, textarea {
+    caret-color: var(--link);
+  }
+  /* Slim, theme-coloured scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--foreground) 28%, transparent) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Figures: tabular numerals everywhere amounts are compared. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* App motion with no shadcn equivalent. */
+@layer components {
+  /* Odometer KPI figures: each digit is a fixed-width cell whose 0–9 strip rolls to the target
+     digit. Every cell sits on the text baseline (clip-path clips the strip without moving the
+     baseline), so a settled odometer and the plain figure match exactly; decimals are half size. */
+  .odo-number {
+    display: inline-block;
+    height: 1.2em;
+    line-height: 1.2em;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .odo-number > span,
+  .odo-dec > span {
+    display: inline-block;
+    vertical-align: baseline;
+    height: 1.2em;
+  }
+  .odo-number > .odo-dec {
+    font-size: 0.5em;
+    height: auto;
+    line-height: 1.2em;
+  }
+  .odo {
+    position: relative;
+    clip-path: inset(0);
+    color: transparent;
+    -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent);
+    mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent);
+  }
+  .odo::before {
+    content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9";
+    position: absolute;
+    inset: 0 0 auto 0;
+    white-space: pre;
+    text-align: center;
+    line-height: 1.2em;
+    color: var(--foreground);
+    transform: translateY(calc(var(--d, 0) * -1.2em));
+    transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--i, 0) * 22ms);
+  }
+  /* Rows leaving a table: a detached copy slides out to the right. */
+  .row-ghost {
+    z-index: 4;
+    margin: 0;
+    overflow: hidden;
+    border: 0 !important;
+    background: var(--card);
+    pointer-events: none;
+  }
+  .row-ghost table {
+    width: 100%;
+    table-layout: fixed;
+  }
+}

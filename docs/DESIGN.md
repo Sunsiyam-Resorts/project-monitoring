@@ -1,4 +1,30 @@
-> **File locations (November 2026).** The interface is now a Vite + React app in `frontend/`. The files named below moved: `public/app.js`, `public/ui.js` and `public/icons.js` became React components under `frontend/src/`; `public/domain.js` and `public/demo.js` are in `frontend/src/domain/`; the stylesheets are in `frontend/src/styles/`; `public/theme.js`, `public/logo.svg`, `public/icon.svg` and `public/fonts/` are in `frontend/public/`. The design decisions recorded here are unchanged.
+> **File locations (November 2026).** The interface is now a Vite + React app in `frontend/`. The files named below moved: `public/app.js`, `public/ui.js` and `public/icons.js` became React components under `frontend/src/`; `public/domain.js` and `public/demo.js` are in `frontend/src/domain/`; `public/theme.js`, `public/logo.svg`, `public/icon.svg` and `public/fonts/` are in `frontend/public/`. Since 18 November the styles are Tailwind CSS: `frontend/src/styles/globals.css` (theme tokens) and `print.css`; `style.css` and `theme.css` were removed (see the entry below). The design decisions recorded here are unchanged unless a later entry says so.
+
+# shadcn/ui components, Tailwind CSS and Lucide icons — 18 November 2026
+
+Every interface component is now a shadcn/ui component, customised once to the portal theme so the same look is reused everywhere. The green sidebar, dark workspace, Inter type, colours and layouts are unchanged.
+- **Where things are:**
+  - `frontend/src/components/ui/`: the shadcn components (Button, Badge, Card, Input, Textarea, Select, Checkbox, Tabs, Table, Dialog, Sheet, Sidebar, Dropdown Menu, Collapsible, Alert, Empty, Field, Input Group, Pagination, Chart, Sonner, Avatar, Skeleton, Spinner, Tooltip and others), each restyled to the theme.
+  - `frontend/src/styles/globals.css`: the theme tokens for Light and Dark, mapped to Tailwind colours.
+  - `frontend/src/components/ui.jsx` and `frontend/src/components/detail.jsx`: app compositions built only from those components, such as page headers, status badges, form fields and record-dialog sections.
+- **Rule:** new UI uses a shadcn component when one exists. Missing components are added with `npx shadcn add` and restyled in `components/ui/`. Custom components are never built in its place (see `AGENTS.md`).
+- **Dropdowns:** the shadcn Select replaces native selects. This fixes the New Request form, where choosing a company did not stick. In forms, the Select keeps its value in a hidden native select, so form submission and required-field checks are unchanged.
+- **Charts:** rebuilt with shadcn Charts (Recharts) in the same sales-dashboard style:
+  - Budget: a stacked area for utilized and available, with an approved-budget line.
+  - Payments: stacked monthly bars.
+  - Each chart keeps its accessible summary.
+- **Icons:** Lucide throughout, one 1.75px stroke.
+- **Dialogs, menus and toasts:**
+  - Record dialogs use shadcn Dialog.
+  - The phone navigation drawer is the Sidebar's Sheet.
+  - The account menu, with Appearance and Sign out, is a Dropdown Menu.
+  - Toasts use Sonner.
+  - Expandable sections use Collapsible; their content stays in the page while closed.
+- **Fixes along the way:**
+  - The sidebar theme button changed the theme twice per click, so the theme did not change. The old document listener in `theme.js` was removed.
+  - Sidebar navigation keeps focus on the chosen item. Only the phone drawer moves focus to the page title.
+  - The dialog footer now sits flush at the bottom while the form scrolls.
+- **Dates:** date fields stay native date inputs, styled as shadcn Inputs.
 
 # Browser Back and Forward — 17 November 2026
 

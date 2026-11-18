@@ -1,15 +1,22 @@
 // Audit Log: filters by action, user, company and date range plus a search; newest first,
-// PAGE_SIZE entries per page.
-import { Icon } from "../components/Icon.jsx";
-import { Empty, PageHeader, RegionLabel, TableWrap } from "../components/ui.jsx";
+// PAGE_SIZE entries per page (shadcn Select, Input, Table and Pagination).
+import { DataTable, Empty, FormSelect, PageHeader, RegionLabel } from "../components/ui.jsx";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow, WORK_TABLE } from "../components/tables.jsx";
+import { ListToolbar, SearchBox } from "../components/Toolbar.jsx";
+import { TableFooterNote } from "../components/TableFooterNote.jsx";
 import { actionLabel, date } from "../lib/format.js";
 import { nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
 const PAGE_SIZE = 20;
 const day = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const uniq = (xs) => [...new Set(xs.filter(Boolean))].sort((m, n) => m.localeCompare(n));
-const Choices = ({ list, blank }) => <><option value="">{blank}</option>{list.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</>;
+const options = (list) => list.map(([value, label]) => ({ value, label }));
 
 export function Audit() {
   const { actions } = useApp();
@@ -34,53 +41,58 @@ export function Audit() {
   const active = Boolean(f.action || f.user || f.company || f.from || f.to || q);
   // Page numbers: first, last, and two either side of the current page.
   const nums = [...new Set([1, pages, ...[-2, -1, 0, 1, 2].map((d) => current + d)])].filter((n) => n >= 1 && n <= pages).sort((m, n) => m - n);
-  const change = (e) => actions.setAuditFilter(e.target.id, e.target.value);
+  const set = (id) => (value) => actions.setAuditFilter(id, value);
+  const go = (n) => (e) => { e.preventDefault(); actions.auditGo(n); };
   const emptyTitle = active ? "No matching entries" : "No audit entries yet";
+  const select = (id, label, list, blank) => (
+    <div className="grid min-w-[150px] flex-1 gap-1.5 sm:max-w-[220px]"><Label htmlFor={id} className="text-xs">{label}</Label><FormSelect id={id} value={f[id.replace("audit", "").toLowerCase()]} onValueChange={set(id)} clearable blank={blank} options={options(list)} /></div>
+  );
   return (
     <>
-      <PageHeader eyebrow="ADMINISTRATION" title="Audit Log" description="Every recorded action, newest first. Entries cannot be edited or removed in the portal." />
-      <div className="filters audit-filters">
-        <div><label htmlFor="auditAction">Action</label><select id="auditAction" value={f.action} onChange={change}><Choices list={actionsList} blank="All actions" /></select></div>
-        <div><label htmlFor="auditUser">User</label><select id="auditUser" value={f.user} onChange={change}><Choices list={users} blank="All users" /></select></div>
-        <div><label htmlFor="auditCompany">Company</label><select id="auditCompany" value={f.company} onChange={change}><Choices list={companies} blank="All companies" /></select></div>
-        <div><label htmlFor="auditFrom">From</label><input id="auditFrom" type="date" value={f.from} onChange={change} /></div>
-        <div><label htmlFor="auditTo">To</label><input id="auditTo" type="date" value={f.to} onChange={change} /></div>
-        {active ? <button className="linkbtn" data-action="auditClear" onClick={() => actions.auditClear()}>Clear filters</button> : null}
+      <PageHeader title="Audit Log" description="Every recorded action, newest first. Entries cannot be edited or removed in the portal." />
+      <div className="filters audit-filters mb-6 flex flex-wrap items-end gap-3">
+        {select("auditAction", "Action", actionsList, "All actions")}
+        {select("auditUser", "User", users, "All users")}
+        {select("auditCompany", "Company", companies, "All companies")}
+        <div className="grid gap-1.5"><Label htmlFor="auditFrom" className="text-xs">From</Label><Input id="auditFrom" type="date" value={f.from} onChange={(e) => actions.setAuditFilter("auditFrom", e.target.value)} className="w-[160px]" /></div>
+        <div className="grid gap-1.5"><Label htmlFor="auditTo" className="text-xs">To</Label><Input id="auditTo" type="date" value={f.to} onChange={(e) => actions.setAuditFilter("auditTo", e.target.value)} className="w-[160px]" /></div>
+        {active ? <Button variant="link" className="linkbtn self-center" data-action="auditClear" onClick={() => actions.auditClear()}>Clear filters</Button> : null}
       </div>
-      <div className="list-toolbar">
-        <div className="searchbox"><Icon name="search" /><input id="auditSearch" value={auditSearch} onChange={(e) => actions.setSearch("auditSearch", e.target.value)} aria-label="Search the audit log" placeholder="Search action, user, reference or detail" /></div>
-        <small>{`${rows.length ? `${start + 1}–${start + shown.length} of ${rows.length}` : "0"} entries${rows.length !== all.length ? ` · ${all.length} in total` : ""}`}</small>
-      </div>
+      <ListToolbar>
+        <SearchBox id="auditSearch" label="Search the audit log" placeholder="Search action, user, reference or detail" value={auditSearch} onChange={(v) => actions.setSearch("auditSearch", v)} />
+        <small className="text-xs text-muted-foreground">{`${rows.length ? `${start + 1}–${start + shown.length} of ${rows.length}` : "0"} entries${rows.length !== all.length ? ` · ${all.length} in total` : ""}`}</small>
+      </ListToolbar>
       <RegionLabel.Provider value={rows.length ? "Data table" : emptyTitle}>
-        <section className="panel flush">
-          <TableWrap>
-            <table className="audit-table">
-              <thead><tr><th scope="col">Date and time</th><th scope="col">Action</th><th scope="col">User</th><th scope="col">Detail</th><th scope="col">Company</th></tr></thead>
-              <tbody>
-                {shown.map((x, i) => (
-                  <tr key={x.id || i}>
-                    <td className="audit-when">{date(x.at)}</td><td><strong>{actionLabel(x.action)}</strong></td><td>{x.user}</td>
-                    <td>{x.detail || "—"}</td><td>{x.companyId ? nameOf(state, "companies", x.companyId) : "Group"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
+        <Card className="gap-0 overflow-hidden py-0">
+          <DataTable className={`audit-table ${WORK_TABLE}`}>
+            <TableHeader><TableRow><TableHead scope="col">Date and time</TableHead><TableHead scope="col">Action</TableHead><TableHead scope="col">User</TableHead><TableHead scope="col">Detail</TableHead><TableHead scope="col">Company</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {shown.map((x, i) => (
+                <TableRow key={x.id || i}>
+                  <TableCell data-label="Date and time" className="audit-when whitespace-nowrap text-muted-foreground">{date(x.at)}</TableCell>
+                  <TableCell data-label="Action"><strong className="font-semibold">{actionLabel(x.action)}</strong></TableCell>
+                  <TableCell data-label="User">{x.user}</TableCell>
+                  <TableCell data-label="Detail" className="break-words whitespace-normal">{x.detail || "—"}</TableCell>
+                  <TableCell data-label="Company">{x.companyId ? nameOf(state, "companies", x.companyId) : "Group"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
           {!rows.length ? <Empty title={emptyTitle} note={active ? "Adjust or clear the filters." : "Recorded actions will appear here."} /> : null}
-          <div className="table-footer"><span>{`Page ${current} of ${pages} · ${PAGE_SIZE} per page`}</span><span>Application audit trail · read-only</span></div>
-        </section>
+          <TableFooterNote left={`Page ${current} of ${pages} · ${PAGE_SIZE} per page`} right="Application audit trail · read-only" />
+        </Card>
       </RegionLabel.Provider>
       {pages > 1 ? (
-        <nav className="pager" aria-label="Audit log pages">
-          <button data-action="auditGo" data-n={current - 1} disabled={current === 1} aria-label="Previous page" onClick={() => actions.auditGo(current - 1)}><span className="pager-back"><Icon name="chevron" /></span>Previous</button>
-          <span className="pager-pages">
+        <Pagination className="pager mt-4" aria-label="Audit log pages">
+          <PaginationContent className="flex-wrap justify-center">
+            <PaginationItem><PaginationPrevious href="#" data-action="auditGo" data-n={current - 1} aria-disabled={current === 1 ? "true" : undefined} aria-label="Previous page" onClick={go(current - 1)} /></PaginationItem>
             {nums.map((n, i) => [
-              i && n - nums[i - 1] > 1 ? <span key={`gap${n}`} className="pager-gap" aria-hidden="true">…</span> : null,
-              <button key={n} data-action="auditGo" data-n={n} aria-current={n === current ? "page" : undefined} className={n === current ? "current" : undefined} aria-label={`Page ${n}`} onClick={() => actions.auditGo(n)}>{n}</button>,
+              i && n - nums[i - 1] > 1 ? <PaginationItem key={`gap${n}`}><PaginationEllipsis className="pager-gap" /></PaginationItem> : null,
+              <PaginationItem key={n}><PaginationLink href="#" data-action="auditGo" data-n={n} isActive={n === current} className={n === current ? "current" : undefined} aria-label={`Page ${n}`} onClick={go(n)}>{n}</PaginationLink></PaginationItem>,
             ])}
-          </span>
-          <button data-action="auditGo" data-n={current + 1} disabled={current === pages} aria-label="Next page" onClick={() => actions.auditGo(current + 1)}>Next<Icon name="chevron" /></button>
-        </nav>
+            <PaginationItem><PaginationNext href="#" data-action="auditGo" data-n={current + 1} aria-disabled={current === pages ? "true" : undefined} aria-label="Next page" onClick={go(current + 1)} /></PaginationItem>
+          </PaginationContent>
+        </Pagination>
       ) : null}
     </>
   );

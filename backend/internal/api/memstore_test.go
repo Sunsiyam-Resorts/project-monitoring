@@ -130,16 +130,24 @@ func (t *memTx) DeleteChallengeAndUserChallenges(ctx context.Context, h string, 
 }
 
 func (t *memTx) AddSession(ctx context.Context, h string, userID any) error {
-	t.sessions[h] = memSession{userID, t.m.now().Add(8 * time.Hour)}
+	t.sessions[h] = memSession{userID, t.m.now().Add(store.SessionIdleMinutes * time.Minute)}
 	return nil
 }
 
-func (t *memTx) SessionUser(ctx context.Context, h string) (any, error) {
+func (t *memTx) SessionUser(ctx context.Context, h string, touch bool) (any, error) {
 	s, ok := t.sessions[h]
 	if !ok || !s.expires.After(t.m.now()) {
 		return domain.Undefined, nil
 	}
+	if touch {
+		t.sessions[h] = memSession{s.userID, t.m.now().Add(store.SessionIdleMinutes * time.Minute)}
+	}
 	return s.userID, nil
+}
+
+func (t *memTx) DeleteSession(ctx context.Context, h string) error {
+	delete(t.sessions, h)
+	return nil
 }
 
 func (t *memTx) DeleteSessions(ctx context.Context, userID any) error {

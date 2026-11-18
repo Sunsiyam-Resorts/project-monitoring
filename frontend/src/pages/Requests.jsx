@@ -1,10 +1,14 @@
 import { approved, canCreateRequests, remainingToRequest } from "../domain/domain.js";
 import { Icon } from "../components/Icon.jsx";
-import { PageHeader, RegionLabel, Tabs } from "../components/ui.jsx";
+import { FormSelect, PageHeader, RegionLabel } from "../components/ui.jsx";
 import { Filters } from "../components/Filters.jsx";
 import { OrdersTable, RequestTable } from "../components/Records.jsx";
+import { ListToolbar, SearchBox, TabCount } from "../components/Toolbar.jsx";
 import { amendmentAttention, attention, filteredRequests, orderMatch, sortRequests } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const TABS = [["requests", "Requests"], ["finance", "Finance"], ["balance", "Balance to request"], ["inbox", "My Actions"]];
 const SORTS = [["date-desc", "Date: newest first"], ["date-asc", "Date: oldest first"], ["amount-desc", "Amount: highest USD"], ["number", "Request number"]];
@@ -34,32 +38,31 @@ export function Requests() {
     shown.some((o) => expanded.includes(o.id) && !all.some((r) => r.orderId === o.id && (tab !== "inbox" || attention(user, r))));
   return (
     <>
-      <PageHeader eyebrow="REQUEST WORKSPACE" title="Requests" description="One order, with every payment request submitted to Finance separately."
+      <PageHeader title="Requests" description="One order, with every payment request submitted to Finance separately."
         actions={canCreateRequests(user) && tab === "requests" ? (
           <>
-            <button data-action="import" onClick={() => actions.importForm()}>Import CSV / Excel</button>
-            <button className="primary" data-action="newOrder" onClick={() => actions.newOrder()}><Icon name="plus" />New Request</button>
+            <Button variant="outline" data-action="import" onClick={() => actions.importForm()}>Import CSV / Excel</Button>
+            <Button data-action="newOrder" onClick={() => actions.newOrder()}><Icon name="plus" />New Request</Button>
           </>
         ) : null} />
-      <Tabs>
-        {TABS.map(([v, t]) => (
-          <button key={v} data-tab={v} className={tab === v ? "active" : ""} aria-pressed={String(tab === v)} onClick={() => actions.setTab(v)}>{t}<span className="count">{lists[v].length}</span></button>
-        ))}
+      <Tabs value={tab} onValueChange={(v) => actions.setTab(v)} className="mb-6">
+        <TabsList aria-label="View selection" className="tabs">
+          {TABS.map(([v, t]) => (
+            <TabsTrigger key={v} value={v} data-tab={v} className={tab === v ? "active" : ""} aria-pressed={String(tab === v)}>{t}<TabCount active={tab === v}>{lists[v].length}</TabCount></TabsTrigger>
+          ))}
+        </TabsList>
       </Tabs>
       <Filters dates />
-      <div className="list-toolbar">
-        <div className="searchbox"><Icon name="search" /><input id="search" aria-label="Search requests" placeholder="Search reference, supplier, PO or invoice" value={search} onChange={(e) => actions.setSearch("search", e.target.value)} /></div>
-        <div className="list-options">
-          <select id="sortOrder" aria-label="Sort payment requests" value={sortOrder} onChange={(e) => actions.setSortOrder(e.target.value)}>
-            {SORTS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-          </select>
-        </div>
-      </div>
+      <ListToolbar>
+        <SearchBox id="search" label="Search requests" placeholder="Search reference, supplier, PO or invoice" value={search} onChange={(v) => actions.setSearch("search", v)} />
+        <FormSelect id="sortOrder" aria-label="Sort payment requests" value={sortOrder} onValueChange={(v) => actions.setSortOrder(v)}
+          options={SORTS.map(([value, label]) => ({ value, label }))} className="list-options w-auto min-w-[200px] max-sm:w-full" />
+      </ListToolbar>
       <RegionLabel.Provider value={emptyNested ? "Nothing in this view" : "Data table"}>
-        <section className="panel flush">
+        <Card className="gap-0 overflow-hidden py-0">
           {tab === "finance" ? <RequestTable rs={lists.finance} /> : <OrdersTable os={shown} view={tab} all={all} />}
-          <div className="table-footer"><span>{`${lists[tab]?.length || 0} records`}</span><span>Company access applies to every record</span></div>
-        </section>
+          <div className="table-footer flex flex-wrap justify-between gap-2 border-t border-border px-6 py-4 text-[11px] text-muted-foreground"><span>{`${lists[tab]?.length || 0} records`}</span><span>Company access applies to every record</span></div>
+        </Card>
       </RegionLabel.Provider>
     </>
   );

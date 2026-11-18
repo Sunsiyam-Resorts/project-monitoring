@@ -116,7 +116,7 @@ func (p *portal) want(r response, code int, errorMessage string) response {
 	return r
 }
 
-var sessionCookie = regexp.MustCompile(`^portal_session=([a-f0-9]{64}); HttpOnly; SameSite=Strict; Path=/; Max-Age=28800$`)
+var sessionCookie = regexp.MustCompile(`^portal_session=([a-f0-9]{64}); HttpOnly; SameSite=Strict; Path=/$`)
 
 func (p *portal) command(cookie, cmd string) response {
 	p.t.Helper()
@@ -192,7 +192,7 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	}
 	cookie := m[1]
 	var sessions, challenges int
-	db.QueryRow(ctx, "SELECT count(*) FROM portal_sessions WHERE token=$1 AND user_id='initial-admin' AND expires > now() + interval '7 hours 59 minutes'", auth.Hash(cookie)).Scan(&sessions)
+	db.QueryRow(ctx, "SELECT count(*) FROM portal_sessions WHERE token=$1 AND user_id='initial-admin' AND expires > now() + interval '14 minutes' AND expires <= now() + interval '15 minutes'", auth.Hash(cookie)).Scan(&sessions)
 	db.QueryRow(ctx, "SELECT count(*) FROM portal_challenges").Scan(&challenges)
 	if sessions != 1 || challenges != 0 {
 		t.Fatalf("after verify: %d sessions, %d challenges", sessions, challenges)

@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 import { apply, migrateState, visibleState, supportingFile } from "../domain/domain.js";
 import { demoState } from "../domain/demo.js";
 import { api } from "./api.js";
+import { IDLE_MINUTES } from "./idle.js";
 import { csvExport, downloadPDF, readFiles, readPDF } from "./files.js";
 import { importTemplate } from "./excel.js";
 import { allowedPages, deletedRecord } from "./selectors.js";
@@ -13,6 +14,13 @@ import { emptyAuditFilter } from "./store.js";
 
 export const STORE_KEY = "ss-project-monitoring-demo-v1";
 const ACTOR_KEY = "demo-actor";
+// Set while this tab is in the demo workspace, so a page refresh reopens the demo (per tab,
+// like the chosen demo user) instead of the sign-in page.
+const DEMO_KEY = "demo-active";
+const session = {
+  get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
 
 export function createActions(store) {
   const { get, set } = store;
@@ -65,6 +73,12 @@ export function createActions(store) {
 
   // ---- Start-up, refresh and cross-tab sync -------------------------------------------
   async function boot(alive) {
+    // A refresh in the demo workspace returns to it.
+    if (session.get(DEMO_KEY)) {
+      enterDemo();
+      set({ boot: false });
+      return;
+    }
     try {
       const c = await api("config");
       if (c.configured) {
@@ -80,19 +94,46 @@ export function createActions(store) {
 
   async function poll() {
     const s = get();
-    if (!s.user || s.modal || s.drawerOpen || $(".profile-menu[open], .demo-actor[open]") || document.activeElement?.matches("input,select,textarea")) return;
+    if (!s.user || s.modal || s.drawerOpen || $("[role=menu], [role=listbox]") || document.activeElement?.matches("input,select,textarea")) return;
     try {
       if (s.demo) {
         const saved = localStorage.getItem(STORE_KEY);
         const raw = saved ? JSON.parse(saved) : get().raw;
         set({ raw, state: visibleState(raw, get().user) });
       } else {
-        const r = await api("state");
+        const r = await api("state", undefined, { background: true });
         set({ state: r.state, user: r.user });
       }
     } catch (e) {
-      if (e.message === "Sign in required") set({ user: null, loginSeq: get().loginSeq + 1 });
+      if (e.message === "Sign in required") sessionEnded();
     }
+  }
+
+  // Signed-out views keep the theme and the demo data, and clear the workspace.
+  const SIGNED_OUT = { demo: false, user: null, state: null, raw: null, page: "dashboard", loginStep: "password", drawerOpen: false };
+
+  // The server ended the session (inactivity in another tab, or an Admin change).
+  function sessionEnded() {
+    if (!get().user || get().demo) return;
+    selected = null;
+    returnPaymentId = null;
+    loginView({ ...SIGNED_OUT, modal: null, loginNotice: "Your session has ended. Sign in again to continue." });
+  }
+
+  // Signed out after 15 minutes without activity (lib/idle.js). Ends this browser's session.
+  async function idleSignOut() {
+    if (!get().user || get().demo) return;
+    selected = null;
+    returnPaymentId = null;
+    commit({ modal: null });
+    try { await api("end-session", {}); } catch { /* already ended on the server */ }
+    loginView({ ...SIGNED_OUT, loginNotice: `You were signed out after ${IDLE_MINUTES} minutes of inactivity.` });
+  }
+
+  // The user is active but made no request: keep the server session alive.
+  async function keepAlive() {
+    if (!get().user || get().demo) return;
+    try { await api("session", {}); } catch (e) { if (e.message === "Sign in required") sessionEnded(); }
   }
 
   function storageSync(e) {
@@ -113,7 +154,8 @@ export function createActions(store) {
     migrateState(raw);
     localStorage.setItem(STORE_KEY, JSON.stringify(raw));
     const user = raw.users.find((u) => u.id === sessionStorage.getItem(ACTOR_KEY)) || raw.users[0];
-    set({ demo: true, raw, user, state: visibleState(raw, user) });
+    session.set(DEMO_KEY, "1");
+    set({ demo: true, raw, user, state: visibleState(raw, user), loginNotice: "" });
   }
 
   const loginView = (patch) => set({ ...patch, loginSeq: get().loginSeq + 1 });
@@ -125,7 +167,8 @@ export function createActions(store) {
       loginView({ loginChallenge: r.challenge, enrollKey: r.secret || "", enrollQr: r.qrCode || "", enrollMethod: r.qrCode ? "qr" : "key", loginStep: "totp" });
     } else if (s.loginStep === "totp") {
       const r = await api("verify", { challenge: s.loginChallenge, code: d.code });
-      set({ user: r.user, state: r.state, enrollKey: "", enrollQr: "", loginChallenge: "", demo: false });
+      session.set(DEMO_KEY, null);
+      set({ user: r.user, state: r.state, enrollKey: "", enrollQr: "", loginChallenge: "", demo: false, loginNotice: "" });
       if (!r.user) loginView({});
     } else if (s.loginStep === "reset-start") {
       const r = await api("reset-start", d);
@@ -149,7 +192,8 @@ export function createActions(store) {
   async function logout() {
     await closeModal();
     if (!get().demo) await api("logout", {});
-    loginView({ demo: false, user: null, state: null, raw: null, page: "dashboard", loginStep: "password", drawerOpen: false });
+    session.set(DEMO_KEY, null);
+    loginView({ ...SIGNED_OUT, loginNotice: "" });
   }
 
   async function resetDemo() {
@@ -375,14 +419,15 @@ export function createActions(store) {
     toast("Lock released");
   }
 
-  async function taskStatus(taskId, status, select) {
+  // The task status Select is controlled by the stored task, so a refused change shows the
+  // stored status again by itself.
+  async function taskStatus(taskId, status) {
     const task = get().state.tasks.find((x) => x.id === taskId);
     try {
       await command({ type: "task.save", data: { record: { ...task, status } } });
       toast(`${task.name}: ${status}`);
     } catch (error) {
       toast(error.message, "error");
-      select.value = task.status;
     }
     focus($(`[data-task="${task.id}"]`));
   }
@@ -549,7 +594,7 @@ export function createActions(store) {
     // Background work started by the app shell.
     boot, poll, storageSync, drawerClosed, setDisclosure,
     // Sign-in.
-    enterDemo: g(enterDemo), submitLogin, chooseEnrollment: g(chooseEnrollment), logout: g(logout),
+    enterDemo: g(enterDemo), submitLogin, chooseEnrollment: g(chooseEnrollment), logout: g(logout), idleSignOut, keepAlive,
     resetPassword: () => loginView({ loginStep: "reset-start" }),
     backLogin: () => loginView({ loginStep: "password", enrollKey: "", enrollQr: "", loginChallenge: "" }),
     resetDemo: g(resetDemo), switchActor: g(switchActor, "success"),

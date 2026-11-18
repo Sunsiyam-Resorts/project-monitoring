@@ -13,27 +13,20 @@
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.themePreference = preference;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#0b0b0b' : '#eef1ec');
-    document.querySelectorAll('[data-theme-picker]').forEach(picker => { picker.value = preference; });
-    document.querySelectorAll('[data-theme-toggle]').forEach(button => {
-      const label = resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-      button.setAttribute('aria-label', label);
-      button.title = label;
-    });
   }
   applyTheme();
+  // The app sets the preference through this API (its theme button, the login Select and the
+  // account menu); React re-renders those controls when <html> changes.
+  window.portalAppearance = {
+    get: () => preference,
+    set(value) {
+      if (!valid(value)) return;
+      preference = value;
+      try { localStorage.setItem(key, preference); } catch {}
+      applyTheme();
+    },
+  };
   system.addEventListener('change', () => { if (preference === 'system') applyTheme(); });
-  document.addEventListener('click', event => {
-    if (!event.target.closest('[data-theme-toggle]')) return;
-    preference = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem(key, preference); } catch {}
-    applyTheme();
-  });
-  document.addEventListener('change', event => {
-    if (!event.target.matches('[data-theme-picker]') || !valid(event.target.value)) return;
-    preference = event.target.value;
-    try { localStorage.setItem(key, preference); } catch {}
-    applyTheme();
-  });
   window.addEventListener('storage', event => {
     if (event.key !== key && event.key !== null) return;
     preference = valid(event.newValue) ? event.newValue : 'system';

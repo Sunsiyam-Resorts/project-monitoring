@@ -1,138 +1,269 @@
-// Shared presentation: page headers, form fields, tables, badges and other small building blocks.
+// Shared app compositions, built only from the shadcn components in ./ui (customised to the
+// portal theme): page headers, status chips, empty states, tables, disclosures, form fields
+// and selects. Add new building blocks here by composing shadcn components, never from scratch.
 import { Children, cloneElement, createContext, isValidElement, useContext, useId, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { Icon } from "./Icon.jsx";
 import { useApp, useAppState } from "../lib/store.js";
+import { cn } from "@/lib/utils";
+import { Badge as ShadcnBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Empty as ShadcnEmpty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table } from "@/components/ui/table";
+import { Field as ShadcnField, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Input as ShadcnInput } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 // Legacy templates escaped optional values to "" rather than "undefined".
 export const text = (v) => String(v ?? "");
 
-export const Brand = () => (
-  <div className="brand"><img className="brand-logo" src="/logo.svg" alt="Sun Siyam" width="110" height="88" /><span className="brand-label">PROJECT MONITORING</span></div>
+export const Brand = ({ className }) => (
+  <div className={cn("brand flex flex-col items-start gap-1.5", className)}>
+    <img className="brand-logo h-[72px] w-[90px] object-contain object-left" src="/logo.svg" alt="Sun Siyam" width="110" height="88" />
+    <span className="brand-label text-[9px] font-semibold tracking-[0.13em]">PROJECT MONITORING</span>
+  </div>
 );
 
-export function PageHeader({ eyebrow, title, description, actions = null }) {
+export function PageHeader({ title, description, actions = null }) {
   return (
-    <div className="page-head">
-      <div><div className="eyebrow">{eyebrow}</div><h1 id="pageTitle" tabIndex={-1}>{title}</h1><p className="sub">{description}</p></div>
-      {actions ? <div className="page-actions">{actions}</div> : null}
+    <div className="page-head mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <div className="min-w-0">
+        <h1 id="pageTitle" tabIndex={-1} className="font-display text-[26px] leading-tight font-bold tracking-[-0.025em] outline-none">{title}</h1>
+        {description ? <p className="sub mt-1.5 text-[13px] text-muted-foreground">{description}</p> : null}
+      </div>
+      {actions ? <div className="page-actions flex flex-wrap items-center gap-2.5">{actions}</div> : null}
     </div>
   );
 }
 
+// Status chips: shadcn Badge variants. The status is always written, so colour is never the
+// only signal; "Finance" reads "Pending Payment".
+const STATUS_VARIANT = {
+  Paid: "success", Active: "success", Committed: "success",
+  Finance: "info", Reviewer: "info", "Approval 1": "info", "Approval 2": "info",
+  "On Hold": "warning", "Documents Required": "warning",
+  Rejected: "danger", Deleted: "danger", Restored: "success",
+};
 export const Badge = ({ status }) => (
-  <span className={`badge ${status.replaceAll(" ", "")}`}>{status === "Finance" ? "Pending Payment" : status}</span>
+  <ShadcnBadge variant={STATUS_VARIANT[status] || "default"} data-status={status} className={`badge ${String(status).replaceAll(" ", "")}`}>
+    {status === "Finance" ? "Pending Payment" : status}
+  </ShadcnBadge>
 );
 
-export const Empty = ({ title, note = "" }) => (
-  <div className="empty"><div className="empty-icon"><Icon name="requests" /></div><h3>{title}</h3>{note ? <p>{note}</p> : null}</div>
+export const Empty = ({ title, note = "", icon = "requests" }) => (
+  <ShadcnEmpty className="empty">
+    <EmptyHeader>
+      <EmptyMedia variant="icon"><Icon name={icon} /></EmptyMedia>
+      <EmptyTitle className="text-[15px] font-semibold">{title}</EmptyTitle>
+      {note ? <EmptyDescription>{note}</EmptyDescription> : null}
+    </EmptyHeader>
+  </ShadcnEmpty>
 );
 
-// A labelled detail value in a .detail-grid.
-export const Detail = ({ label, children }) => <div><label>{label}</label>{children}</div>;
+// A person's initial in a round avatar (shadcn Avatar).
+export const UserAvatar = ({ name, className, tone = "primary" }) => (
+  <Avatar className={cn("avatar size-9", className)}>
+    <AvatarFallback className={cn("text-xs font-bold", tone === "primary" ? "bg-primary text-primary-foreground" : "bg-soft text-link")}>{String(name || "?").slice(0, 1).toUpperCase()}</AvatarFallback>
+  </Avatar>
+);
 
-// Table regions are keyboard-scrollable and named after their section heading
-// (the nearest section's first heading, or "Data table").
+// A labelled detail value in a DetailGrid.
+export const Detail = ({ label, children }) => (
+  <div className="min-w-0">
+    <div className="mb-1 text-xs text-muted-foreground">{label}</div>
+    <div className="text-[13px] font-medium break-words">{children}</div>
+  </div>
+);
+export const DetailGrid = ({ className, children }) => (
+  <div className={cn("detail-grid grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-3", className)}>{children}</div>
+);
+
+// Tables: the shadcn Table in a keyboard-scrollable region named after its section heading
+// (the nearest RegionLabel, or "Data table").
 export const RegionLabel = createContext("Data table");
-export function TableWrap({ className = "", children }) {
+export function DataTable({ className, containerClassName, children }) {
   const label = useContext(RegionLabel);
   return (
-    <div className={className ? `table-wrap ${className}` : "table-wrap"} tabIndex={0} role="region" aria-label={`${label} · scroll for more columns`}>
+    <Table className={className} containerClassName={cn("table-wrap", containerClassName)}
+      containerProps={{ tabIndex: 0, role: "region", "aria-label": `${label} · scroll for more columns` }}>
       {children}
-    </div>
+    </Table>
   );
 }
 
-export const Tabs = ({ children }) => <div className="tabs" role="group" aria-label="View selection">{children}</div>;
-
-// A breakdown row: title and description, a headline figure, then the table on expand.
-// The open state is remembered per page for the session.
+// A breakdown row: title and description, a headline figure, then its content on expand (shadcn
+// Collapsible). The open state is remembered per page for the session.
 export function Disclosure({ title, description, id, figure = "", unit = "", children }) {
   const { actions } = useApp();
   const { page, disclosures } = useAppState();
   const key = page + ":" + id;
+  const open = disclosures[key] || false;
   return (
-    <details className="report-disclosure" data-disclosure={id} open={disclosures[key] || false} onToggle={(e) => actions.setDisclosure(key, e.currentTarget.open)}>
-      <summary>
-        <span className="report-text"><strong>{title}</strong><small>{description}</small></span>
-        {figure === "" ? null : <span className="report-figure"><b>{figure}</b><small>{unit}</small></span>}
-        <Icon name="chevron" />
-      </summary>
-      <div className="report-body">{children}</div>
-    </details>
+    <Collapsible open={open} onOpenChange={(o) => actions.setDisclosure(key, o)} data-disclosure={id} className="report-disclosure border-t border-border">
+      <CollapsibleTrigger className="group/disclosure grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_18px] items-center gap-6 px-6 py-4 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30 focus-visible:ring-inset max-sm:gap-3.5 max-sm:px-5">
+        <span className="report-text min-w-0">
+          <strong className="block text-sm font-semibold">{title}</strong>
+          <small className="mt-1 block text-xs text-muted-foreground">{description}</small>
+        </span>
+        {figure === "" ? <span /> : (
+          <span className="report-figure flex flex-col items-end text-right">
+            <b className="font-display text-[28px] leading-none font-semibold tracking-tight tabular max-sm:text-2xl">{figure}</b>
+            <small className="mt-1 text-[11px] whitespace-nowrap text-muted-foreground">{unit}</small>
+          </span>
+        )}
+        <ChevronRight className="size-[18px] text-muted-foreground transition-transform duration-200 group-data-[state=open]/disclosure:rotate-90 group-data-[state=open]/disclosure:text-foreground" />
+      </CollapsibleTrigger>
+      <CollapsibleContent forceMount className="report-body border-t border-border bg-muted/40 data-[state=closed]:hidden">{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
 export const LoadingSkeleton = () => (
-  <div className="loading-skeleton" role="status" aria-label="Loading workspace">
-    <div className="skeleton-line"></div><div className="skeleton-line short"></div>
-    <div className="skeleton-grid"><div></div><div></div><div></div></div>
+  <div className="loading-skeleton mx-auto max-w-[1440px] px-[max(24px,8vw)] py-20" role="status" aria-label="Loading workspace">
+    <Skeleton className="mb-4 h-7 w-60" />
+    <Skeleton className="h-3 w-[340px] max-w-full opacity-65" />
+    <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-3"><Skeleton className="h-40" /><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
     <span className="sr-only">Loading workspace…</span>
   </div>
 );
 
-// `<option value="">blank</option>` followed by one option per record.
-export const Options = ({ items, blank = "Select…" }) => (
-  <>
-    <option value="">{blank}</option>
-    {items.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-  </>
-);
-
-// Buttons that open or change a record show they are busy until the action completes.
-export function BusyButton({ onRun, disabled = false, children, ...rest }) {
+// Buttons that open or change a record show a spinner until the action completes.
+export function BusyButton({ onRun, disabled = false, children, variant = "outline", size, className, ...rest }) {
   const [busy, setBusy] = useState(false);
   const run = async (e) => {
     e.preventDefault();
     setBusy(true);
     try { await onRun(e); } finally { setBusy(false); }
   };
-  return <button {...rest} disabled={busy || disabled} aria-busy={busy ? "true" : undefined} onClick={run}>{children}</button>;
+  return (
+    <Button variant={variant} size={size} className={className} {...rest} disabled={busy || disabled} aria-busy={busy ? "true" : undefined} onClick={run}>
+      {busy && variant !== "link" ? <Spinner /> : null}{children}
+    </Button>
+  );
 }
 
-export function RowAction({ action, id, label, onRun, busy = false }) {
-  const props = { className: "row-action", "data-action": action, "data-id": id, "aria-label": label, title: label };
+export function RowAction({ action, id, label, onRun, busy = false, icon = "arrow" }) {
+  const props = { variant: "secondary", size: "icon", className: "row-action rounded-xl", "data-action": action, "data-id": id, "aria-label": label, title: label };
   return busy
-    ? <BusyButton {...props} onRun={onRun}><Icon name="arrow" /></BusyButton>
-    : <button {...props} onClick={onRun}><Icon name="arrow" /></button>;
+    ? <BusyButton {...props} onRun={onRun}><Icon name={icon} /></BusyButton>
+    : <Button {...props} onClick={onRun}><Icon name={icon} /></Button>;
 }
 
 export function FileList({ files, kind, id, version = "", side = "data" }) {
   const { actions } = useApp();
-  return (files || []).map((f, i) => (
-    <BusyButton key={i} className="document-link" data-action="file" data-kind={kind} data-id={id} data-index={i} data-version={version} data-side={side}
-      onRun={() => actions.fileDownload({ action: "file", kind, id, index: String(i), version: text(version), side })}>
-      <Icon name="requests" /><span className="document-name">{f.name}<small>PDF</small></span><Icon name="download" />
-    </BusyButton>
-  ));
-}
-
-// ---- Forms --------------------------------------------------------------------------------
-const CONTROLS = ["input", "select", "textarea"];
-
-// A labelled form field. The label is tied to the first control, a .help child describes it,
-// and controls marked required show the required mark.
-export function Field({ label, wide = false, children }) {
-  const autoId = useId(), helpAutoId = useId();
-  const items = Children.toArray(children);
-  const controlAt = items.findIndex((c) => isValidElement(c) && (c.type === Input || CONTROLS.includes(c.type)));
-  const helpAt = items.findIndex((c) => isValidElement(c) && /(^|\s)help(\s|$)/.test(c.props.className || ""));
-  const controlId = controlAt >= 0 ? items[controlAt].props.id || autoId : undefined;
-  const helpId = helpAt >= 0 ? items[helpAt].props.id || helpAutoId : undefined;
-  const required = items.some((c) => isValidElement(c) && c.props.required);
-  const content = items.map((c, i) =>
-    i === controlAt ? cloneElement(c, { id: controlId, ...(helpId && controlAt >= 0 ? { "aria-describedby": helpId } : {}) })
-      : i === helpAt ? cloneElement(c, { id: helpId }) : c);
   return (
-    <div className={wide ? "field wide" : "field"}>
-      <label htmlFor={controlId}>{label}{required ? <span className="required-mark" aria-hidden="true"> *</span> : null}</label>
-      {content}
+    <div className="flex flex-wrap gap-2.5">
+      {(files || []).map((f, i) => (
+        <BusyButton key={i} variant="outline" className="document-link h-auto justify-start gap-3 rounded-xl py-2.5 pr-3 pl-3.5"
+          data-action="file" data-kind={kind} data-id={id} data-index={i} data-version={version} data-side={side}
+          onRun={() => actions.fileDownload({ action: "file", kind, id, index: String(i), version: text(version), side })}>
+          <Icon name="audit" className="text-muted-foreground" />
+          <span className="document-name flex min-w-0 flex-col items-start text-left">
+            <span className="max-w-[260px] truncate">{f.name}</span>
+            <small className="text-[11px] font-medium text-muted-foreground">PDF</small>
+          </span>
+          <Icon name="download" className="text-link" />
+        </BusyButton>
+      ))}
     </div>
   );
 }
 
+// Help text under a field.
+export const Help = ({ id, className, children }) => (
+  <FieldDescription id={id} className={cn("help", className)}>{children}</FieldDescription>
+);
+
+// ---- Forms --------------------------------------------------------------------------------
+// Dropdowns use the shadcn Select. Its value "" shows the placeholder; when `clearable`, a
+// first item (the `blank` label, e.g. "All") clears the choice again. In a form the Select
+// carries `name` and `required` on its hidden native select, so FormData and validation work.
+export const NONE = "__none";
+export function FormSelect({
+  id, name, value, defaultValue, onValueChange, items = [], options, blank = "Select…", clearable = false,
+  required, disabled, className, size, "aria-label": ariaLabel, "aria-describedby": describedBy, ...rest
+}) {
+  const list = options || items.map((x) => ({ value: String(x.id), label: x.name }));
+  const controlled = value !== undefined;
+  const toRadix = (v) => (v === "" || v == null ? (clearable ? NONE : "") : String(v));
+  const fromRadix = (v) => (v === NONE ? "" : v);
+  return (
+    <Select name={name} required={required} disabled={disabled}
+      {...(controlled ? { value: toRadix(value) } : { defaultValue: defaultValue == null || defaultValue === "" ? undefined : String(defaultValue) })}
+      onValueChange={(v) => onValueChange?.(fromRadix(v))}>
+      <SelectTrigger id={id} size={size} className={cn("select-trigger", className)} aria-label={ariaLabel} aria-describedby={describedBy}
+        data-value={controlled ? String(value ?? "") : undefined} {...rest}>
+        <SelectValue placeholder={blank} />
+      </SelectTrigger>
+      <SelectContent>
+        {clearable ? <SelectItem value={NONE} data-value="">{blank}</SelectItem> : null}
+        {list.map((o) => <SelectItem key={o.value} value={o.value} data-value={o.value} disabled={o.disabled}>{o.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+const CONTROLS = ["input", "textarea"];
+const isControl = (c) => isValidElement(c) && (c.type === Input || c.type === FormSelect || c.type === TextArea || c.type === ShadcnInput || c.type === Textarea || CONTROLS.includes(c.type));
+
+// A labelled form field (shadcn Field). The label is tied to the first control, Help text
+// describes it, and required controls show the required mark.
+export function Field({ label, wide = false, children }) {
+  const autoId = useId(), helpAutoId = useId();
+  const items = Children.toArray(children);
+  const controlAt = items.findIndex(isControl);
+  const helpAt = items.findIndex((c) => isValidElement(c) && (c.type === Help || /(^|\s)help(\s|$)/.test(c.props.className || "")));
+  const controlId = controlAt >= 0 ? items[controlAt].props.id || autoId : undefined;
+  const helpId = helpAt >= 0 ? items[helpAt].props.id || helpAutoId : undefined;
+  const required = items.some((c) => isValidElement(c) && c.props.required);
+  const content = items.map((c, i) =>
+    i === controlAt ? cloneElement(c, { id: controlId, ...(helpId ? { "aria-describedby": helpId } : {}) })
+      : i === helpAt ? cloneElement(c, { id: helpId }) : c);
+  return (
+    <ShadcnField className={cn("field min-w-0", wide && "wide sm:col-span-2")}>
+      <FieldLabel htmlFor={controlId}>{label}{required ? <span className="required-mark text-muted-foreground" aria-hidden="true"> *</span> : null}</FieldLabel>
+      {content}
+    </ShadcnField>
+  );
+}
+
+// A numbered form section (shadcn FieldSet + FieldLegend).
 export const Section = ({ number, title, description = "", children }) => (
-  <fieldset className="form-section"><legend><span>{number}</span>{title}</legend>{description ? <p>{description}</p> : null}{children}</fieldset>
+  <FieldSet className="form-section border-b border-border pb-7 last-of-type:border-b-0">
+    <FieldLegend className="mb-1 flex items-center gap-2.5">
+      <span className="text-[10px] font-semibold text-muted-foreground tabular">{number}</span>{title}
+    </FieldLegend>
+    {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+    {children}
+  </FieldSet>
+);
+
+export const FieldGrid = ({ className, children }) => (
+  <div className={cn("grid2 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2", className)}>{children}</div>
 );
 
 // A text input with the legacy defaults: always a value, type text unless given.
-export const Input = ({ name, value, type = "text", ...rest }) => <input name={name} defaultValue={text(value)} type={type} {...rest} />;
+export const Input = ({ name, value, type = "text", className, ...rest }) => (
+  <ShadcnInput name={name} defaultValue={text(value)} type={type} className={className} {...rest} />
+);
+export const TextArea = ({ value, className, ...rest }) => (
+  <Textarea defaultValue={value === undefined ? undefined : text(value)} className={className} {...rest} />
+);
+
+// A labelled shadcn Checkbox; in a form it submits `value` (default "on") under `name` when checked.
+export function Check({ name, value, defaultChecked, className, children }) {
+  const id = useId();
+  return (
+    <div className={cn("flex items-center gap-2.5", className)}>
+      <Checkbox id={id} name={name} value={value} defaultChecked={defaultChecked} />
+      <Label htmlFor={id} className="font-medium">{children}</Label>
+    </div>
+  );
+}

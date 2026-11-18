@@ -127,7 +127,7 @@ func expect(t *testing.T, rec *httptest.ResponseRecorder, status int, error stri
 	}
 }
 
-var cookiePattern = regexp.MustCompile(`^portal_session=([a-f0-9]{64}); HttpOnly; SameSite=Strict; Path=/; Max-Age=28800$`)
+var cookiePattern = regexp.MustCompile(`^portal_session=([a-f0-9]{64}); HttpOnly; SameSite=Strict; Path=/$`)
 
 // signIn signs in with password and authenticator, enrolling on first use.
 func (f *fixture) signIn(username, password string, secret *string) string {
@@ -312,7 +312,7 @@ func TestSignInStateCommandsFilesAndLogout(t *testing.T) {
 	rec = f.post("login", `{"username":"fictional.admin","password":"`+adminPassword+`"}`, "")
 	f.now = f.now.Add(30 * time.Second)
 	rec = f.post("verify", `{"challenge":"`+body(t, rec)["challenge"].(string)+`","code":"`+auth.TOTP(secret, f.now.UnixMilli())+`"}`, "")
-	if !strings.HasSuffix(rec.Header().Get("Set-Cookie"), "; Max-Age=28800; Secure") {
+	if !strings.HasSuffix(rec.Header().Get("Set-Cookie"), "; Path=/; Secure") {
 		t.Fatalf("production cookie: %q", rec.Header().Get("Set-Cookie"))
 	}
 }
@@ -487,4 +487,39 @@ func TestCookieAndQueryParsing(t *testing.T) {
 			t.Errorf("originHost(%q) should fail", o)
 		}
 	}
+}
+
+// A session ends after 15 minutes without activity, and never while the user is active:
+// each request the user makes restarts the period; the background refresh does not.
+func TestSessionEndsOnlyAfterFifteenIdleMinutes(t *testing.T) {
+	f := newFixture(t)
+	var secret string
+	cookie := f.signIn("fictional.admin", adminPassword, &secret)
+	background := func() *httptest.ResponseRecorder {
+		return f.request("GET", "/api/index?action=state", "", map[string]string{"Cookie": "portal_session=" + cookie, "X-Portal-Background": "1"})
+	}
+	// Active for an hour: a keep-alive every 14 minutes keeps the session.
+	for i := 0; i < 5; i++ {
+		f.now = f.now.Add(14 * time.Minute)
+		expect(t, f.post("session", "{}", cookie), 200, "")
+	}
+	// Background refreshes alone do not extend it.
+	f.now = f.now.Add(10 * time.Minute)
+	expect(t, background(), 200, "")
+	f.now = f.now.Add(4*time.Minute + 59*time.Second)
+	expect(t, background(), 200, "")
+	f.now = f.now.Add(2 * time.Second)
+	expect(t, background(), 401, "Sign in required")
+	expect(t, f.get("state", cookie), 401, "Sign in required")
+
+	// Signing out after inactivity ends only this browser's session.
+	other := f.signIn("fictional.admin", adminPassword, &secret)
+	this := f.signIn("fictional.admin", adminPassword, &secret)
+	rec := f.post("end-session", "{}", this)
+	expect(t, rec, 200, "")
+	if !strings.Contains(rec.Header().Get("Set-Cookie"), "Max-Age=0") {
+		t.Fatalf("end-session cookie: %q", rec.Header().Get("Set-Cookie"))
+	}
+	expect(t, f.get("state", this), 401, "Sign in required")
+	expect(t, f.get("state", other), 200, "")
 }

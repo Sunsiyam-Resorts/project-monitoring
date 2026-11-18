@@ -29,16 +29,23 @@ console.error = (...args) => {
 (0, eval)(await readFile(new NodeURL("../public/theme.js", import.meta.url), "utf8"));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const flush = () => act(() => sleep(20));
+// Two act() passes: a state change renders and runs its effects when act() exits, and a toast
+// then needs a further pass (Sonner renders it from a timer).
+const flush = async () => { await act(() => sleep(20)); await act(() => sleep(20)); };
 const wait = (ms) => act(() => sleep(ms));
 
-async function app(seed, handleFetch, { withoutRandomUUID = false, keepUrl = false } = {}) {
+async function app(seed, handleFetch, { withoutRandomUUID = false, keepUrl = false, width = 1280, reload = false } = {}) {
+  // The layout follows the window width (the sidebar becomes a drawer below 768px).
+  window.happyDOM.setViewport({ width, height: 900 });
   document.body.innerHTML =
-    '<div id="app"></div><dialog id="modal" aria-modal="true"></dialog><div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>';
-  localStorage.clear();
-  sessionStorage.clear();
+    '<div id="app"></div>';
+  // reload: a browser refresh, which keeps this tab's storage and URL.
+  if (!reload) {
+    localStorage.clear();
+    sessionStorage.clear();
+  }
   // Every test starts on a fresh URL: no page from an earlier test in the history entry.
-  if (!keepUrl) history.replaceState(null, "", location.href.split("#")[0]);
+  if (!keepUrl && !reload) history.replaceState(null, "", location.href.split("#")[0]);
   window.dispatchEvent(new StorageEvent("storage", { key: null }));
   const restore = { fetch: window.fetch, createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
   if (withoutRandomUUID) Object.defineProperty(window.crypto, "randomUUID", { value: undefined, configurable: true });
@@ -67,9 +74,46 @@ async function app(seed, handleFetch, { withoutRandomUUID = false, keepUrl = fal
 const click = (w, s) => {
   const el = typeof s === "string" ? w.document.querySelector(s) : s;
   assert.ok(el, "Missing " + s);
-  act(() => el.click());
+  // A pointer click: mousedown first (Radix Tabs switch on mousedown), then click.
+  act(() => {
+    el.dispatchEvent(new w.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    el.click();
+  });
 };
 const fire = (el, event) => act(() => { el.dispatchEvent(event); });
+// Picks an option in a shadcn Select as a keyboard user does: Enter opens the list, then the
+// option (each carries its value as data-value; "" is a clearable Select's blank choice).
+const choose = (w, s, value) => {
+  const el = typeof s === "string" ? w.document.querySelector(s) : s;
+  assert.ok(el, "Missing " + s);
+  assert.equal(el.dataset.slot, "select-trigger", "Not a select: " + s);
+  act(() => { el.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  const option = w.document.querySelector(`[role=option][data-value="${value}"]`);
+  assert.ok(option, `No option ${value} for ${s}: ` + [...w.document.querySelectorAll("[role=option]")].map((o) => o.dataset.value));
+  act(() => option.click());
+};
+// A Select's options as [value, label] pairs: opens the list, reads it and closes it again.
+const optionsOf = (w, s) => {
+  const el = typeof s === "string" ? w.document.querySelector(s) : s;
+  assert.ok(el, "Missing " + s);
+  act(() => { el.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  const list = [...w.document.querySelectorAll("[role=option]")].map((o) => [o.dataset.value, o.textContent]);
+  act(() => { w.document.activeElement.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  return list;
+};
+// The sidebar navigation (shadcn Sidebar; on phones the same menu opens in a Sheet).
+const NAV = "[data-sidebar=menu-button][data-page]";
+// The text of the toasts on screen (Sonner).
+const toastText = (w) => [...w.document.querySelectorAll("[data-sonner-toast]")].map((t) => t.textContent).join(" ");
+// The workspace dialog is open while its content (#modal) is mounted.
+const modalOpen = (w) => Boolean(w.document.querySelector("#modal"));
+// Signs out through the account menu (a shadcn DropdownMenu).
+const signOut = async (w) => {
+  fire(w.document.querySelector(".profile-menu"), new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await flush();
+  click(w, "[data-action=logout]");
+  await flush();
+};
 // Types into an input as a browser does (React tracks values set through the element's own setter).
 const type = (w, el, value) => {
   Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, "value").set.call(el, value);
@@ -187,7 +231,7 @@ test("Amendment history exposes complete versions, attempts and archived documen
     w.URL.createObjectURL = (blob) => { downloaded = blob; return "blob:test-history"; };
     w.URL.revokeObjectURL = () => {};
     click(w, button); await flush();
-    assert.ok(downloaded, w.document.querySelector("#toast").textContent);
+    assert.ok(downloaded, toastText(w));
     assert.equal(downloaded.type, "application/pdf");
     assert.equal(await downloaded.text(), Buffer.from(previous.files[0].data, "base64").toString());
     const saved = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
@@ -208,11 +252,10 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.equal(w.document.querySelectorAll('.budget-overview .kpi-trend-overview').length, 1);
   assert.match(w.document.querySelector('.kpi-trend-overview').getAttribute('aria-label'), /approved budget USD .+; utilized USD .+; available USD .+/);
   assert.equal(w.document.querySelectorAll('.payment-overview .kpi-trend-payments').length, 1);
-  const months = w.document.querySelectorAll('.budget-overview .lc-hit').length;
+  // Both charts (shadcn Charts) plot the same months.
+  const months = Number(w.document.querySelector('.budget-overview .kpi-trend-overview').dataset.months);
   assert.ok(months > 0);
-  assert.ok(w.document.querySelector('.budget-overview .lc-band.lc-utilized') && w.document.querySelector('.budget-overview .lc-edge.lc-approved'));
-  assert.equal(w.document.querySelectorAll('.payment-overview .lc-column').length, months);
-  for (const key of ["paid", "outstanding", "hold", "balance"]) assert.ok(w.document.querySelector('.payment-overview .lc-col.seg-' + key), key);
+  assert.equal(Number(w.document.querySelector('.payment-overview .kpi-trend-payments').dataset.months), months);
   assert.match(w.document.querySelector('.kpi-trend-payments').getAttribute('aria-label'), /Paid USD .+; Outstanding Payments USD .+; On Hold USD .+; Balance Payments Pending USD .+/);
   // Shortcuts: Finance payments and Projects (My Actions is no longer a shortcut).
   assert.ok(w.document.querySelector('.kpi-side > .workspace-actions [data-target=Finance]'));
@@ -229,7 +272,7 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.match(
     w.document.querySelector("#modal").textContent +
       " TOAST: " +
-      w.document.querySelector("#toast").textContent,
+      toastText(w),
     /PR-2026/,
   );
   click(w, "[data-action=document]");
@@ -240,32 +283,23 @@ test("All five pages and document render, scoped role switching works", async ()
   );
   click(w, "[data-action=close]");
   await flush();
-  const actor = w.document.querySelector("#actor");
-  actor.value = "viewer";
-  fire(actor, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", "viewer");
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests"]);
-  assert.equal(w.document.querySelectorAll("#navigationDrawer [data-page]").length, 4);
+  assert.deepEqual([...w.document.querySelectorAll(NAV)].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests"]);
   // Planning works on project tasks only: Projects is its only page.
-  const actorP = w.document.querySelector("#actor");
-  actorP.value = "planner";
-  fire(actorP, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", "planner");
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["projects"]);
+  assert.deepEqual([...w.document.querySelectorAll(NAV)].map((b) => b.dataset.page), ["projects"]);
   assert.equal(w.document.querySelector("#pageTitle").textContent, "Projects");
-  const actorF = w.document.querySelector("#actor");
-  actorF.value = "fin";
-  fire(actorF, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", "fin");
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(".shell > .sidebar [data-page]")].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests", "master", "audit"]);
+  assert.deepEqual([...w.document.querySelectorAll(NAV)].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests", "master", "audit"]);
   click(w, "[data-page=dashboard]");
   assert.match(w.document.body.textContent, /All/);
-  const actor2 = w.document.querySelector("#actor");
-  actor2.value = "req0";
-  fire(actor2, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", "req0");
   await flush();
   assert.ok(
-    !w.document.querySelector("#company").textContent.includes("Siyam World"),
+    !optionsOf(w, "#company").some(([, label]) => label.includes("Siyam World")),
   );
   w.close();
   await w.happyDOM.abort();
@@ -273,25 +307,17 @@ test("All five pages and document render, scoped role switching works", async ()
 test("Requester forms populate dependent project, budget, category and instalment fields", async () => {
   const w = await app();
   click(w, "[data-action=demo]");
-  const actor = w.document.querySelector("#actor");
-  actor.value = "req0";
-  fire(actor, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", "req0");
   await flush();
   click(w, "[data-page=requests]");
   click(w, "[data-action=newOrder]");
-  const company = w.document.querySelector("#formCompany");
-  company.value = "c1";
-  fire(company, new w.Event("change", { bubbles: true }));
+  choose(w, "#formCompany", "c1");
   assert.match(
-    w.document.querySelector("#formProject").textContent,
+    w.document.querySelector("[name=projectId]").textContent,
     /Tropical/,
   );
-  const project = w.document.querySelector("#formProject");
-  project.value = "p1";
-  fire(project, new w.Event("change", { bubbles: true }));
-  const budget = w.document.querySelector("#formBudget");
-  budget.value = "b0";
-  fire(budget, new w.Event("change", { bubbles: true }));
+  choose(w, "#formProject", "p1");
+  choose(w, "#formBudget", "b0");
   assert.equal(w.document.querySelectorAll("#allocations input").length, 3);
   click(w, "[data-action=close]");
   await flush();
@@ -307,13 +333,13 @@ test("Requester forms populate dependent project, budget, category and instalmen
   await w.happyDOM.abort();
 });
 const actor = async (w, id) => {
-  const select = w.document.querySelector("#actor");
-  select.value = id;
-  fire(select, new w.Event("change", { bubbles: true }));
+  choose(w, "#actor", id);
   await flush();
 };
+// Sets a field: a shadcn Select by choosing the option, any other control by value + change.
 const change = (w, id, value) => {
   const el = w.document.getElementById(id);
+  if (el?.dataset.slot === "select-trigger") return choose(w, el, value);
   el.value = value;
   fire(el, new w.Event("change", { bubbles: true }));
 };
@@ -387,7 +413,7 @@ test("Every master form, user form and login state has persistent accessible lab
         "modalTitle",
       );
       for (const control of w.document.querySelectorAll(
-        "#modal input,#modal select,#modal textarea",
+        "#modal input:not([aria-hidden=true]),#modal textarea,#modal [data-slot=select-trigger],#modal [role=checkbox]",
       ))
         assert.ok(
           control.labels.length || control.getAttribute("aria-label"),
@@ -403,11 +429,11 @@ test("Every master form, user form and login state has persistent accessible lab
     click(w, "[data-action=close]");
     await flush();
     // The audit log has its own admin page; Settings no longer lists it.
-    click(w, ".shell > .sidebar [data-page=audit]");
+    click(w, "[data-sidebar=menu-button][data-page=audit]");
     assert.equal(w.document.querySelector("#pageTitle").textContent, "Audit Log");
     const auditRows = () => w.document.querySelectorAll(".audit-table tbody tr").length;
     assert.ok(auditRows() > 0 && auditRows() <= 20);
-    const auditUsers = [...w.document.querySelectorAll("#auditUser option")].map((o) => o.value).filter(Boolean);
+    const auditUsers = optionsOf(w, "#auditUser").map(([v]) => v).filter(Boolean);
     assert.ok(auditUsers.length);
     change(w, "auditUser", auditUsers[0]);
     assert.ok([...w.document.querySelectorAll(".audit-table tbody tr td:nth-child(3)")].every((td) => td.textContent === auditUsers[0]));
@@ -417,10 +443,9 @@ test("Every master form, user form and login state has persistent accessible lab
       assert.equal(w.document.querySelector(".pager .current").textContent, "2");
     }
     assert.ok(w.document.querySelector("#auditSearch").getAttribute("aria-label"));
-    click(w, ".shell > .sidebar [data-page=settings]");
+    click(w, "[data-sidebar=menu-button][data-page=settings]");
     assert.doesNotMatch(w.document.querySelector(".content").textContent, /Audit trail/);
-    click(w, "[data-action=logout]");
-    await flush();
+    await signOut(w);
     click(w, "[data-action=resetPassword]");
     assert.match(w.document.querySelector("h2").textContent, /Reset password/);
     assert.ok(w.document.querySelector("[name=email]").labels.length);
@@ -485,8 +510,8 @@ test("Submitting goes straight to Finance, and a Finance return goes back to the
     submit(w, "[data-form=payment]");
     await flush();
     const resent = JSON.parse(w.localStorage.getItem("ss-project-monitoring-demo-v1"));
-    assert.equal(resent.requests[0].status, "Finance", w.document.querySelector("#toast").textContent);
-    assert.match(w.document.querySelector("#toast").textContent, /sent to Finance/);
+    assert.equal(resent.requests[0].status, "Finance", toastText(w));
+    assert.match(toastText(w), /sent to Finance/);
   } finally {
     w.close();
     await w.happyDOM.abort();
@@ -582,53 +607,36 @@ test("Tables expose regions, column headers and mobile labels; navigation expose
     await w.happyDOM.abort();
   }
 });
-test("Responsive styles switch sidebar, form columns and mobile work items at realistic widths", async () => {
-  const css = await readFile(
-    new NodeURL("../src/styles/style.css", import.meta.url),
-    "utf8",
-  );
+test("Responsive layout: the sidebar becomes a drawer on phones; tables, form grids and filters carry their phone layouts", async () => {
   for (const width of [1440, 1024, 768, 390]) {
-    const w = new Window({ width, height: 900 });
+    const w = await app(null, null, { width });
     try {
-      const style = w.document.createElement("style");
-      style.textContent = css;
-      w.document.head.append(style);
-      w.document.body.innerHTML =
-        '<div class="shell"><aside class="sidebar"></aside><main class="main"><div class="grid2"></div><table class="work-table"><tbody><tr><td>Request</td></tr><tr class="children-row"><td>Nested payment requests</td></tr></tbody></table><div class="advanced-filters" hidden></div></main></div>';
-      assert.equal(
-        w.getComputedStyle(w.document.querySelector(".sidebar")).position,
-        "fixed",
-      );
-      assert.equal(
-        w.getComputedStyle(w.document.querySelector(".work-table")).display,
-        width < 520 ? "block" : "table",
-      );
-      assert.equal(
-        w.getComputedStyle(w.document.querySelector(".advanced-filters"))
-          .display,
-        "none",
-      );
-      if (width === 390) {
-        assert.equal(w.getComputedStyle(w.document.querySelector('.shell > .sidebar')).display, 'none');
-        assert.equal(w.getComputedStyle(w.document.querySelector('.children-row > td')).position, 'static');
-        assert.equal(
-          w
-            .getComputedStyle(w.document.querySelector(".grid2"))
-            .gridTemplateColumns.replace(/\s/g, ""),
-          "minmax(0,1fr)",
-        );
-      }
+      click(w, "[data-action=demo]");
+      // Below 768px the shadcn Sidebar is not rendered in the page; the menu button opens it in a drawer.
+      assert.equal(Boolean(w.document.querySelector("[data-slot=sidebar-container]")), width >= 768, "sidebar at " + width);
+      assert.equal(Boolean(w.document.querySelector("[data-mobile=true]")), false);
+      if (width < 768) { click(w, "[data-action=openNavigation]"); await flush(); }
+      click(w, "[data-page=requests]");
+      await flush();
+      // Work tables turn each row into a card on phones (Tailwind max-sm variants).
+      const table = w.document.querySelector(".work-table");
+      for (const name of ["max-sm:block", "max-sm:[&_thead]:hidden", "max-sm:[&_tr.children-row>td]:static"]) assert.ok(table.classList.contains(name), name);
+      // Advanced filters start collapsed.
+      assert.equal(w.document.querySelector("[data-action=toggleFilters]").getAttribute("aria-expanded"), "false");
+      assert.ok(!w.document.querySelector(".advanced-filters") || w.document.querySelector(".advanced-filters").hidden);
+      click(w, "[data-action=newOrder]");
+      const grid = w.document.querySelector("#modal .grid2");
+      assert.ok(grid.classList.contains("grid-cols-1") && grid.classList.contains("sm:grid-cols-2"));
     } finally {
       w.close();
     }
   }
 });
-test("Core text and primary controls meet WCAG AA contrast against their surfaces", async () => {
-  const css = await readFile(
-      new NodeURL("../src/styles/style.css", import.meta.url),
-      "utf8",
-    ),
-    color = (n) => css.match(new RegExp("--" + n + ": (#[a-fA-F0-9]+)"))[1];
+test("Core text and primary controls meet WCAG AA contrast against their surfaces in both themes", async () => {
+  // Theme tokens from globals.css: :root (light) and [data-theme="dark"], which overrides it.
+  const css = await readFile(new NodeURL("../src/styles/globals.css", import.meta.url), "utf8");
+  const block = (selector) => Object.fromEntries([...css.slice(css.indexOf(selector + " {")).split("}")[0].matchAll(/--([a-z0-9-]+):\s*(#[a-fA-F0-9]{3,6})\b/g)].map((m) => [m[1], m[2]]));
+  const light = block(":root"), dark = { ...light, ...block('[data-theme="dark"]') };
   const lum = (h) => {
     if (h.length === 4) h = "#" + [...h.slice(1)].map((c) => c + c).join("");
     const c = h
@@ -640,29 +648,25 @@ test("Core text and primary controls meet WCAG AA contrast against their surface
   };
   const contrast = (a, b) =>
     (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
-  for (const [fg, bg] of [
-    [color("ink"), color("canvas")],
-    [color("secondary"), color("surface")],
-    [color("muted"), color("canvas")],
-    [color("muted"), "#f3f7ef"],
-    ["#ffffff", color("accent")],
-    [color("accent"), color("accent-soft")],
-    [color("on-sage"), color("sage")],
-    [color("on-sage"), color("sage-strong")],
-    [color("on-sage-muted"), color("sage")],
-    [color("on-sage-muted"), color("sage-strong")],
-    [color("on-sage"), color("primary-hover")],
-    [color("on-chip"), color("chip-green")],
-    [color("on-chip"), color("chip-blue")],
-    [color("on-chip"), color("chip-amber")],
-    [color("on-chip"), color("chip-red")],
-    [color("on-chip-grey"), color("chip-grey")],
-    [color("danger"), color("danger-soft")],
-    [color("warning"), color("warning-soft")],
-    [color("success"), color("success-soft")],
-    [color("info"), color("info-soft")],
-  ])
-    assert.ok(contrast(fg, bg) >= 4.5, fg + " on " + bg);
+  const pairs = [
+    ["foreground", "background"], ["foreground", "card"], ["foreground", "popover"],
+    ["muted-foreground", "background"], ["muted-foreground", "card"], ["muted-foreground", "muted"],
+    ["link", "card"], ["link", "soft"], ["soft-foreground", "soft"],
+    ["primary-foreground", "primary"], ["primary-foreground", "primary-hover"],
+    ["sidebar-foreground", "sidebar"], ["sidebar-muted", "sidebar"], ["sidebar-foreground", "sidebar-accent"],
+    ["sidebar-primary-foreground", "sidebar-primary"],
+    ["chip-foreground", "chip-green"], ["chip-foreground", "chip-blue"], ["chip-foreground", "chip-amber"], ["chip-foreground", "chip-red"],
+    ["chip-grey-foreground", "chip-grey"],
+    ["danger", "danger-soft"], ["warning", "warning-soft"], ["success", "success-soft"], ["info", "info-soft"],
+    ["destructive", "card"],
+  ];
+  for (const [theme, tokens] of [["light", light], ["dark", dark]])
+    for (const [fg, bg] of pairs) {
+      assert.ok(tokens[fg] && tokens[bg], `${theme}: ${fg} / ${bg} defined`);
+      assert.ok(contrast(tokens[fg], tokens[bg]) >= 4.5, `${theme}: ${fg} ${tokens[fg]} on ${bg} ${tokens[bg]}`);
+    }
+  // Keyboard focus rings stand out from the surfaces they sit on.
+  for (const tokens of [light, dark]) assert.ok(contrast(tokens.ring, tokens.card) >= 3, "focus ring");
 });
 
 test("Four tabs use contextual creation and new request percent/amount/currency inputs work both ways", async () => {
@@ -849,7 +853,7 @@ test('CSV and Excel imports preview without saving, confirm creates masters, and
       const saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
       assert.equal(saved.suppliers.length, before + 1);
       assert.equal(saved.suppliers.at(-1).name, name);
-      assert.equal(w.document.querySelector('#modal').open, false);
+      assert.equal(modalOpen(w), false);
       await actor(w, 'req0'); click(w, '[data-page=requests]'); click(w, '[data-action=import]');
       assert.deepEqual([...w.document.querySelectorAll('[name=importKind] option')].map(o => o.value), ['orders', 'payments']);
     } finally { w.close(); await w.happyDOM.abort(); }
@@ -861,38 +865,43 @@ test('The sidebar keeps one company switcher, preserves scope across operational
   try {
     click(w, '[data-action=demo]');
     assert.equal(w.document.querySelectorAll('#company').length, 1);
-    assert.ok(w.document.querySelector('.shell > .sidebar .sidebar-scope #company'));
+    assert.ok(w.document.querySelector('[data-slot=sidebar] .sidebar-scope #company'));
     change(w, 'company', 'c1');
-    assert.ok([...w.document.querySelectorAll('#project option')].every(o => !o.value || ['p1','p2'].includes(o.value)));
+    assert.ok(optionsOf(w, '#project').every(([v]) => !v || ['p1','p2'].includes(v)));
     click(w, '[data-page=requests]');
-    assert.equal(w.document.querySelector('#company').value, 'c1');
+    assert.equal(w.document.querySelector('#company').dataset.value, 'c1');
     assert.equal(w.document.querySelectorAll('#company').length, 1);
     click(w, '[data-page=master]');
     assert.equal(w.document.querySelector('#company'), null);
-    assert.match(w.document.querySelector('.shell > .sidebar .sidebar-scope').textContent, /Group administration/);
+    assert.match(w.document.querySelector('[data-slot=sidebar] .sidebar-scope').textContent, /Group administration/);
     click(w, '[data-page=dashboard]');
-    assert.equal(w.document.querySelector('#company').value, 'c1');
+    assert.equal(w.document.querySelector('#company').dataset.value, 'c1');
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
 test('Mobile drawer opens, closes and navigates with focus; role restrictions apply to both navigations', async () => {
-  const w = await app();
+  const w = await app(null, null, { width: 390 });
+  const drawer = () => w.document.querySelector('[data-mobile=true]');
   try {
     click(w, '[data-action=demo]');
-    click(w, '[data-action=openNavigation]');
-    assert.equal(w.document.querySelector('#navigationDrawer').open, true);
+    assert.equal(drawer(), null);
+    click(w, '[data-action=openNavigation]'); await flush();
+    assert.ok(drawer());
     assert.equal(w.document.querySelector('[data-action=openNavigation]').getAttribute('aria-expanded'), 'true');
-    click(w, '[data-action=closeNavigation]'); await flush();
-    assert.equal(w.document.querySelector('#navigationDrawer').open, false);
+    fire(w.document.activeElement, new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
+    assert.equal(drawer(), null);
     assert.equal(w.document.activeElement.dataset.action, 'openNavigation');
-    click(w, '[data-action=openNavigation]');
-    click(w, '#navigationDrawer [data-page=requests]');
-    assert.equal(w.document.querySelector('#navigationDrawer').open, false);
+    click(w, '[data-action=openNavigation]'); await flush();
+    click(w, '[data-mobile=true] [data-page=requests]'); await flush();
+    assert.equal(drawer(), null);
     assert.equal(w.document.activeElement.id, 'pageTitle');
     assert.equal(w.document.querySelector('#pageTitle').textContent, 'Requests');
+    click(w, '[data-action=openNavigation]'); await flush();
     await actor(w, 'viewer');
-    assert.equal(w.document.querySelector('.shell [data-page=master]'), null);
-    assert.equal(w.document.querySelector('#navigationDrawer [data-page=master]'), null);
+    assert.equal(w.document.querySelector('[data-page=master]'), null);
+    if (!drawer()) { click(w, '[data-action=openNavigation]'); await flush(); }
+    assert.ok(w.document.querySelector('[data-mobile=true] [data-page=requests]'));
+    assert.equal(w.document.querySelector('[data-mobile=true] [data-page=master]'), null);
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
@@ -901,10 +910,10 @@ test('Dashboard breakdowns use progressive disclosure, preserve the chosen state
   try {
     click(w, '[data-action=demo]');
     const report = w.document.querySelector('[data-disclosure=currency]');
-    assert.equal(report.open, false);
-    act(() => { report.open = true; report.dispatchEvent(new w.Event('toggle')); }); await flush();
+    assert.equal(report.dataset.state, 'closed');
+    click(w, '[data-disclosure=currency] [data-slot=collapsible-trigger]'); await flush();
     change(w, 'project', 'p1');
-    assert.equal(w.document.querySelector('[data-disclosure=currency]').open, true);
+    assert.equal(w.document.querySelector('[data-disclosure=currency]').dataset.state, 'open');
     assert.ok(w.document.querySelector('[data-disclosure=categories] table'));
     assert.match(w.document.querySelector('[data-disclosure=payments]').textContent, /Payments Completed/);
     assert.equal(w.document.querySelectorAll('[data-kpi]').length, 7);
@@ -916,14 +925,19 @@ test('User menus close on Escape and outside interaction without losing page sta
   const w = await app();
   try {
     click(w, '[data-action=demo]');
-    const menu = w.document.querySelector('.profile-menu');
-    menu.open = true;
-    fire(w, new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    assert.equal(menu.open, false);
-    assert.equal(w.document.activeElement, menu.querySelector('summary'));
-    menu.open = true;
-    click(w, '#pageTitle');
-    assert.equal(menu.open, false);
+    const trigger = w.document.querySelector('.profile-menu');
+    const open = async () => { fire(trigger, new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await flush(); };
+    const menu = () => w.document.querySelector('[role=menu]');
+    await open();
+    assert.ok(menu());
+    fire(w.document.activeElement, new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
+    assert.equal(menu(), null);
+    assert.equal(w.document.activeElement, trigger);
+    await open();
+    assert.ok(menu());
+    fire(w.document.querySelector('#pageTitle'), new w.PointerEvent('pointerdown', { bubbles: true, button: 0 })); await flush();
+    assert.equal(menu(), null);
+    assert.equal(w.document.querySelector('#pageTitle').textContent, 'Project dashboard');
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
@@ -939,13 +953,20 @@ test('Appearance changes persist across navigation without resetting entered for
     assert.equal(form.elements.password.value, 'FictionalTestOnly123');
     assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'dark');
     click(w, '[data-action=demo]');
-    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
+    // The account menu's Appearance choice (a shadcn DropdownMenu radio group).
+    const openMenu = async () => { fire(w.document.querySelector('.profile-menu'), new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await flush(); };
+    const checked = () => w.document.querySelector('[data-appearance][data-state=checked]')?.dataset.appearance;
+    await openMenu();
+    assert.equal(checked(), 'dark');
+    fire(w.document.activeElement, new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await flush();
     click(w, '[data-page=master]');
-    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
-    change(w, 'accountAppearance', 'light');
+    await openMenu();
+    assert.equal(checked(), 'dark');
+    click(w, '[data-appearance=light]'); await flush();
     assert.equal(w.document.documentElement.dataset.theme, 'light');
+    await openMenu();
     click(w, '[data-action=logout]'); await flush();
-    assert.equal(w.document.querySelector('#loginAppearance').value, 'light');
+    assert.equal(w.document.querySelector('#loginAppearance').dataset.value, 'light');
   } finally { w.close(); await w.happyDOM.abort(); }
 });
 
@@ -954,21 +975,23 @@ test('Sidebar theme icon switches themes in place, keeps focus and remembers the
   try {
     click(w, '[data-action=demo]');
     const before = w.localStorage.getItem('ss-project-monitoring-demo-v1');
-    const toggle = w.document.querySelector('.shell > .sidebar [data-theme-toggle]');
+    const toggle = w.document.querySelector('[data-slot=sidebar] [data-theme-toggle]');
     assert.ok(toggle);
     assert.equal(toggle.getAttribute('aria-label'), 'Switch to dark theme');
     toggle.focus();
-    fire(toggle.querySelector('.theme-moon svg'), new w.MouseEvent('click', { bubbles: true }));
+    fire(toggle.querySelector('svg'), new w.MouseEvent('click', { bubbles: true }));
+    await flush(); // The button re-renders from <html> (a MutationObserver).
     assert.equal(w.document.documentElement.dataset.theme, 'dark');
     assert.equal(toggle.getAttribute('aria-label'), 'Switch to light theme');
     assert.equal(w.document.activeElement, toggle);
     assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'dark');
-    assert.equal(w.document.querySelector('#accountAppearance').value, 'dark');
+    assert.equal(w.document.documentElement.dataset.themePreference, 'dark');
     assert.equal(w.localStorage.getItem('ss-project-monitoring-demo-v1'), before);
     click(w, '[data-page=requests]');
     const nextToggle = w.document.querySelector('[data-theme-toggle]');
     assert.equal(nextToggle.getAttribute('aria-label'), 'Switch to light theme');
     click(w, nextToggle);
+    await flush();
     assert.equal(w.document.documentElement.dataset.theme, 'light');
     assert.equal(nextToggle.getAttribute('aria-label'), 'Switch to dark theme');
     assert.equal(w.localStorage.getItem('ss-project-monitoring-appearance'), 'light');
@@ -982,7 +1005,7 @@ test('Approved budgets can be created and revised when crypto.randomUUID is unav
     click(w, '[data-action=demo]'); click(w, '[data-page=master]');
     click(w, '[data-master=budgets]'); click(w, '[data-action=newMaster]');
     let f = w.document.querySelector('[data-form=master]');
-    assert.ok(f, w.document.querySelector('#toast').textContent);
+    assert.ok(f, toastText(w));
     f.elements.name.value = 'Fictional compatibility budget';
     change(w, 'masterCompany', 'c1'); change(w, 'masterProject', 'p1');
     f.querySelector('[name=categoryName]').value = 'Civil';
@@ -997,7 +1020,7 @@ test('Approved budgets can be created and revised when crypto.randomUUID is unav
     submit(w, '[data-form=master]'); await flush();
     let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
     const b = saved.budgets.at(-1);
-    assert.equal(b.name, 'Fictional compatibility budget', w.document.querySelector('#toast').textContent);
+    assert.equal(b.name, 'Fictional compatibility budget', toastText(w));
     assert.deepEqual(b.categories.map(c => c.id), categoryIds);
     click(w, `[data-action=editMaster][data-id="${b.id}"]`);
     f = w.document.querySelector('[data-form=master]');
@@ -1029,7 +1052,7 @@ test('Admin creates requests that go straight to Finance and adds further indepe
     submit(w, '[data-form=order]'); await wait(80);
     let saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
     const order = saved.orders.at(-1), child = saved.requests.at(-1);
-    assert.equal(order.po, 'ADMIN-POPULATION-PO', w.document.querySelector('#toast').textContent);
+    assert.equal(order.po, 'ADMIN-POPULATION-PO', toastText(w));
     assert.equal(order.requestedBy, 'admin');
     assert.equal(child.status, 'Finance');
     assert.equal(w.document.querySelector('[data-action=submit]'), null);
@@ -1041,9 +1064,9 @@ test('Admin creates requests that go straight to Finance and adds further indepe
     f.elements.percent.value = '20'; f.elements.amount.value = '200';
     submit(w, '[data-form=payment]'); await flush();
     saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
-    assert.equal(saved.requests.at(-1).amount, 200, w.document.querySelector('#toast').textContent);
+    assert.equal(saved.requests.at(-1).amount, 200, toastText(w));
     assert.equal(saved.requests.at(-1).status, 'Finance');
-    assert.match(w.document.querySelector('#toast').textContent, /submitted to Finance/);
+    assert.match(toastText(w), /submitted to Finance/);
     assert.deepEqual(saved.requests.at(-1).approvals, []);
   } finally { w.close(); await w.happyDOM.abort(); }
 });
@@ -1130,9 +1153,7 @@ test('Projects list and project pages show task progress; only Planning and Admi
     assert.equal(w.document.querySelectorAll('.task-row').length, 18);
     assert.match(w.document.querySelector('.progress-figure').textContent, /^50%$/);
     // Inline status change saves straight away.
-    const select = w.document.querySelector('.task-status');
-    select.value = 'Done';
-    fire(select, new w.Event('change', { bubbles: true }));
+    choose(w, '.task-status', 'Done');
     await flush();
     assert.match(w.document.querySelector('.progress-figure').textContent, /^56%$/);
     saved = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1'));
@@ -1176,7 +1197,7 @@ test("Admin deletes payment requests and requests, reviews them on the Deleted p
     click(w, "[data-action=demo]");
     const paidBefore = domain.kpis(saved()).paid;
     assert.ok(paidBefore >= paid.amount);
-    assert.ok(w.document.querySelector(".shell > .sidebar [data-page=deleted]"));
+    assert.ok(w.document.querySelector("[data-sidebar=menu-button][data-page=deleted]"));
     // A request with a processed payment request offers deletion only after that one goes.
     click(w, "[data-page=requests]");
     click(w, `[data-action=openOrder][data-id="${paidOrder.id}"]`);
@@ -1186,7 +1207,7 @@ test("Admin deletes payment requests and requests, reviews them on the Deleted p
     click(w, `#modal [data-action=openRequest][data-id="${paid.id}"]`);
     await flush();
     await deleteWith("deleteRequest", "Entered against the wrong order");
-    assert.equal(w.document.querySelector("#modal").open, false);
+    assert.equal(modalOpen(w), false);
     assert.equal(saved().requests.find((r) => r.id === paid.id).deleted.reason, "Entered against the wrong order");
     assert.equal(domain.kpis(saved()).paid, domain.money(paidBefore - paid.amount / paid.rate));
     // A request holding only a draft is deleted together with that draft.
@@ -1198,7 +1219,7 @@ test("Admin deletes payment requests and requests, reviews them on the Deleted p
     assert.equal(saved().requests.find((r) => r.id === draft.id).deleted.withOrder, draftOrder.id);
     assert.equal(w.document.querySelector(`[data-action=openOrder][data-id="${draftOrder.id}"]`), null);
     // The Deleted page lists both, with the draft shown under its request, and logs each deletion.
-    click(w, ".shell > .sidebar [data-page=deleted]");
+    click(w, "[data-sidebar=menu-button][data-page=deleted]");
     assert.equal(w.document.querySelector("#pageTitle").textContent, "Deleted");
     const listed = () => [...w.document.querySelectorAll(".deleted-table tbody tr td:first-child strong")].map((x) => x.textContent);
     assert.deepEqual(listed().sort(), [paid.number, draftOrder.number].sort());
@@ -1223,7 +1244,7 @@ test("Admin deletes payment requests and requests, reviews them on the Deleted p
     assert.equal(w.document.querySelectorAll(".deletion-log tbody tr").length, 6);
     // Finance never sees the page or the delete buttons.
     await actor(w, "fin");
-    assert.equal(w.document.querySelector(".shell > .sidebar [data-page=deleted]"), null);
+    assert.equal(w.document.querySelector("[data-sidebar=menu-button][data-page=deleted]"), null);
     click(w, "[data-page=requests]");
     click(w, `[data-action=openOrder][data-id="${paidOrder.id}"]`);
     await flush();
@@ -1288,10 +1309,10 @@ test("Browser Back and Forward move between portal pages, and the URL reopens th
     click(w, "[data-page=requests]");
     click(w, "[data-action=openOrder]");
     await flush();
-    assert.ok(w.document.querySelector("#modal[open]"));
+    assert.ok(modalOpen(w));
     await back();
     assert.equal(title(), "Tropical Maldives Project");
-    assert.equal(w.document.querySelector("#modal[open]"), null);
+    assert.equal(modalOpen(w), false);
   } finally { w.close(); await w.happyDOM.abort(); }
   // A reload on a page URL reopens that page.
   history.replaceState(null, "", location.href.split("#")[0] + "#budgets");
@@ -1302,4 +1323,94 @@ test("Browser Back and Forward move between portal pages, and the URL reopens th
     assert.equal(w2.document.querySelector("#pageTitle").textContent, "Budgets");
     assert.equal(w2.location.hash, "#budgets");
   } finally { w2.close(); await w2.happyDOM.abort(); }
+});
+
+test("A live session signs out after 15 minutes of inactivity, never while active, and the background refresh does not count", async () => {
+  const seed = demoState(), user = seed.users[0];
+  const calls = [];
+  const realNow = Date.now;
+  let offset = 0;
+  Date.now = () => realNow() + offset;
+  const w = await app(null, async (url, options = {}) => {
+    const action = new URL(url, "http://localhost:3000").searchParams.get("action");
+    calls.push({ action, background: options.headers?.["X-Portal-Background"] === "1" });
+    return { ok: true, json: async () => action === "config" ? { configured: true } : action === "state" ? { user, state: seed } : { ok: true } };
+  });
+  const later = async (ms) => {
+    offset += ms;
+    fire(w.document, new w.Event("visibilitychange"));
+    await flush();
+  };
+  try {
+    await flush();
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
+    // The 30-second refresh is marked as background, so the server does not extend the session.
+    await act(() => sleep(0));
+    calls.length = 0;
+    // Active for 30 minutes (a key press every 5): keep-alives, no sign-out.
+    for (let i = 0; i < 6; i++) {
+      await later(5 * 60 * 1000);
+      fire(w.document.body, new w.KeyboardEvent("keydown", { key: "Shift", bubbles: true }));
+    }
+    await later(61 * 1000);
+    assert.ok(calls.some((c) => c.action === "session"), JSON.stringify(calls));
+    assert.equal(calls.some((c) => c.action === "end-session"), false);
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
+    // Idle: 14 minutes later still signed in; at 15 minutes signed out with a notice.
+    await later(13 * 60 * 1000);
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
+    await later(60 * 1000);
+    assert.ok(calls.some((c) => c.action === "end-session"));
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Welcome back");
+    assert.match(w.document.querySelector("#loginNotice").textContent, /signed out after 15 minutes of inactivity/);
+  } finally {
+    Date.now = realNow;
+    w.close();
+    await w.happyDOM.abort();
+  }
+});
+
+test("The background refresh tells the server it is not user activity", async () => {
+  const seed = demoState(), user = seed.users[0];
+  const calls = [];
+  const w = await app(null, async (url, options = {}) => {
+    const action = new URL(url, "http://localhost:3000").searchParams.get("action");
+    calls.push({ action, background: options.headers?.["X-Portal-Background"] === "1" });
+    return { ok: true, json: async () => action === "config" ? { configured: true } : action === "state" ? { user, state: seed } : { ok: true } };
+  });
+  try {
+    await flush();
+    const startup = calls.find((c) => c.action === "state");
+    assert.equal(startup.background, false); // opening the portal is activity
+    await act(() => sleep(30100)); // the 30-second refresh
+    const refresh = calls.filter((c) => c.action === "state").at(-1);
+    assert.notEqual(refresh, startup);
+    assert.equal(refresh.background, true);
+  } finally {
+    w.close();
+    await w.happyDOM.abort();
+  }
+}, 40000);
+
+test("Refreshing the page keeps the demo workspace open on the same page; signing out ends it", async () => {
+  let w = await app();
+  click(w, "[data-action=demo]");
+  await actor(w, "fin");
+  click(w, "[data-page=requests]");
+  await flush();
+  w.close();
+  w = await app(null, null, { reload: true });
+  try {
+    await flush();
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Requests");
+    assert.equal(w.document.querySelector("#actor").dataset.value, "fin");
+    assert.equal(w.document.querySelector("[data-action=demo]"), null);
+    await signOut(w);
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Welcome back");
+  } finally { w.close(); }
+  w = await app(null, null, { reload: true });
+  try {
+    await flush();
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Welcome back");
+  } finally { w.close(); }
 });

@@ -3,6 +3,7 @@ import { createActions } from "./lib/actions.js";
 import { AppContext, DataContext, createStore, useApp, useAppState } from "./lib/store.js";
 import { startPageMotion } from "./lib/motion.js";
 import { startHistory } from "./lib/history.js";
+import { startIdleWatch } from "./lib/idle.js";
 import { LoadingSkeleton } from "./components/ui.jsx";
 import { Shell } from "./components/Shell.jsx";
 import { ModalHost, ToastHost } from "./modals/ModalHost.jsx";
@@ -20,8 +21,8 @@ import { Budgets } from "./pages/Budgets.jsx";
 
 const PAGES = { dashboard: Dashboard, projects: Projects, project: ProjectPage, budgets: Budgets, requests: Requests, master: MasterData, users: Users, audit: Audit, deleted: Deleted, settings: Settings };
 
-// Background behaviour: start-up, browser history for pages, 30-second refresh, cross-tab demo sync, closing menus on
-// Escape or outside clicks, the drawer on wide screens, and page scroll motion.
+// Background behaviour: start-up, browser history for pages, 30-second refresh, cross-tab demo sync, the drawer on
+// wide screens, and page scroll motion. Menus, selects and dialogs (Radix) close themselves on Escape or outside clicks.
 function useWorkspaceEffects() {
   const { actions, store } = useApp();
   useEffect(() => {
@@ -29,27 +30,25 @@ function useWorkspaceEffects() {
     const stopHistory = startHistory(store, actions.restorePage);
     actions.boot(() => alive);
     const timer = setInterval(actions.poll, 30000);
-    const menus = () => document.querySelectorAll(".profile-menu[open], .demo-actor[open]");
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      menus().forEach((menu) => { menu.open = false; menu.querySelector("summary")?.focus(); });
-    };
-    const onClick = (e) => menus().forEach((menu) => { if (!menu.contains(e.target)) menu.open = false; });
-    const wide = window.matchMedia?.("(min-width: 761px)");
+    // The sidebar is a drawer below 768px (shadcn Sidebar); widening the window closes the drawer.
+    const wide = window.matchMedia?.("(min-width: 768px)");
     const onWide = (e) => { if (e.matches) actions.drawerClosed(); };
     window.addEventListener("storage", actions.storageSync);
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("click", onClick);
     wide?.addEventListener?.("change", onWide);
     const stopMotion = startPageMotion();
+    // Sign a live session out after 15 minutes of inactivity (lib/idle.js).
+    const idle = startIdleWatch({
+      active: () => { const s = store.get(); return Boolean(s.user) && !s.demo; },
+      onIdle: actions.idleSignOut,
+      keepAlive: actions.keepAlive,
+    });
     return () => {
       alive = false;
       clearInterval(timer);
       window.removeEventListener("storage", actions.storageSync);
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("click", onClick);
       wide?.removeEventListener?.("change", onWide);
       stopMotion();
+      idle.stop();
       stopHistory();
       actions.dispose();
     };

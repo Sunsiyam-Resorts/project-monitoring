@@ -9,7 +9,7 @@ export const motionOff = () => !!window.matchMedia?.("(prefers-reduced-motion: r
 // from below into place.
 const topTables = () => [...document.querySelectorAll(".content table")].filter((t) => !t.parentElement.closest("table"));
 const tableKey = (t, i) => (document.querySelector(".main")?.dataset.view || "") + ":" +
-  (t.closest("[data-disclosure]")?.dataset.disclosure || t.closest("section[aria-label], .panel")?.querySelector("h2")?.textContent || i);
+  (t.closest("[data-disclosure]")?.dataset.disclosure || t.closest("[data-slot=card], section[aria-label]")?.querySelector("h2, [data-slot=card-title]")?.textContent || i);
 const rowKey = (tr) => tr.dataset.rowKey || tr.cells[0]?.textContent.trim().replace(/\s+/g, " ");
 const rowsOf = (t) => [...(t.tBodies[0]?.rows || []), ...(t.tFoot?.rows || [])];
 const keyOf = (tr) => (tr.parentElement.tagName === "TFOOT" ? "tfoot:" : "") + rowKey(tr);
@@ -81,26 +81,6 @@ export function animateTables(snap) {
   });
 }
 
-// Charts draw in on first view and whenever their data changes (for example after a
-// filter change): areas wipe in from the left, columns rise from the baseline month by
-// month. Unchanged data does not replay, so resizing the window redraws without motion.
-export function revealChart(svg, key, index, shown) {
-  if (!svg) return;
-  const drawn = svg.dataset.sig ?? svg.innerHTML;
-  const changed = shown.get(key) !== drawn;
-  shown.set(key, drawn);
-  if (!changed || motionOff()) return;
-  const delay = Math.min(index, 6) * 120;
-  const columns = svg.querySelectorAll("[data-col]");
-  if (columns.length) {
-    columns.forEach((col, i) => col.animate?.([{ transform: "scaleY(0)" }, { transform: "scaleY(1)" }],
-      { duration: 900, delay: delay + i * 45, easing: MOTION_EASE, fill: "backwards" }));
-    return;
-  }
-  svg.querySelector(".lc-plot")?.animate?.([{ clipPath: "inset(-8px 100% -8px -8px)" }, { clipPath: "inset(-8px -8px -8px -8px)" }],
-    { duration: 1600, delay, easing: MOTION_EASE, fill: "backwards" });
-}
-
 // Smooth wheel scrolling for the page. Keyboard, scrollbar, links, zoom (Ctrl+wheel),
 // horizontal scrolling, inner scroll areas and open dialogs stay native, and
 // reduced-motion users keep instant scrolling. Returns a cleanup function.
@@ -111,7 +91,7 @@ export function startPageMotion() {
   const maxScroll = () => document.documentElement.scrollHeight - window.innerHeight;
   const handledInside = (node, dy) => {
     for (let el = node instanceof Element ? node : node?.parentElement; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
-      if (el.matches("dialog[open], select, textarea, [contenteditable=true]")) return true;
+      if (el.matches("[role=dialog], [role=listbox], [role=menu], select, textarea, [contenteditable=true]")) return true;
       const overflowY = getComputedStyle(el).overflowY;
       if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight + 1) {
         const canUp = el.scrollTop > 0;
@@ -133,7 +113,7 @@ export function startPageMotion() {
   const onWheel = (event) => {
     if (event.defaultPrevented || reduce?.matches || event.ctrlKey || event.shiftKey) return;
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-    if (document.querySelector("dialog[open]") || handledInside(event.target, event.deltaY)) return;
+    if (document.querySelector("[role=dialog], [role=listbox], [role=menu]") || handledInside(event.target, event.deltaY)) return;
     event.preventDefault();
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
     if (!animating) current = target = window.scrollY;

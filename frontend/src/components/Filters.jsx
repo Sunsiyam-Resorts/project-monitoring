@@ -1,8 +1,14 @@
 // Scope filters. compact (Dashboard): the Project label is for screen readers only, the
 // blank option reads "All projects", and there is no Clear filters link.
 import { Icon } from "./Icon.jsx";
-import { Options } from "./ui.jsx";
+import { FormSelect } from "./ui.jsx";
 import { useApp, useAppState, useData } from "../lib/store.js";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 
 const STATUSES = ["Draft", "Finance", "On Hold", "Paid", "Rejected", "Documents Required"].map((x) => ({ id: x, name: x }));
 
@@ -11,30 +17,34 @@ export function Filters({ dates = false, actions: extraActions = null, compact =
   const { state } = useData();
   const { company, project, from, to, statusFilter, filtersExpanded } = useAppState();
   const extra = Boolean(from || to || statusFilter);
-  const change = (e) => actions.setFilter(e.target.id, e.target.value);
+  const set = (id) => (value) => actions.setFilter(id, value);
   return (
-    <div className="filters">
-      <div>
-        <label htmlFor="project" className={compact ? "sr-only" : undefined}>Project</label>
-        <select id="project" value={project} onChange={change}>
-          <Options items={state.projects.filter((p) => !company || p.companyId === company)} blank={compact ? "All projects" : "All"} />
-        </select>
+    <Collapsible open={!!filtersExpanded} onOpenChange={() => actions.toggleFilters()} className="filters mb-6 flex flex-wrap items-end gap-3">
+      <div className={cn("grid gap-1.5", compact && "flex items-center")}>
+        <Label htmlFor="project" className={compact ? "sr-only" : "text-xs"}>Project</Label>
+        <FormSelect id="project" value={project} onValueChange={set("project")} clearable blank={compact ? "All projects" : "All"}
+          items={state.projects.filter((p) => !company || p.companyId === company)} className="min-w-[190px]" />
       </div>
       {dates ? (
-        <>
-          <button data-action="toggleFilters" aria-expanded={String(filtersExpanded)} aria-controls="extraFilters" onClick={() => actions.toggleFilters()}>
-            <Icon name="filter" />Filters{extra ? <span className="count">Active</span> : null}
-          </button>
-          <div className="advanced-filters wide" id="extraFilters" hidden={!filtersExpanded}>
-            <div><label htmlFor="from">Request date · From</label><input id="from" type="date" value={from} onChange={change} /></div>
-            <div><label htmlFor="to">To</label><input id="to" type="date" value={to} onChange={change} /></div>
-            <div><label htmlFor="statusFilter">Status</label><select id="statusFilter" value={statusFilter} onChange={change}><Options items={STATUSES} blank="All" /></select></div>
-          </div>
-        </>
+        <Button variant="outline" data-action="toggleFilters" aria-expanded={String(!!filtersExpanded)} aria-controls="extraFilters" onClick={() => actions.toggleFilters()}>
+          <Icon name="filter" />Filters{extra ? <Badge variant="success" className="count">Active</Badge> : null}
+        </Button>
       ) : null}
-      <div className="filter-end"><span className="currency-label">Reporting currency <strong>USD</strong></span></div>
-      {!compact && (company || project || extra) ? <button className="linkbtn" data-action="clearFilters" onClick={() => actions.clearFilters()}>Clear filters</button> : null}
+      <div className={cn("filter-end flex items-center gap-2 text-[11px] text-muted-foreground", compact ? "order-first mr-auto self-center" : "ml-auto self-center")}>
+        Reporting currency <Badge className="currency-label rounded-full px-2.5">USD</Badge>
+      </div>
+      {!compact && (company || project || extra) ? <Button variant="link" className="linkbtn self-center" data-action="clearFilters" onClick={() => actions.clearFilters()}>Clear filters</Button> : null}
       {extraActions}
-    </div>
+      {dates ? (
+        <CollapsibleContent id="extraFilters" className="advanced-filters basis-full">
+          <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-3">
+            <div className="grid gap-1.5"><Label htmlFor="from" className="text-xs">Request date · From</Label><Input id="from" type="date" value={from} onChange={(e) => actions.setFilter("from", e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label htmlFor="to" className="text-xs">To</Label><Input id="to" type="date" value={to} onChange={(e) => actions.setFilter("to", e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label htmlFor="statusFilter" className="text-xs">Status</Label>
+              <FormSelect id="statusFilter" value={statusFilter} onValueChange={set("statusFilter")} clearable blank="All" items={STATUSES} /></div>
+          </div>
+        </CollapsibleContent>
+      ) : null}
+    </Collapsible>
   );
 }

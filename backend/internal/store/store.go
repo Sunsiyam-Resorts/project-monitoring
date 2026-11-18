@@ -33,12 +33,21 @@ type Tx interface {
 	DeleteUserChallenges(ctx context.Context, userID any) error
 	// DeleteChallengeAndUserChallenges deletes the challenge and every challenge of the user.
 	DeleteChallengeAndUserChallenges(ctx context.Context, tokenHash string, userID any) error
-	// AddSession stores an eight-hour session under the hash of its token.
+	// AddSession stores a session under the hash of its token. It expires after
+	// SessionIdleMinutes without activity.
 	AddSession(ctx context.Context, tokenHash string, userID any) error
-	// SessionUser returns the user id of an unexpired session, or domain.Undefined.
-	SessionUser(ctx context.Context, tokenHash string) (any, error)
+	// SessionUser returns the user id of an unexpired session, or domain.Undefined. With
+	// touch (a request the user made), the session's idle period starts again.
+	SessionUser(ctx context.Context, tokenHash string, touch bool) (any, error)
+	// DeleteSession ends one session (this browser).
+	DeleteSession(ctx context.Context, tokenHash string) error
+	// DeleteSessions ends every session of the user.
 	DeleteSessions(ctx context.Context, userID any) error
 }
+
+// SessionIdleMinutes is how long a session lasts without activity: a user is signed out
+// after 15 minutes of inactivity, and never while active.
+const SessionIdleMinutes = 15
 
 // UnavailableError is a failure to reach or use the database, other than an error
 // reported by PostgreSQL itself.
@@ -261,13 +270,17 @@ func (t pgTx) DeleteChallengeAndUserChallenges(ctx context.Context, tokenHash st
 }
 
 func (t pgTx) AddSession(ctx context.Context, tokenHash string, userID any) error {
-	_, err := t.tx.Exec(ctx, "INSERT INTO portal_sessions(token,user_id,expires) VALUES($1,$2,now()+interval '8 hours')", tokenHash, param(userID))
+	_, err := t.tx.Exec(ctx, "INSERT INTO portal_sessions(token,user_id,expires) VALUES($1,$2,now()+make_interval(mins => $3::int))", tokenHash, param(userID), SessionIdleMinutes)
 	return dbErr(err)
 }
 
-func (t pgTx) SessionUser(ctx context.Context, tokenHash string) (any, error) {
+func (t pgTx) SessionUser(ctx context.Context, tokenHash string, touch bool) (any, error) {
 	var userID string
-	err := t.tx.QueryRow(ctx, "SELECT user_id FROM portal_sessions WHERE token=$1 AND expires>now()", tokenHash).Scan(&userID)
+	query, args := "SELECT user_id FROM portal_sessions WHERE token=$1 AND expires>now()", []any{tokenHash}
+	if touch {
+		query, args = "UPDATE portal_sessions SET expires=now()+make_interval(mins => $2::int) WHERE token=$1 AND expires>now() RETURNING user_id", []any{tokenHash, SessionIdleMinutes}
+	}
+	err := t.tx.QueryRow(ctx, query, args...).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Undefined, nil
 	}
@@ -275,6 +288,11 @@ func (t pgTx) SessionUser(ctx context.Context, tokenHash string) (any, error) {
 		return nil, dbErr(err)
 	}
 	return userID, nil
+}
+
+func (t pgTx) DeleteSession(ctx context.Context, tokenHash string) error {
+	_, err := t.tx.Exec(ctx, "DELETE FROM portal_sessions WHERE token=$1", tokenHash)
+	return dbErr(err)
 }
 
 func (t pgTx) DeleteSessions(ctx context.Context, userID any) error {

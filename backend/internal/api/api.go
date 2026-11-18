@@ -83,7 +83,8 @@ func (h *handler) session(ctx context.Context, tx store.Tx, u *domain.User, w ht
 	if h.Getenv("NODE_ENV") == "production" {
 		secure = "; Secure"
 	}
-	w.Header().Set("Set-Cookie", "portal_session="+t+"; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800"+secure)
+	// A browser-session cookie: the server ends the session after SessionIdleMinutes idle.
+	w.Header().Set("Set-Cookie", "portal_session="+t+"; HttpOnly; SameSite=Strict; Path=/"+secure)
 	return nil
 }
 
@@ -92,7 +93,9 @@ func (h *handler) authenticate(ctx context.Context, tx store.Tx, s *domain.State
 	if cookie == "" {
 		return nil, apiError("Sign in required")
 	}
-	userID, err := tx.SessionUser(ctx, auth.Hash(cookie))
+	// Requests the user makes keep the session alive; the browser's background refresh
+	// (X-Portal-Background) does not, so an idle session still ends.
+	userID, err := tx.SessionUser(ctx, auth.Hash(cookie), r.Header.Get("X-Portal-Background") == "")
 	if err != nil {
 		return nil, err
 	}
@@ -272,6 +275,18 @@ func (h *handler) try(w http.ResponseWriter, r *http.Request, action string, q q
 		switch action {
 		case "logout":
 			if err := tx.DeleteSessions(ctx, domain.DynString(u.ID)); err != nil {
+				return err
+			}
+			w.Header().Set("Set-Cookie", "portal_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+			out = object{{"ok", true}}
+			return nil
+		case "session":
+			// Keep-alive: the browser reports user activity that made no other request.
+			out = object{{"ok", true}}
+			return nil
+		case "end-session":
+			// Signed out after inactivity: ends this browser's session only.
+			if err := tx.DeleteSession(ctx, auth.Hash(sessionCookie(r))); err != nil {
 				return err
 			}
 			w.Header().Set("Set-Cookie", "portal_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")

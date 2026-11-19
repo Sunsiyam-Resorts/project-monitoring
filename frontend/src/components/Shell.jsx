@@ -1,5 +1,5 @@
-// The workspace frame (shadcn Sidebar): the sage rail with company scope, navigation and the
-// black account card; on phones the same rail opens as a sheet from the top bar.
+// The workspace frame (shadcn Sidebar): a floating dark-glass rail with company scope,
+// navigation and the account row; on phones the same rail opens as a sheet from the top bar.
 import { Component } from "react";
 import { ChevronsUpDown, LogOut, Moon, Sun } from "lucide-react";
 import { isFinanceAdmin } from "../domain/domain.js";
@@ -38,7 +38,7 @@ function ThemeToggle() {
   const { theme } = useAppearance();
   const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
   return (
-    <Button type="button" size="icon" variant="ghost" className="theme-toggle size-10 shrink-0 border border-white/15 bg-white/5 text-sidebar-primary-foreground hover:bg-white/10 hover:text-sidebar-primary-foreground"
+    <Button type="button" size="icon" variant="ghost" className="theme-toggle size-9 shrink-0 rounded-full border border-white/10 bg-white/[0.06] text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground"
       data-theme-toggle="" aria-label={label} title={label} onClick={toggleAppearance}>
       {theme === "dark" ? <Sun /> : <Moon />}
     </Button>
@@ -52,11 +52,11 @@ function AccountMenu({ user }) {
   return (
     <div className="sidebar-account flex items-center gap-2">
       <DropdownMenu>
-        <DropdownMenuTrigger className="profile-menu flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl p-1 pr-2 text-left outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary data-[state=open]:bg-white/10" aria-label={`User menu for ${user.name}`}>
-          <UserAvatar name={user.name} />
+        <DropdownMenuTrigger className="profile-menu flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl p-1 pr-2 text-left outline-none hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-white/[0.06]" aria-label={`User menu for ${user.name}`}>
+          <UserAvatar name={user.name} className="ring-1 ring-white/15 [&_[data-slot=avatar-fallback]]:bg-linear-to-br [&_[data-slot=avatar-fallback]]:from-white/90 [&_[data-slot=avatar-fallback]]:to-white/55 [&_[data-slot=avatar-fallback]]:text-sidebar-indicator-foreground" />
           <span className="profile-name min-w-0 flex-1">
             <strong className="block truncate text-xs font-semibold">{user.name}</strong>
-            <small className="block truncate text-[11px] text-white/65">{user.role}</small>
+            <small className="block truncate text-[11px] text-sidebar-muted">{user.role}</small>
           </span>
           <ChevronsUpDown className="size-3.5 text-white/60" />
         </DropdownMenuTrigger>
@@ -80,13 +80,13 @@ function CompanyScope() {
   const { actions } = useApp();
   const { state, company, page } = useAppState();
   if (!OPERATIONAL.includes(page)) {
-    return <span className="admin-scope block rounded-xl border border-sidebar-foreground/20 px-3 py-2.5 text-xs font-semibold">Group administration</span>;
+    return <span className="admin-scope block rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold">Group administration</span>;
   }
   return (
     <div className="property-switcher grid gap-1.5">
-      <label htmlFor="company" className="px-1 text-[11px] font-semibold text-sidebar-muted">Company</label>
+      <label htmlFor="company" className="px-1 text-[10px] font-semibold tracking-[0.1em] text-sidebar-muted uppercase">Company</label>
       <FormSelect id="company" value={company} onValueChange={(v) => actions.setFilter("company", v)} clearable blank="All accessible companies" items={state.companies}
-        className="border-transparent bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 data-[placeholder]:text-sidebar-primary-foreground [&_svg]:text-sidebar-primary-foreground/80" />
+        className="rounded-xl border-white/10 bg-white/[0.06] text-sidebar-foreground shadow-none hover:bg-white/10 focus-visible:ring-sidebar-ring data-[placeholder]:text-sidebar-foreground/80 [&_svg]:text-sidebar-foreground/60" />
     </div>
   );
 }
@@ -107,12 +107,12 @@ function AppSidebar() {
     </SidebarMenuItem>
   );
   return (
-    <Sidebar className="sidebar">
-      <SidebarHeader className="gap-0 px-6 pt-7 pb-5">
-        <Brand className="text-sidebar-foreground [&_.brand-label]:text-sidebar-muted" />
+    <Sidebar className="sidebar" variant="floating">
+      <SidebarHeader className="gap-0 px-5 pt-6 pb-5">
+        <Brand className="items-center text-center text-sidebar-foreground [&_.brand-label]:text-sidebar-muted [&_.brand-logo]:object-center [&_.brand-logo]:brightness-0 [&_.brand-logo]:invert" />
       </SidebarHeader>
-      <div className="sidebar-scope mx-4 mb-3 border-b border-sidebar-border pb-4"><CompanyScope /></div>
-      <SidebarContent className="nav gap-0" aria-label="Main navigation" role="navigation">
+      <div className="sidebar-scope mx-4 mb-2 pb-2"><CompanyScope /></div>
+      <SidebarContent className="nav gap-0 [scrollbar-color:rgb(255_255_255/0.14)_transparent]"aria-label="Main navigation" role="navigation">
         <SidebarGroup>
           <SidebarGroupLabel className="nav-label">Workspace</SidebarGroupLabel>
           <SidebarMenu>
@@ -130,14 +130,14 @@ function AppSidebar() {
           </SidebarGroup>
         ) : null}
       </SidebarContent>
-      <SidebarFooter className="p-3">
-        <div className="sidebar-foot grid gap-3 rounded-2xl bg-sidebar-primary p-3 text-sidebar-primary-foreground">
+      <SidebarFooter className="px-4 pt-2 pb-4">
+        <div className="sidebar-foot grid gap-3 border-t border-sidebar-border pt-4 text-sidebar-foreground">
           {demo ? (
             <div className="sidebar-demo grid gap-1.5">
-              <label htmlFor="actor" className="px-1 text-[11px] leading-snug font-semibold text-white/70">Demo user <span className="font-normal">· testing only, not secure login</span></label>
+              <label htmlFor="actor" className="px-1 text-[11px] leading-snug font-semibold text-sidebar-muted">Demo user <span className="font-normal">· testing only, not secure login</span></label>
               <FormSelect id="actor" aria-label="Demo user — role switching for testing only" value={user.id} onValueChange={(v) => actions.switchActor(v)}
                 items={raw.users.filter((u) => u.active)} size="sm"
-                className="border-white/15 bg-white/5 text-sidebar-primary-foreground hover:bg-white/10 [&_svg]:text-white/70" />
+                className="rounded-xl border-white/10 bg-white/[0.06] text-sidebar-foreground shadow-none hover:bg-white/10 focus-visible:ring-sidebar-ring [&_svg]:text-sidebar-foreground/60" />
             </div>
           ) : null}
           <AccountMenu user={user} />

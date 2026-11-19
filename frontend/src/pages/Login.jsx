@@ -87,13 +87,13 @@ export function Login() {
   }, [actions, loginSeq]);
   return (
     <div className="login grid min-h-dvh grid-cols-[1.05fr_1fr] gap-5 bg-background p-5 max-md:grid-cols-1 max-md:p-3">
-      <div className="login-art relative flex flex-col overflow-hidden rounded-2xl bg-sidebar px-[9%] py-12 text-sidebar-foreground max-md:hidden">
-        <Brand className="[&_.brand-label]:text-sidebar-muted" />
+      <div className="login-art relative flex flex-col overflow-hidden rounded-2xl bg-primary px-[9%] py-12 text-primary-foreground max-md:hidden">
+        <Brand className="[&_.brand-label]:text-primary-foreground/75" />
         <div className="login-message my-auto py-16">
           <h1 className="max-w-[450px] font-display text-[clamp(32px,3.3vw,52px)] leading-[1.12] font-bold tracking-[-0.03em]">Every commitment.<br />Every payment.<br />One clear picture.</h1>
-          <p className="mt-6 max-w-[360px] text-sm leading-relaxed text-sidebar-muted">Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p>
+          <p className="mt-6 max-w-[360px] text-sm leading-relaxed text-primary-foreground/75">Your workspace for project budgets, Purchasing and Planning approvals, and Finance visibility.</p>
         </div>
-        <div className="login-foot border-t border-sidebar-border pt-6 text-xs text-sidebar-muted">{"SUN SIYAM GROUP   /   PROJECT MONITORING"}</div>
+        <div className="login-foot border-t border-primary-foreground/15 pt-6 text-xs text-primary-foreground/75">{"SUN SIYAM GROUP   /   PROJECT MONITORING"}</div>
       </div>
       <Card className="login-panel relative justify-center rounded-2xl px-6 py-12 max-md:min-h-[calc(100dvh-24px)]">
         <div className="login-appearance absolute top-6 right-6"><ThemePicker id="loginAppearance" /></div>

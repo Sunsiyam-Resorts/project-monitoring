@@ -1,6 +1,6 @@
 /* Sun Siyam Project Monitoring — Tailwind v4 + shadcn/ui theme.
    Every screen is built from the shadcn components in src/components/ui, customised to this
-   theme: a sage-green sidebar, charcoal cards on near-black in Dark (white cards on a pale
+   theme: a floating dark-glass sidebar, charcoal cards on near-black in Dark (white cards on a pale
    canvas in Light), green pill actions with dark text, small solid status chips, and charts in
    the sales-dashboard style. Appearance (Light / Dark / System) is set by public/theme.js on
    <html data-theme>; print keeps the white A4 document (print.css). */
@@ -84,16 +84,23 @@
   --chart-track: #f4f4f2;
   --chart-approved: #5f6a5b;
   --chart-available: #eef2ea;
-  /* Sidebar: sage from edge to edge in both appearances, with a black account card. */
-  --sidebar: #a2d397;
-  --sidebar-foreground: #0e1a0c;
-  --sidebar-muted: #2d4a27;
-  --sidebar-primary: #0b0b0b;
+  /* Sidebar: a floating dark-glass panel in both appearances (charcoal gradient, frosted blur,
+     hairline white edge) with a Spotify-green bar on the current page. --sidebar is the solid
+     base the glass resolves to; contrast is checked against it. */
+  --sidebar: #161616;
+  --sidebar-foreground: #ffffff;
+  --sidebar-muted: #a0a0a0;
+  --sidebar-primary: #262626;
   --sidebar-primary-foreground: #f4f5f2;
-  --sidebar-accent: #8fc483;
-  --sidebar-accent-foreground: #0e1a0c;
-  --sidebar-border: rgb(14 26 12 / 16%);
-  --sidebar-ring: #0e1a0c;
+  --sidebar-accent: #222222;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 9%);
+  --sidebar-ring: #1db954;
+  --sidebar-indicator: #1db954;
+  --sidebar-indicator-foreground: #0b0b0b;
+  --sidebar-glass-from: rgb(38 38 38 / 92%);
+  --sidebar-glass-to: rgb(14 14 14 / 96%);
+  --sidebar-glass-sheen: rgb(255 255 255 / 7%);
 }
 
 [data-theme="dark"] {
@@ -201,6 +208,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-indicator: var(--sidebar-indicator);
+  --color-sidebar-indicator-foreground: var(--sidebar-indicator-foreground);
 }
 
 @layer base {
@@ -218,8 +227,8 @@
     font-family: var(--font-display);
   }
   ::selection {
-    background: var(--sidebar);
-    color: var(--sidebar-foreground);
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
   input, textarea {
     caret-color: var(--link);
@@ -241,6 +250,19 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+/* The sidebar's dark glass: a light sheen in the top-left corner over a charcoal gradient,
+   frosted with a backdrop blur, a hairline top highlight and a soft drop shadow. */
+@utility sidebar-glass {
+  background:
+    radial-gradient(120% 55% at 0% 0%, var(--sidebar-glass-sheen), transparent 65%),
+    linear-gradient(165deg, var(--sidebar-glass-from), var(--sidebar-glass-to));
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    0 24px 48px -16px rgb(0 0 0 / 45%);
 }
 
 /* Figures: tabular numerals everywhere amounts are compared. */

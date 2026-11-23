@@ -39,15 +39,28 @@ type Tx interface {
 	// SessionUser returns the user id of an unexpired session, or domain.Undefined. With
 	// touch (a request the user made), the session's idle period starts again.
 	SessionUser(ctx context.Context, tokenHash string, touch bool) (any, error)
-	// DeleteSession ends one session (this browser).
-	DeleteSession(ctx context.Context, tokenHash string) error
-	// DeleteSessions ends every session of the user.
-	DeleteSessions(ctx context.Context, userID any) error
+	// EndSession ends one session (this browser), recording why.
+	EndSession(ctx context.Context, tokenHash string, reason string) error
+	// EndSessions ends every current session of the user, recording why.
+	EndSessions(ctx context.Context, userID any, reason string) error
 }
 
 // SessionIdleMinutes is how long a session lasts without activity: a user is signed out
-// after 15 minutes of inactivity, and never while active.
+// after 15 minutes of inactivity, and never while active. Each portal_sessions row records
+// when the session started (created), when the user was last active (last_active) and, once
+// it has ended early, why (ended: SessionSignedOut, SessionInactive, SessionPasswordReset or
+// SessionUserChanged). A row past its expiry with no reason ended on the server after
+// inactivity. Every request the user makes, and the browser's keep-alive while the user is
+// active, renews the session.
 const SessionIdleMinutes = 15
+
+// Why a session ended early, recorded in portal_sessions.ended.
+const (
+	SessionSignedOut     = "signed out"
+	SessionInactive      = "inactive in the browser"
+	SessionPasswordReset = "password reset"
+	SessionUserChanged   = "sign-in details changed by an Admin"
+)
 
 // UnavailableError is a failure to reach or use the database, other than an error
 // reported by PostgreSQL itself.
@@ -124,7 +137,7 @@ func (s *Store) getPool() (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-const schema = `CREATE TABLE IF NOT EXISTS portal_state (id integer PRIMARY KEY CHECK(id=1), data jsonb NOT NULL); CREATE TABLE IF NOT EXISTS portal_sessions (token text PRIMARY KEY, user_id text NOT NULL, expires timestamptz NOT NULL); CREATE TABLE IF NOT EXISTS portal_challenges (token text PRIMARY KEY, data jsonb NOT NULL, expires timestamptz NOT NULL); CREATE TABLE IF NOT EXISTS portal_throttle (key text PRIMARY KEY, attempts integer NOT NULL, expires timestamptz NOT NULL);`
+const schema = `CREATE TABLE IF NOT EXISTS portal_state (id integer PRIMARY KEY CHECK(id=1), data jsonb NOT NULL); CREATE TABLE IF NOT EXISTS portal_sessions (token text PRIMARY KEY, user_id text NOT NULL, expires timestamptz NOT NULL); ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS created timestamptz NOT NULL DEFAULT now(), ADD COLUMN IF NOT EXISTS last_active timestamptz NOT NULL DEFAULT now(), ADD COLUMN IF NOT EXISTS ended text; CREATE TABLE IF NOT EXISTS portal_challenges (token text PRIMARY KEY, data jsonb NOT NULL, expires timestamptz NOT NULL); CREATE TABLE IF NOT EXISTS portal_throttle (key text PRIMARY KEY, attempts integer NOT NULL, expires timestamptz NOT NULL);`
 
 // init creates the tables and, when there is no workspace yet, the initial workspace
 // with the configured Admin. A failed attempt is retried by the next request.
@@ -270,6 +283,10 @@ func (t pgTx) DeleteChallengeAndUserChallenges(ctx context.Context, tokenHash st
 }
 
 func (t pgTx) AddSession(ctx context.Context, tokenHash string, userID any) error {
+	// Ended sessions stay as a record of sign-ins for 90 days, then go.
+	if _, err := t.tx.Exec(ctx, "DELETE FROM portal_sessions WHERE expires < now() - interval '90 days'"); err != nil {
+		return dbErr(err)
+	}
 	_, err := t.tx.Exec(ctx, "INSERT INTO portal_sessions(token,user_id,expires) VALUES($1,$2,now()+make_interval(mins => $3::int))", tokenHash, param(userID), SessionIdleMinutes)
 	return dbErr(err)
 }
@@ -278,7 +295,7 @@ func (t pgTx) SessionUser(ctx context.Context, tokenHash string, touch bool) (an
 	var userID string
 	query, args := "SELECT user_id FROM portal_sessions WHERE token=$1 AND expires>now()", []any{tokenHash}
 	if touch {
-		query, args = "UPDATE portal_sessions SET expires=now()+make_interval(mins => $2::int) WHERE token=$1 AND expires>now() RETURNING user_id", []any{tokenHash, SessionIdleMinutes}
+		query, args = "UPDATE portal_sessions SET expires=now()+make_interval(mins => $2::int), last_active=now() WHERE token=$1 AND expires>now() RETURNING user_id", []any{tokenHash, SessionIdleMinutes}
 	}
 	err := t.tx.QueryRow(ctx, query, args...).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -290,12 +307,12 @@ func (t pgTx) SessionUser(ctx context.Context, tokenHash string, touch bool) (an
 	return userID, nil
 }
 
-func (t pgTx) DeleteSession(ctx context.Context, tokenHash string) error {
-	_, err := t.tx.Exec(ctx, "DELETE FROM portal_sessions WHERE token=$1", tokenHash)
+func (t pgTx) EndSession(ctx context.Context, tokenHash string, reason string) error {
+	_, err := t.tx.Exec(ctx, "UPDATE portal_sessions SET expires=now(), ended=$2 WHERE token=$1 AND expires>now()", tokenHash, reason)
 	return dbErr(err)
 }
 
-func (t pgTx) DeleteSessions(ctx context.Context, userID any) error {
-	_, err := t.tx.Exec(ctx, "DELETE FROM portal_sessions WHERE user_id=$1", param(userID))
+func (t pgTx) EndSessions(ctx context.Context, userID any, reason string) error {
+	_, err := t.tx.Exec(ctx, "UPDATE portal_sessions SET expires=now(), ended=$2 WHERE user_id=$1 AND expires>now()", param(userID), reason)
 	return dbErr(err)
 }

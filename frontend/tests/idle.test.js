@@ -1,14 +1,20 @@
 // @vitest-environment happy-dom
 // Inactivity sign-out (src/lib/idle.js): only 15 minutes without activity signs a live user
-// out; activity in any tab counts, and keep-alives report it to the server once a minute.
+// out; input in any tab or a visible portal tab counts, and keep-alives report it to the server
+// once a minute. Tests of input start with the page hidden, so only input counts.
 import { afterEach, beforeEach, test } from "vitest";
 import assert from "node:assert/strict";
 import { IDLE_MS, startIdleWatch } from "../src/lib/idle.js";
 
 let watch, t, calls, signedIn;
 const MIN = 60 * 1000;
+const show = (state) => {
+  Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+  document.dispatchEvent(new Event("visibilitychange"));
+};
 beforeEach(() => {
   localStorage.clear();
+  Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
   t = 1_000_000;
   calls = { idle: 0, keepAlive: 0 };
   signedIn = true;
@@ -73,5 +79,35 @@ test("The idle period starts at sign-in, and returning to the page after sleep c
   t += 2 * MIN;
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(calls.idle, 1);
+});
+
+test("A visible portal tab counts as activity: the user stays signed in and the session is renewed silently", () => {
+  show("visible");
+  for (let i = 1; i <= 4 * 60; i++) { t += 15 * 1000; watch.check(); } // an hour of reading, no input
+  assert.equal(calls.idle, 0);
+  assert.ok(calls.keepAlive >= 59 && calls.keepAlive <= 60, String(calls.keepAlive));
+});
+
+test("Hiding the tab starts the idle period when it was hidden", () => {
+  show("visible");
+  for (let i = 1; i <= 20; i++) { t += 15 * 1000; watch.check(); }
+  t += 5 * 1000;
+  const hidden = t;
+  show("hidden");
+  t = hidden + IDLE_MS - 1;
+  watch.check();
+  assert.equal(calls.idle, 0);
+  t += 1;
+  watch.check();
+  assert.equal(calls.idle, 1);
+});
+
+test("A computer that sleeps with the tab visible is not active while asleep", () => {
+  show("visible");
+  t += 15 * 1000; watch.check();
+  t += 15 * 1000; watch.check();
+  t += 2 * 60 * MIN; // asleep: no checks ran
+  watch.check();
   assert.equal(calls.idle, 1);
 });

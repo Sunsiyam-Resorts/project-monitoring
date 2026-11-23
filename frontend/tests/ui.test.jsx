@@ -1351,7 +1351,7 @@ test("Browser Back and Forward move between portal pages, and the URL reopens th
   } finally { w2.close(); await w2.happyDOM.abort(); }
 });
 
-test("A live session signs out after 15 minutes of inactivity, never while active, and the background refresh does not count", async () => {
+test("A live session signs out after 15 minutes of inactivity, never while active or visible, and the background refresh does not count", async () => {
   const seed = demoState(), user = seed.users[0];
   const calls = [];
   const realNow = Date.now;
@@ -1382,10 +1382,24 @@ test("A live session signs out after 15 minutes of inactivity, never while activ
     assert.ok(calls.some((c) => c.action === "session"), JSON.stringify(calls));
     assert.equal(calls.some((c) => c.action === "end-session"), false);
     assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
-    // Idle: 14 minutes later still signed in; at 15 minutes signed out with a notice.
-    await later(13 * 60 * 1000);
+    // Reading with the portal visible for 30 minutes, no input: still active, renewed silently.
+    calls.length = 0;
+    for (let i = 0; i < 6; i++) await later(5 * 60 * 1000);
+    assert.ok(calls.some((c) => c.action === "session"), JSON.stringify(calls));
+    assert.equal(calls.some((c) => c.action === "end-session"), false);
     assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
-    await later(60 * 1000);
+    // Idle with the portal hidden: back after 14 minutes, still signed in; hidden again for
+    // 15 minutes, signed out with a notice.
+    const visibility = (state) => Object.defineProperty(w.document, "visibilityState", { value: state, configurable: true });
+    visibility("hidden");
+    await later(0);
+    visibility("visible");
+    await later(14 * 60 * 1000);
+    assert.equal(w.document.querySelector("#pageTitle").textContent, "Project dashboard");
+    visibility("hidden");
+    await later(0);
+    visibility("visible");
+    await later(15 * 60 * 1000);
     assert.ok(calls.some((c) => c.action === "end-session"));
     assert.equal(w.document.querySelector("#pageTitle").textContent, "Welcome back");
     assert.match(w.document.querySelector("#loginNotice").textContent, /signed out after 15 minutes of inactivity/);

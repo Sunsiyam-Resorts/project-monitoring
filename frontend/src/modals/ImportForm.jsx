@@ -118,7 +118,7 @@ export function ImportForm({ kinds }) {
               <Button type="button" variant="outline" size="sm" data-action="importCSV" onClick={() => actions.importTemplate(kind, false)}>Download CSV template</Button>
               <Button type="button" variant="outline" size="sm" data-action="importXLSX" onClick={() => actions.importTemplate(kind, true)}>Download Excel template</Button>
             </ActionRow>
-            <Help>Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use YYYY-MM-DD. Excel imports use one populated sheet; formulas are not accepted.</Help>
+            <Help>Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use DD/MM/YYYY, for example 23/11/2026. Excel imports use one populated sheet; formulas are not accepted.</Help>
           </div>
           {/* Drop area, then what happened to the files, then the files themselves, then the rules. */}
           <Field label={withPDFs ? "Completed template and supporting PDFs" : "Completed template"}>

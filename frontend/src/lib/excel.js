@@ -15,6 +15,9 @@ export async function importTemplate(kind, asExcel) {
     sheet.addRow(headers);
     sheet.getRow(1).font = { bold: true };
     sheet.columns.forEach((col, i) => { col.width = Math.max(20, headers[i].length + 3); });
+    // Dates are day first: entered dates show as DD/MM/YYYY, matching what the import reads.
+    const dateColumn = headers.indexOf("Payment request date");
+    if (dateColumn >= 0) sheet.getColumn(dateColumn + 1).numFmt = "dd/mm/yyyy";
     download(new Blob([await workbook.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${kind}-template.xlsx`);
   } else download(new Blob(["﻿" + headers.join(",") + "\r\n"], { type: "text/csv;charset=utf-8" }), `${kind}-template.csv`);
 }

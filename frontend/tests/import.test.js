@@ -68,7 +68,7 @@ test('Imports create related master data and preserve existing currency and budg
 function orderSetup() {
   const s = demoState(); s.orders = []; s.requests = []; s.audit = []; s.locks = {};
   const u = s.users.find(u => u.id === 'req0'), b = s.budgets.find(b => b.id === 'b0');
-  const value = { Company: 'c1', Project: 'p1', 'Approved budget': b.name, Supplier: 's1', 'PO number': 'FICTIONAL-IMPORT-1', Currency: 'USD', 'Full order amount': '100', Description: 'Fictional test import', 'Budget category allocations': `${b.categories[0].name}:100`, 'Supporting PDFs': pdf.name, 'Payment request date': '2026-11-01', 'Payment request %': '30' };
+  const value = { Company: 'c1', Project: 'p1', 'Approved budget': b.name, Supplier: 's1', 'PO number': 'FICTIONAL-IMPORT-1', Currency: 'USD', 'Full order amount': '100', Description: 'Fictional test import', 'Budget category allocations': `${b.categories[0].name}:100`, 'Supporting PDFs': pdf.name, 'Payment request date': '01/11/2026', 'Payment request %': '30' };
   return { s, u, value };
 }
 
@@ -127,4 +127,25 @@ test('Admin and Finance order/payment imports need no team and preserve existing
   const fin = s.users.find(x => x.role === 'Finance');
   run(s, fin, 'orders', rowsFor('orders', [{ ...value, 'PO number': 'FINANCE-PO', 'Invoice number': 'FINANCE-INV' }]), { files: [pdf] });
   assert.equal(s.orders.at(-1).requestedBy, fin.id);
+});
+
+test('Import dates are day first, DD/MM/YYYY, and are stored as YYYY-MM-DD', async () => {
+  const { s, u, value } = orderSetup();
+  run(s, u, 'orders', rowsFor('orders', [{ ...value, 'Payment request date': '3/11/2026' }]), { files: [pdf] });
+  assert.equal(s.requests[0].date, '2026-11-03');
+  const o = s.orders[0], pay = (date) => rowsFor('payments', [{ 'Main request number': o.number, 'Payment Amount': '10', 'Payment request date': date }]);
+  run(s, u, 'payments', pay('29/02/2028'));
+  assert.equal(s.requests[1].date, '2028-02-29');
+  const saved = structuredClone(s);
+  for (const date of ['2026-11-03', '11/23/2026', '31/04/2026', '29/02/2027', '00/01/2026', '1/1/26', '01-11-2026'])
+    assert.throws(() => run(s, u, 'payments', pay(date)), new RegExp(`Row 2: Payment request date must be a real date written DD/MM/YYYY, for example 23/11/2026 \\(found ${date}\\)`));
+  assert.deepEqual(s, saved);
+  // A native Excel date cell is read day first too, whatever its display format.
+  const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet('Import');
+  sheet.addRow(importFields.payments);
+  sheet.addRow([o.number, new Date(Date.UTC(2026, 10, 3)), '', '', '10', '']);
+  sheet.getCell(2, 2).numFmt = 'm/d/yy';
+  const loaded = new ExcelJS.Workbook();
+  await loaded.xlsx.load(await workbook.xlsx.writeBuffer());
+  assert.equal(excelRows('payments', loaded)[0].values['Payment request date'], '03/11/2026');
 });

@@ -83,13 +83,16 @@ export function SubmitButton({ children, variant = "default", className, type = 
 }
 
 // A dialog form's footer: an optional note, Cancel and the submit button (shadcn DialogFooter).
-export function Footer({ label, note = "", cancel = true }) {
+// A form with a later step passes it as children, after the submit button, and demotes the
+// submit button with submitVariant so the footer keeps a single primary action.
+export function Footer({ label, note = "", cancel = true, submitVariant = "default", className, children }) {
   const { actions } = useApp();
   return (
-    <DialogFooter className="form-footer sticky -bottom-6 z-10 -mx-7 -mb-6 mt-7 bg-card max-md:-mx-5">
+    <DialogFooter className={cn("form-footer sticky -bottom-6 z-10 -mx-7 -mb-6 mt-7 bg-card max-md:-mx-5", className)}>
       {note ? <small className="mr-auto text-[11px] text-muted-foreground max-md:basis-full">{note}</small> : null}
       {cancel ? <Button type="button" variant="outline" data-action="close" onClick={() => actions.closeModal()}>Cancel</Button> : null}
-      <SubmitButton>{label}<Icon name="arrow" /></SubmitButton>
+      <SubmitButton variant={submitVariant}>{label}<Icon name="arrow" /></SubmitButton>
+      {children}
     </DialogFooter>
   );
 }

@@ -3,7 +3,7 @@
 import { Printer,
   ArrowRight, ChartColumn, ChevronRight, Clock, Download, FileText, Files, FolderKanban, Funnel,
   House, LayoutGrid, LogOut, Menu, Moon, PauseCircle, PieChart, Plus, Search, Settings2, ShieldCheck,
-  SlidersHorizontal, Sun, Trash2, Users, X, Check, Database,
+  SlidersHorizontal, Sun, Trash2, Users, X, Check, Database, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,8 @@ const ICONS = {
   moon: Moon,
   grid: LayoutGrid,
   tune: Settings2,
+  upload: Upload,
+  file: FileText,
 };
 
 export function Icon({ name, className }) {

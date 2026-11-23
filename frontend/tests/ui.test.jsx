@@ -840,6 +840,7 @@ test('CSV and Excel imports preview without saving, confirm creates masters, and
       const transfer = new w.DataTransfer();
       transfer.items.add(new w.File([contents], `fictional.${format}`));
       f.elements.importFile.files = transfer.files;
+      fire(f.elements.importFile, new w.Event('change', { bubbles: true }));
       const before = JSON.parse(w.localStorage.getItem('ss-project-monitoring-demo-v1')).suppliers.length;
       submit(w, '[data-form=import]');
       await wait(100);

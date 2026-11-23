@@ -3,7 +3,7 @@ import { Icon } from "../components/Icon.jsx";
 import { Badge, BusyButton, Detail, DetailGrid, FileList, Help, text } from "../components/ui.jsx";
 import { ActionRow, DecisionPanel, DetailSection, HistoryEntry, MoreDetails, Notice, RecordLead, RecordTop, Steps } from "../components/detail.jsx";
 import { CategoryTable } from "../components/Records.jsx";
-import { date, fmt } from "../lib/format.js";
+import { date, fmt, shortDate } from "../lib/format.js";
 import { nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ export function RequestDetail({ id }) {
         <Detail label="Project">{nameOf(state, "projects", o.projectId)}</Detail>
         <Detail label="Supplier">{nameOf(state, "suppliers", o.supplierId)}</Detail>
         <Detail label="Invoice">{o.invoice || "Not yet provided"}</Detail>
-        <Detail label="Request date">{`${r.date}`}</Detail>
+        <Detail label="Request date">{shortDate(r.date)}</Detail>
         <Detail label="Saved exchange rate">{`1 USD = ${fmt(r.rate)} ${r.currency}`}</Detail>
         <Detail label="Reserved order amount">{`${o.currency} ${fmt(parentAmount(r))}`}</Detail>
         <Detail label="Requested by">{nameOf(state, "users", r.requestedBy)}</Detail>
@@ -101,7 +101,7 @@ export function RequestDetail({ id }) {
       {r.files?.length ? <div className="mt-5"><FileList files={r.files} kind="request" id={id} /></div> : null}
       {r.payment ? (
         <>
-          <Notice tone="success" title={`Paid ${currency} ${fmt(r.payment.amount)}`}>{`${r.payment.date} · ${r.payment.type} · ${text(r.payment.by)}`}</Notice>
+          <Notice tone="success" title={`Paid ${currency} ${fmt(r.payment.amount)}`}>{`${shortDate(r.payment.date)} · ${r.payment.type} · ${text(r.payment.by)}`}</Notice>
           {r.payment.files?.length ? <div className="mt-3"><FileList files={r.payment.files} kind="payment" id={id} /></div> : null}
           {isFinanceAdmin(user) ? <ActionRow className="mt-3"><Button variant="destructive" data-action="deletePayment" data-id={id} onClick={() => actions.reasonForm(id, "deletePayment")}>Delete Payment</Button></ActionRow> : null}
         </>

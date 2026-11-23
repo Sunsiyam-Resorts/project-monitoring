@@ -5,7 +5,7 @@ import { Badge, BusyButton, DataTable, Detail, DetailGrid, text } from "../compo
 import { ActionRow, SectionTitle } from "../components/detail.jsx";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/tables.jsx";
 import { CategoryTable, ReviewHistory } from "../components/Records.jsx";
-import { date, fmt } from "../lib/format.js";
+import { date, fmt, shortDate } from "../lib/format.js";
 import { nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ export function DocumentView({ id, generatedAt }) {
         <DetailGrid>
           <Detail label="Company">{nameOf(state, "companies", o.companyId)}</Detail>
           <Detail label="Project">{nameOf(state, "projects", o.projectId)}</Detail>
-          <Detail label="Date">{`${r.date}`}</Detail>
+          <Detail label="Date">{shortDate(r.date)}</Detail>
           <Detail label="Supplier">{nameOf(state, "suppliers", o.supplierId)}</Detail>
           <Detail label="PO number">{text(o.po)}</Detail>
           <Detail label="Invoice number">{o.invoice || "—"}</Detail>
@@ -63,7 +63,7 @@ export function DocumentView({ id, generatedAt }) {
             <TableRow><TableCell>Requested by</TableCell><TableCell>{nameOf(state, "users", r.requestedBy)}</TableCell><TableCell>{date(r.createdAt)}</TableCell></TableRow>
             {r.approvals.map((x, i) => <TableRow key={i}><TableCell>{x.stage === "Reviewer" ? "Checked by" : text(x.stage)}</TableCell><TableCell>{text(x.by)}</TableCell><TableCell>{date(x.at)}</TableCell></TableRow>)}
             {r.finalApprovedAt ? <TableRow><TableCell>Submitted to Finance</TableCell><TableCell>{nameOf(state, "users", r.requestedBy)}</TableCell><TableCell>{date(r.finalApprovedAt)}</TableCell></TableRow> : null}
-            {r.payment ? <TableRow><TableCell>Paid by</TableCell><TableCell>{text(r.payment.by)}</TableCell><TableCell>{`${r.payment.date} · ${r.payment.type}`}</TableCell></TableRow> : null}
+            {r.payment ? <TableRow><TableCell>Paid by</TableCell><TableCell>{text(r.payment.by)}</TableCell><TableCell>{`${shortDate(r.payment.date)} · ${r.payment.type}`}</TableCell></TableRow> : null}
           </TableBody>
         </DataTable>
         {r.remarks.length ? (

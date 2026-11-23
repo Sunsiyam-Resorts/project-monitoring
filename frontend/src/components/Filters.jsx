@@ -1,10 +1,9 @@
 // Scope filters. compact (Dashboard): the Project label is for screen readers only, the
 // blank option reads "All projects", and there is no Clear filters link.
 import { Icon } from "./Icon.jsx";
-import { FormSelect } from "./ui.jsx";
+import { DateInput, FormSelect } from "./ui.jsx";
 import { useApp, useAppState, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
@@ -38,8 +37,8 @@ export function Filters({ dates = false, actions: extraActions = null, compact =
       {dates ? (
         <CollapsibleContent id="extraFilters" className="advanced-filters basis-full">
           <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-3">
-            <div className="grid gap-1.5"><Label htmlFor="from" className="text-xs">Request date · From</Label><Input id="from" type="date" value={from} onChange={(e) => actions.setFilter("from", e.target.value)} /></div>
-            <div className="grid gap-1.5"><Label htmlFor="to" className="text-xs">To</Label><Input id="to" type="date" value={to} onChange={(e) => actions.setFilter("to", e.target.value)} /></div>
+            <div className="grid gap-1.5"><Label htmlFor="from" className="text-xs">Request date · From</Label><DateInput id="from" value={from} onChange={(v) => actions.setFilter("from", v)} /></div>
+            <div className="grid gap-1.5"><Label htmlFor="to" className="text-xs">To</Label><DateInput id="to" value={to} onChange={(v) => actions.setFilter("to", v)} /></div>
             <div className="grid gap-1.5"><Label htmlFor="statusFilter" className="text-xs">Status</Label>
               <FormSelect id="statusFilter" value={statusFilter} onValueChange={set("statusFilter")} clearable blank="All" items={STATUSES} /></div>
           </div>

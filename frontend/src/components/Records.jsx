@@ -4,7 +4,7 @@ import { Minus, Plus } from "lucide-react";
 import { remainingToRequest } from "../domain/domain.js";
 import { Badge, BusyButton, DataTable, Empty, Help, RegionLabel, RowAction, text } from "./ui.jsx";
 import { Money, Sub, TableBody, TableCell, TableHead, TableHeader, TableRow, WORK_TABLE } from "./tables.jsx";
-import { fmt, date } from "../lib/format.js";
+import { fmt, date, shortDate } from "../lib/format.js";
 import { attention, nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ export function RequestTable({ rs }) {
           const currency = r.currency || o.currency;
           return (
             <TableRow key={r.id}>
-              <TableCell data-label="Payment request"><strong className="font-semibold">{r.number}</strong><Sub>{`${text(r.date)} · ${r.percent}% instalment`}</Sub></TableCell>
+              <TableCell data-label="Payment request"><strong className="font-semibold">{r.number}</strong><Sub>{`${shortDate(r.date)} · ${r.percent}% instalment`}</Sub></TableCell>
               <TableCell data-label="Supplier / PO">{nameOf(state, "suppliers", o.supplierId)}<Sub>{o.po}</Sub></TableCell>
               <TableCell data-label="Project / Company">{nameOf(state, "projects", o.projectId)}<Sub>{nameOf(state, "companies", o.companyId)}</Sub></TableCell>
               <TableCell data-label="Requested amount" className="text-right">

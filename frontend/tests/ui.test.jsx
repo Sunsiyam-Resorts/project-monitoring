@@ -703,6 +703,31 @@ test("Four tabs use contextual creation and new request percent/amount/currency 
     await w.happyDOM.abort();
   }
 });
+test("Date fields show and accept DD/MM/YYYY and submit YYYY-MM-DD", async () => {
+  const w = await app();
+  try {
+    click(w, "[data-action=demo]");
+    await actor(w, "req0");
+    click(w, "[data-page=requests]");
+    click(w, "[data-action=newOrder]");
+    const f = w.document.querySelector("[data-form=order]");
+    const hidden = f.elements.firstdate, shown = f.querySelector(".date-input input");
+    const [y, m, d] = domain.today().split("-");
+    assert.equal(shown.value, `${d}/${m}/${y}`);
+    const enter = (v) => type(w, shown, v);
+    enter("3/4/2026");
+    assert.equal(hidden.value, "2026-04-03");
+    assert.equal(shown.validationMessage, "");
+    enter("31/02/2026");
+    assert.equal(hidden.value, "2026-04-03");
+    assert.match(shown.validationMessage, /DD\/MM\/YYYY/);
+    enter("");
+    assert.equal(hidden.value, "");
+  } finally {
+    w.close();
+    await w.happyDOM.abort();
+  }
+});
 test("Combined form creates the parent and first child with one submission and sends the child straight to Finance", async () => {
   const w = await app();
   try {

@@ -1,5 +1,5 @@
 import { money, parentAmount, reservation, today } from "../domain/domain.js";
-import { Field, FieldGrid, FormSelect, Input, Section, TextArea, text } from "../components/ui.jsx";
+import { DateInput, Field, FieldGrid, FormSelect, Input, Section, TextArea, text } from "../components/ui.jsx";
 import { Footer, Form } from "../components/Form.jsx";
 import { fmt } from "../lib/format.js";
 import { useApp, useData } from "../lib/store.js";
@@ -40,7 +40,7 @@ export function PaymentFields({ o, r, combined = false, currency: chosen, onCurr
   const options = state.currencies.map((c) => ({ value: c.id, label: c.id }));
   return (
     <FieldGrid>
-      <Field label="Payment request date"><Input name={prefix + "date"} value={r?.date || today()} type="date" required /></Field>
+      <Field label="Payment request date"><DateInput name={prefix + "date"} value={r?.date || today()} required /></Field>
       <Field label="Payment currency">
         {onCurrency
           ? <FormSelect id="paymentCurrency" name={prefix + "currency"} required value={chosen} onValueChange={onCurrency} options={options} />

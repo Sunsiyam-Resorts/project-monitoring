@@ -1,7 +1,7 @@
 // Shared app compositions, built only from the shadcn components in ./ui (customised to the
 // portal theme): page headers, status chips, empty states, tables, disclosures, form fields
 // and selects. Add new building blocks here by composing shadcn components, never from scratch.
-import { Children, cloneElement, createContext, isValidElement, useContext, useId, useState } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, useId, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Icon } from "./Icon.jsx";
 import { useApp, useAppState } from "../lib/store.js";
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 
 // Legacy templates escaped optional values to "" rather than "undefined".
 export const text = (v) => String(v ?? "");
@@ -211,7 +212,66 @@ export function FormSelect({
 }
 
 const CONTROLS = ["input", "textarea"];
-const isControl = (c) => isValidElement(c) && (c.type === Input || c.type === FormSelect || c.type === TextArea || c.type === ShadcnInput || c.type === Textarea || CONTROLS.includes(c.type));
+const isControl = (c) => isValidElement(c) && (c.type === Input || c.type === FormSelect || c.type === TextArea || c.type === FileDrop || c.type === ShadcnInput || c.type === Textarea || CONTROLS.includes(c.type));
+
+const fileSize = (bytes) => (bytes < 1048576 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`);
+
+// A file drop area: a dashed shadcn Empty around a visually hidden shadcn Input of type file.
+// Clicking the area opens the file picker; the hidden input keeps keyboard focus and the field
+// label. Picked and dropped files go to onFiles, and the form keeps them in its own state (the
+// input is cleared after each pick so the same file can be chosen again). `required` only
+// shows the field's required mark: the form checks for the files itself.
+export function FileDrop({ id, name, accept, title, note, invalid = false, onFiles, "aria-describedby": describedBy }) {
+  const input = useRef(null);
+  const [dragging, setDragging] = useState(false);
+
+  function take(list) {
+    const files = [...(list || [])];
+    if (files.length) onFiles?.(files);
+  }
+
+  return (
+    <ShadcnEmpty data-slot="file-drop" data-dragging={dragging || undefined} data-invalid={invalid || undefined}
+      onClick={(e) => { if (e.target !== input.current) input.current?.click(); }}
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }}
+      onDrop={(e) => { e.preventDefault(); setDragging(false); take(e.dataTransfer?.files); }}
+      className={cn("file-drop min-h-44 w-full flex-none cursor-pointer gap-3 border border-dashed border-input bg-card p-6 transition-[background-color,border-color,box-shadow] md:p-8",
+        "hover:border-foreground/45 hover:bg-accent/40 data-[dragging]:border-solid data-[dragging]:border-primary data-[dragging]:bg-soft",
+        "has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-[3px] has-[input:focus-visible]:ring-ring/20",
+        "data-[invalid]:border-danger data-[invalid]:bg-danger-soft")}>
+      <ShadcnInput ref={input} id={id} name={name} type="file" accept={accept} multiple aria-invalid={invalid || undefined}
+        aria-describedby={describedBy} className="sr-only"
+        onChange={(e) => { take(e.currentTarget.files); e.currentTarget.value = ""; }} />
+      <EmptyHeader className="max-w-md gap-1.5">
+        <EmptyMedia variant="icon" className={cn("mb-1 size-11 rounded-full", dragging ? "bg-primary text-primary-foreground" : "bg-soft text-link")}>
+          <Icon name="upload" />
+        </EmptyMedia>
+        <EmptyTitle className="text-sm font-semibold">{dragging ? "Release to add the files" : title}</EmptyTitle>
+        <EmptyDescription className="text-xs">{note}</EmptyDescription>
+      </EmptyHeader>
+    </ShadcnEmpty>
+  );
+}
+
+// Files added through a FileDrop, before upload: one shadcn Item per file with its role, size and a remove button.
+export const UploadList = ({ label, files }) => (
+  <ItemGroup aria-label={label} className="upload-list gap-2">
+    {files.map(({ file, role, onRemove }) => (
+      <Item key={role + file.name} role="listitem" variant="outline" size="sm">
+        <ItemMedia variant="icon"><Icon name="file" /></ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle className="block w-full truncate">{file.name}</ItemTitle>
+          <ItemDescription>{`${role} · ${fileSize(file.size)}`}</ItemDescription>
+        </ItemContent>
+        <ItemActions>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${file.name}`} onClick={onRemove}><Icon name="close" /></Button>
+        </ItemActions>
+      </Item>
+    ))}
+  </ItemGroup>
+);
 
 // A labelled form field (shadcn Field). The label is tied to the first control, Help text
 // describes it, and required controls show the required mark.

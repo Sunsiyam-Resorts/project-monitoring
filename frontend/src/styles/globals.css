@@ -85,7 +85,8 @@
   --chart-approved: #5f6a5b;
   --chart-available: #eef2ea;
   /* Sidebar: a floating dark-glass panel in both appearances (charcoal gradient, frosted blur,
-     hairline white edge) with a Spotify-green bar on the current page. --sidebar is the solid
+     hairline white edge) with the main green (--primary) on the current-page bar, count badges
+     and focus rings. --sidebar is the solid
      base the glass resolves to; contrast is checked against it. */
   --sidebar: #161616;
   --sidebar-foreground: #ffffff;
@@ -95,8 +96,8 @@
   --sidebar-accent: #222222;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgb(255 255 255 / 9%);
-  --sidebar-ring: #1db954;
-  --sidebar-indicator: #1db954;
+  --sidebar-ring: var(--primary);
+  --sidebar-indicator: var(--primary);
   --sidebar-indicator-foreground: #0b0b0b;
   --sidebar-glass-from: rgb(38 38 38 / 92%);
   --sidebar-glass-to: rgb(14 14 14 / 96%);

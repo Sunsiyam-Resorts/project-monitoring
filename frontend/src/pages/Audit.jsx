@@ -1,6 +1,6 @@
 // Audit Log: filters by action, user, company and date range plus a search; newest first,
 // PAGE_SIZE entries per page (shadcn Select, Input, Table and Pagination).
-import { DataTable, Empty, FormSelect, PageHeader, RegionLabel } from "../components/ui.jsx";
+import { DataTable, DateInput, Empty, FormSelect, PageHeader, RegionLabel } from "../components/ui.jsx";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow, WORK_TABLE } from "../components/tables.jsx";
 import { ListToolbar, SearchBox } from "../components/Toolbar.jsx";
 import { TableFooterNote } from "../components/TableFooterNote.jsx";
@@ -9,7 +9,6 @@ import { nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
@@ -54,8 +53,8 @@ export function Audit() {
         {select("auditAction", "Action", actionsList, "All actions")}
         {select("auditUser", "User", users, "All users")}
         {select("auditCompany", "Company", companies, "All companies")}
-        <div className="grid gap-1.5"><Label htmlFor="auditFrom" className="text-xs">From</Label><Input id="auditFrom" type="date" value={f.from} onChange={(e) => actions.setAuditFilter("auditFrom", e.target.value)} className="w-[160px]" /></div>
-        <div className="grid gap-1.5"><Label htmlFor="auditTo" className="text-xs">To</Label><Input id="auditTo" type="date" value={f.to} onChange={(e) => actions.setAuditFilter("auditTo", e.target.value)} className="w-[160px]" /></div>
+        <div className="grid gap-1.5"><Label htmlFor="auditFrom" className="text-xs">From</Label><DateInput id="auditFrom" value={f.from} onChange={(v) => actions.setAuditFilter("auditFrom", v)} className="w-[168px]" /></div>
+        <div className="grid gap-1.5"><Label htmlFor="auditTo" className="text-xs">To</Label><DateInput id="auditTo" value={f.to} onChange={(v) => actions.setAuditFilter("auditTo", v)} className="w-[168px]" /></div>
         {active ? <Button variant="link" className="linkbtn self-center" data-action="auditClear" onClick={() => actions.auditClear()}>Clear filters</Button> : null}
       </div>
       <ListToolbar>

@@ -192,7 +192,7 @@ export function ProjectPage() {
                   <FiguresTable headings={["Payment request", "Amount", "Status"]}>
                     {requests.map((r) => (
                       <TableRow key={r.id}>
-                        <TableCell><BusyButton variant="link" className="linkbtn" data-action="openRequest" data-id={r.id} onRun={() => actions.openRequest(r.id)}>{r.number}</BusyButton><Sub>{r.date || ""}</Sub></TableCell>
+                        <TableCell><BusyButton variant="link" className="linkbtn" data-action="openRequest" data-id={r.id} onRun={() => actions.openRequest(r.id)}>{r.number}</BusyButton><Sub>{shortDate(r.date)}</Sub></TableCell>
                         <TableCell className="text-right">{`${r.currency} ${fmt(r.amount)}`}</TableCell>
                         <TableCell className="text-right"><Badge status={r.status} /></TableCell>
                       </TableRow>

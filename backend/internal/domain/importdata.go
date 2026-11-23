@@ -7,6 +7,7 @@ package domain
 import (
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -125,6 +126,53 @@ func kindIs(kind any, names ...string) bool {
 	return ok && slices.Contains(names, k)
 }
 
+// importDate converts an import's day-first DD/MM/YYYY date (day and month may be one digit)
+// to the stored YYYY-MM-DD. A blank date stays blank and defaults to today.
+func importDate(value any) string {
+	s := jsTrim(toString(coalesce(value, "")))
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, "/")
+	digits := func(p string, min, max int) bool {
+		if len(p) < min || len(p) > max {
+			return false
+		}
+		for i := 0; i < len(p); i++ {
+			if !isDigit(p[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	ok := len(parts) == 3 && digits(parts[0], 1, 2) && digits(parts[1], 1, 2) && digits(parts[2], 4, 4)
+	var d, m, y int
+	if ok {
+		d, _ = strconv.Atoi(parts[0])
+		m, _ = strconv.Atoi(parts[1])
+		y, _ = strconv.Atoi(parts[2])
+	}
+	days := 31
+	switch m {
+	case 2:
+		days = 28
+		if y%4 == 0 && (y%100 != 0 || y%400 == 0) {
+			days = 29
+		}
+	case 4, 6, 9, 11:
+		days = 30
+	}
+	need(ok && m >= 1 && m <= 12 && d >= 1 && d <= days,
+		"Payment request date must be a real date written DD/MM/YYYY, for example 23/11/2026 (found "+s+")")
+	pad := func(p string) string {
+		if len(p) == 1 {
+			return "0" + p
+		}
+		return p
+	}
+	return parts[2] + "-" + pad(parts[1]) + "-" + pad(parts[0])
+}
+
 // importCommand turns one row's values into the command that creates the record.
 func (r *Rules) importCommand(s *State, u *User, kind, v, files any) map[string]any {
 	t := importTypeOf(kind)
@@ -147,7 +195,7 @@ func (r *Rules) importCommand(s *State, u *User, kind, v, files any) map[string]
 	payment := func() map[string]any {
 		amount, percent := get(v, "Payment Amount"), get(v, "Payment request %")
 		need(truthy(amount) || truthy(percent), "Enter Payment Amount or Payment request %")
-		p := map[string]any{"date": get(v, "Payment request date"), "currency": get(v, "Payment currency"), "terms": get(v, "Payment terms")}
+		p := map[string]any{"date": importDate(get(v, "Payment request date")), "currency": get(v, "Payment currency"), "terms": get(v, "Payment terms")}
 		if truthy(amount) {
 			p["amount"] = importPositive(amount, "Payment Amount")
 		}

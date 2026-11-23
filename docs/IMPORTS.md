@@ -10,7 +10,7 @@ Imports create new records only. Edit existing masters through their normal form
 - Keep all template headings, including optional fields; column order and heading case may vary. Leave optional cells blank. Unknown or duplicate headings are rejected.
 - Up to 100 records and a 2 MB spreadsheet per batch. XLSX expanded content is limited to 20 MB and 500 archive entries. Use plain cells without formulas, hyperlinks or rich text.
 - Company/project fields accept a unique existing name, short code or ID. Project lookup is scoped to its company; budget lookup is scoped to that project. Supplier, approved budget and category names must match existing Master Data. Ambiguous references fail validation.
-- Currency fields use configured three-letter codes. Numbers use a decimal point with no thousands separators or currency symbols. Dates use `YYYY-MM-DD`; native Excel date cells are supported.
+- Currency fields use configured three-letter codes. Numbers use a decimal point with no thousands separators or currency symbols. Dates are day first, `DD/MM/YYYY` (for example `23/11/2026`; a one-digit day or month such as `3/4/2026` is accepted) and are stored as `YYYY-MM-DD`. Native Excel date cells are supported, and the Excel template formats its date column as `dd/mm/yyyy`. A CSV saved from Excel uses the computer's regional date format, so check that it is day first before importing.
 - Imports retain the signed-in user's company access and team. Demo imports remain fictional, browser-local records; demo role switching is only a testing tool.
 
 ## Master fields

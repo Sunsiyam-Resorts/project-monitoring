@@ -1,4 +1,4 @@
-import { actionLabel } from "../lib/format.js";
+import { actionLabel, dayOf } from "../lib/format.js";
 import { Empty } from "./ui.jsx";
 import { SegmentBar } from "./Charts.jsx";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ export function ActivityCard({ activity, note = "Approvals, payments and changes
               <li key={x.id || i} className="activity-entry grid grid-cols-[80px_minmax(0,1fr)] items-start gap-4 border-t border-border px-6 py-4 max-sm:grid-cols-[70px_minmax(0,1fr)] max-sm:px-5">
                 <time dateTime={x.at} className="flex flex-col">
                   <b className="font-display text-2xl leading-none font-semibold tracking-tight tabular max-sm:text-[21px]">{d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</b>
-                  <small className="mt-1 text-[11px] whitespace-nowrap text-muted-foreground tabular">{`${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en-GB", { month: "short" })} ${d.getFullYear()}`}</small>
+                  <small className="mt-1 text-[11px] whitespace-nowrap text-muted-foreground tabular">{dayOf(d)}</small>
                 </time>
                 <div className="min-w-0">
                   <strong className="block pt-0.5 text-sm font-semibold">{actionLabel(x.action)}</strong>

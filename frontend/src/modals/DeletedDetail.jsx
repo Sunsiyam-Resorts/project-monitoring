@@ -4,7 +4,7 @@ import { Badge, DataTable, Detail, DetailGrid, FileList, Help, text } from "../c
 import { ActionRow, DetailSection, Notice, RecordLead, RecordTop } from "../components/detail.jsx";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/tables.jsx";
 import { CategoryTable, ReviewHistory } from "../components/Records.jsx";
-import { date, fmt } from "../lib/format.js";
+import { date, fmt, shortDate } from "../lib/format.js";
 import { allOrders, allRequests, deletedRecord, nameOf } from "../lib/selectors.js";
 import { useApp, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
@@ -79,12 +79,12 @@ export function DeletedDetail({ id, kind }) {
       <RecordTop number={x.number}><div className="flex gap-1.5"><Badge status={x.status} /><Badge status="Deleted" /></div></RecordTop>
       {notice}
       <RecordLead eyebrow={`Requested payment · ${x.percent}% at creation`} currency={currency} amount={fmt(x.amount)} note={text(x.terms)}
-        side={<><small>Full order amount</small><strong>{`${text(o.currency)} ${fmt(o.total)}`}</strong><small>{`Request date ${text(x.date)}`}</small></>} />
+        side={<><small>Full order amount</small><strong>{`${text(o.currency)} ${fmt(o.total)}`}</strong><small>{`Request date ${shortDate(x.date)}`}</small></>} />
       {restore}
       {grid}
       {x.payment ? (
         <>
-          <Notice tone="success" title={`Paid ${currency} ${fmt(x.payment.amount)}`}>{`${text(x.payment.date)} · ${text(x.payment.type)} · ${text(x.payment.by)}`}</Notice>
+          <Notice tone="success" title={`Paid ${currency} ${fmt(x.payment.amount)}`}>{`${shortDate(x.payment.date)} · ${text(x.payment.type)} · ${text(x.payment.by)}`}</Notice>
           {x.payment.files?.length ? <div className="mt-3"><FileList files={x.payment.files} kind="payment" id={id} /></div> : null}
         </>
       ) : null}

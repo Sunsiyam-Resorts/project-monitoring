@@ -81,14 +81,19 @@ Company access grants visibility; Finance role grants payment processing. Any Fi
 
 Single role per user: Requester, Finance, Viewer, Admin. Users have explicit company access or full group access. Full group users can inspect all companies and projects; role still controls actions. Admin manages all configuration. Master data, User Manager and Settings are Admin-only in this release. Requesters see and create their team's requests within company access; they can edit their own drafts only. Group scope updates automatically when new companies are added.
 
-Admin creates username, email and initial password (minimum 12 characters). Sign-in requires password plus mandatory authenticator TOTP. First sign-in enrols TOTP after successful password verification. Email OTP resets password without removing TOTP. Sessions are revoked on password reset, Admin user changes and logout.
+Admin creates username, email and initial password (minimum 12 characters). Sign-in requires password plus mandatory authenticator TOTP. First sign-in enrols TOTP after successful password verification. Email OTP resets password without removing TOTP.
+
+Sessions:
+- Each session is stored in PostgreSQL (`portal_sessions`) with when it started (`created`), when the user was last active (`last_active`), when it expires and, if it ended early, why (`ended`: signed out, inactive in the browser, password reset, or sign-in details changed by an Admin). A row past its expiry with no reason ended on the server after inactivity. Ended sessions are kept for 90 days as a record of sign-ins, then removed.
+- Sign out ends only that browser's session; the same user's other browsers and devices stay signed in.
+- A password reset ends all of the user's sessions. An Admin change ends them only when it changes how the user signs in: a new password, a new username or deactivation. Other changes (name, email, role, company access) keep the user signed in and apply at once, because every request reads the current user record.
 
 Inactivity sign-out:
 - A user is signed out after 15 minutes of inactivity, and never while active. There is no fixed session length; the session cookie lasts until the browser is closed.
-- Activity means pointer, key, wheel, touch or scroll input in any of the portal's tabs in that browser, or a request the user makes.
-- While the user is active, the browser sends a keep-alive at most once a minute. The 30-second background refresh is marked `X-Portal-Background` and does not count, so it never keeps an idle session open.
+- Activity means pointer, key, wheel, touch or scroll input in any of the portal's tabs in that browser, a portal tab that stays visible on screen (so reading a record counts), or a request the user makes. A tab that is hidden (another tab selected, the window minimised or covered, or the screen locked) does not count.
+- While the user is active, the browser sends a keep-alive at most once a minute, which silently renews the session on the server. The 30-second background refresh is marked `X-Portal-Background` and does not count, so it never keeps an idle session open.
 - The server enforces the same rule: each session expires 15 minutes after its last activity (`store.SessionIdleMinutes`). The browser signs out at 15 minutes, ends only that browser's session (`end-session`), and the sign-in screen says why.
-- A computer that sleeps longer than 15 minutes returns to the sign-in screen.
+- A computer that sleeps longer than 15 minutes returns to the sign-in screen, even with the portal visible: time asleep is not counted as activity.
 - The browser-only demo has no session and is not signed out. Refreshing the page keeps the demo open in that tab, on the same page and demo user, until Sign out. Recovery from a lost authenticator needs an operational policy before wider rollout; there is no insecure bypass button.
 
 ERP single sign-on: users signed in to the ERP open the portal from the ERP sidebar. The ERP signs a 60-second, single-use HMAC-SHA256 token with the user's email; the portal matches an existing active user by email (never creates one) and starts a normal session. By decision, this path trusts the ERP sign-in completely and skips the portal password and TOTP, so its security depends on the ERP's authentication and on the shared `ERP_SSO_SECRET`. This is acceptable because ERP sign-in uses Microsoft SSO with the Microsoft Authenticator enforced; if the ERP ever allows sign-in without enforced MFA (e.g. plain email/password), restore portal TOTP on this path. It is disabled when that secret is not set. Each ERP sign-in is audited as "Signed in via ERP".

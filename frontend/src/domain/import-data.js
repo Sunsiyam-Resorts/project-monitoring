@@ -64,7 +64,8 @@ export function excelRows(kind, workbook) {
     const row = [];
     for (let j = 1; j <= sheet.columnCount; j++) {
       const v = sheet.getCell(i, j).value;
-      if (v instanceof Date) row.push(v.toISOString().slice(0, 10));
+      // A native Excel date cell becomes DD/MM/YYYY, the format typed dates use.
+      if (v instanceof Date) row.push(v.toISOString().slice(0, 10).split('-').reverse().join('/'));
       else {
         requireValue(v === null || typeof v !== 'object', `Row ${i}: use plain values without formulas, links or rich text`);
         row.push(v ?? '');
@@ -111,12 +112,24 @@ function categories(value) {
   });
 }
 
+// Import dates are written day first, DD/MM/YYYY (day and month may be one digit), and stored
+// as YYYY-MM-DD like every other date. A blank date stays blank and defaults to today.
+function importDate(value) {
+  const s = String(value ?? '').trim();
+  if (!s) return '';
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  const [d, mo, y] = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
+  const days = mo === 2 ? (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28) : [4, 6, 9, 11].includes(mo) ? 30 : 31;
+  requireValue(m && mo >= 1 && mo <= 12 && d >= 1 && d <= days, `Payment request date must be a real date written DD/MM/YYYY, for example 23/11/2026 (found ${s})`);
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
 export function importCommand(s, u, kind, v, files = []) {
   requireValue(importFields[kind], 'Invalid import type');
   requireValue(Object.keys(v).length === importFields[kind].length && Object.keys(v).every(k => importFields[kind].includes(k)), 'Use the template columns only');
   const payment = () => {
     requireValue(v['Payment Amount'] || v['Payment request %'], 'Enter Payment Amount or Payment request %');
-    const p = { date: v['Payment request date'], currency: v['Payment currency'], terms: v['Payment terms'] };
+    const p = { date: importDate(v['Payment request date']), currency: v['Payment currency'], terms: v['Payment terms'] };
     if (v['Payment Amount']) p.amount = positive(v['Payment Amount'], 'Payment Amount');
     if (v['Payment request %']) p.percent = positive(v['Payment request %'], 'Payment request %');
     // One input avoids silently accepting conflicting amount/percentage values.

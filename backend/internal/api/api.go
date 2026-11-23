@@ -274,7 +274,9 @@ func (h *handler) try(w http.ResponseWriter, r *http.Request, action string, q q
 		}
 		switch action {
 		case "logout":
-			if err := tx.DeleteSessions(ctx, domain.DynString(u.ID)); err != nil {
+			// Signing out ends this browser's session only: the user's other browsers and
+			// devices stay signed in.
+			if err := tx.EndSession(ctx, auth.Hash(sessionCookie(r)), store.SessionSignedOut); err != nil {
 				return err
 			}
 			w.Header().Set("Set-Cookie", "portal_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
@@ -286,7 +288,7 @@ func (h *handler) try(w http.ResponseWriter, r *http.Request, action string, q q
 			return nil
 		case "end-session":
 			// Signed out after inactivity: ends this browser's session only.
-			if err := tx.DeleteSession(ctx, auth.Hash(sessionCookie(r))); err != nil {
+			if err := tx.EndSession(ctx, auth.Hash(sessionCookie(r)), store.SessionInactive); err != nil {
 				return err
 			}
 			w.Header().Set("Set-Cookie", "portal_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
@@ -326,6 +328,7 @@ func (h *handler) try(w http.ResponseWriter, r *http.Request, action string, q q
 func (h *handler) command(ctx context.Context, tx store.Tx, s *domain.State, u *domain.User, cmd any) error {
 	data := domain.Get(cmd, "data")
 	userSave := domain.StrictEqual(domain.Get(cmd, "type"), "user.save")
+	var before *signIn // the saved user's sign-in details before the change
 	if userSave {
 		if !domain.StrictEqual(domain.DynString(u.Role), "Admin") {
 			return apiError("Admin required")
@@ -334,6 +337,12 @@ func (h *handler) command(ctx context.Context, tx store.Tx, s *domain.State, u *
 		exists := slices.ContainsFunc(s.Users, func(x *domain.User) bool { return domain.StrictEqual(domain.DynString(x.ID), id) })
 		if !exists && !domain.Truthy(domain.Get(data, "password")) {
 			return apiError("Initial password required")
+		}
+		for _, x := range s.Users {
+			if domain.StrictEqual(domain.DynString(x.ID), id) {
+				before = &signIn{username: domain.String(domain.DynString(x.Username)), active: domain.Truthy(domain.Field(x, "active"))}
+				break
+			}
 		}
 	}
 	if err := h.Rules.Apply(s, u, cmd, h.now()); err != nil {
@@ -356,18 +365,31 @@ func (h *handler) command(ctx context.Context, tx store.Tx, s *domain.State, u *
 	if x == nil {
 		return apiError("Cannot read properties of undefined (reading 'id')")
 	}
-	if password := domain.Get(data, "password"); domain.Truthy(password) {
+	password := domain.Get(data, "password")
+	if domain.Truthy(password) {
 		hash, err := auth.PasswordHash(password)
 		if err != nil {
 			return err
 		}
 		x.PasswordHash = &hash
 	}
-	// Admin changes to a user end that user's sessions and pending sign-ins.
-	if err := tx.DeleteSessions(ctx, domain.DynString(x.ID)); err != nil {
+	// Changes to how the user signs in (a new password, a new username, or deactivation) end
+	// the user's sessions and pending sign-ins. Other changes, such as role or company access,
+	// leave them signed in: every request reads the current user record, so they apply at once.
+	if before != nil && !domain.Truthy(password) && before.username == domain.String(domain.DynString(x.Username)) &&
+		(!before.active || domain.Truthy(domain.Field(x, "active"))) {
+		return nil
+	}
+	if err := tx.EndSessions(ctx, domain.DynString(x.ID), store.SessionUserChanged); err != nil {
 		return err
 	}
 	return tx.DeleteUserChallenges(ctx, domain.DynString(x.ID))
+}
+
+// signIn is what decides whether a user change ends the user's sessions.
+type signIn struct {
+	username string
+	active   bool
 }
 
 // sso signs in an active user named by a valid ERP token (see docs/SPECIFICATION.md,
@@ -565,7 +587,7 @@ func (h *handler) resetFinish(ctx context.Context, b any) (int, object, error) {
 			return err
 		}
 		u.PasswordHash = &hashed
-		if err := tx.DeleteSessions(ctx, domain.DynString(u.ID)); err != nil {
+		if err := tx.EndSessions(ctx, domain.DynString(u.ID), store.SessionPasswordReset); err != nil {
 			return err
 		}
 		if err := tx.DeleteChallengeAndUserChallenges(ctx, hash, domain.DynString(u.ID)); err != nil {

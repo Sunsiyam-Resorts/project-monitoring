@@ -297,9 +297,25 @@ func TestSignInStateCommandsFilesAndLogout(t *testing.T) {
 	var financeSecret string
 	financeCookie := f.signIn("finance", "Fictional-Finance-1", &financeSecret)
 	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+user+`}}`, financeCookie), 400, "Admin required")
-	// An Admin change to the user ends that user's sessions.
-	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+strings.Replace(user, "Fictional Finance", "Fictional Finance Officer", 1)+`}}`, cookie), 200, "")
+	// Other Admin changes, such as the name or company access, keep the user signed in and
+	// apply at once; a new password, a new username or deactivation ends the user's sessions.
+	renamed := strings.Replace(user, "Fictional Finance", "Fictional Finance Officer", 1)
+	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+renamed+`}}`, cookie), 200, "")
+	expect(t, f.get("state", financeCookie), 200, "")
+	if got := body(t, f.get("state", financeCookie))["user"].(map[string]any)["name"]; got != "Fictional Finance Officer" {
+		t.Fatalf("renamed user: %v", got)
+	}
+	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+renamed+`,"password":"Fictional-Finance-2"}}`, cookie), 200, "")
 	expect(t, f.get("state", financeCookie), 401, "Sign in required")
+	financeCookie = f.signIn("finance", "Fictional-Finance-2", &financeSecret)
+	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+strings.Replace(renamed, `"username":"finance"`, `"username":"finance.officer"`, 1)+`}}`, cookie), 200, "")
+	expect(t, f.get("state", financeCookie), 401, "Sign in required")
+	financeCookie = f.signIn("finance.officer", "Fictional-Finance-2", &financeSecret)
+	expect(t, f.post("command", `{"type":"user.save","data":{"record":`+strings.Replace(renamed, `"username":"finance"`, `"username":"finance.officer","active":false`, 1)+`}}`, cookie), 200, "")
+	expect(t, f.get("state", financeCookie), 401, "Sign in required")
+
+	// Signing out ends this browser's session only: the same user elsewhere stays signed in.
+	elsewhere := f.signIn("fictional.admin", adminPassword, &secret)
 
 	rec = f.post("logout", "{}", cookie)
 	expect(t, rec, 200, "")
@@ -307,6 +323,7 @@ func TestSignInStateCommandsFilesAndLogout(t *testing.T) {
 		t.Fatalf("logout: %s %q", rec.Body.String(), rec.Header().Get("Set-Cookie"))
 	}
 	expect(t, f.get("state", cookie), 401, "Sign in required")
+	expect(t, f.get("state", elsewhere), 200, "")
 
 	f.env["NODE_ENV"] = "production"
 	rec = f.post("login", `{"username":"fictional.admin","password":"`+adminPassword+`"}`, "")

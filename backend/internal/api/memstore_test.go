@@ -145,12 +145,12 @@ func (t *memTx) SessionUser(ctx context.Context, h string, touch bool) (any, err
 	return s.userID, nil
 }
 
-func (t *memTx) DeleteSession(ctx context.Context, h string) error {
+func (t *memTx) EndSession(ctx context.Context, h string, reason string) error {
 	delete(t.sessions, h)
 	return nil
 }
 
-func (t *memTx) DeleteSessions(ctx context.Context, userID any) error {
+func (t *memTx) EndSessions(ctx context.Context, userID any, reason string) error {
 	for h, s := range t.sessions {
 		if domain.StrictEqual(s.userID, userID) {
 			delete(t.sessions, h)

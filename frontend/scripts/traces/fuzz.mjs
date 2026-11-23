@@ -420,7 +420,7 @@ function importCommand(s) {
       case 'Description': return 'Imported fictional works';
       case 'Budget category allocations': return pick(['Civil:1000', 'Civil:500 | MEP:500', 'Fit-out:1000', 'Civil:999', 'Unknown:1000']);
       case 'Supporting PDFs': return pick(['', 'doc-1.pdf', 'doc-1.pdf | missing.pdf', 'doc-1.pdf||']);
-      case 'Payment request date': return pick(['', '2026-03-01', '2026-13-01']);
+      case 'Payment request date': return pick(['', '01/03/2026', '1/3/2026', '29/02/2028', '31/04/2026', '01/13/2026', '2026-03-01', '00/03/2026', ' 5/11/2026 ']);
       case 'Payment currency': return pick(['', 'USD', 'MVR']);
       case 'Payment request %': return pick(['', '25', '150', 'x']);
       case 'Payment Amount': return pick(['', '', '100', '-1']);

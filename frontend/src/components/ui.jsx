@@ -1,10 +1,11 @@
 // Shared app compositions, built only from the shadcn components in ./ui (customised to the
 // portal theme): page headers, status chips, empty states, tables, disclosures, form fields
 // and selects. Add new building blocks here by composing shadcn components, never from scratch.
-import { Children, cloneElement, createContext, isValidElement, useContext, useId, useRef, useState } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useId, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { Icon } from "./Icon.jsx";
 import { useApp, useAppState } from "../lib/store.js";
+import { isoDay, parseDay, shortDate } from "../lib/format.js";
 import { cn } from "@/lib/utils";
 import { Badge as ShadcnBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 // Legacy templates escaped optional values to "" rather than "undefined".
 export const text = (v) => String(v ?? "");
@@ -212,7 +216,7 @@ export function FormSelect({
 }
 
 const CONTROLS = ["input", "textarea"];
-const isControl = (c) => isValidElement(c) && (c.type === Input || c.type === FormSelect || c.type === TextArea || c.type === FileDrop || c.type === ShadcnInput || c.type === Textarea || CONTROLS.includes(c.type));
+const isControl = (c) => isValidElement(c) && (c.type === Input || c.type === FormSelect || c.type === TextArea || c.type === FileDrop || c.type === DateInput || c.type === ShadcnInput || c.type === Textarea || CONTROLS.includes(c.type));
 
 const fileSize = (bytes) => (bytes < 1048576 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`);
 
@@ -308,6 +312,67 @@ export const Section = ({ number, title, description = "", children }) => (
 export const FieldGrid = ({ className, children }) => (
   <div className={cn("grid2 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2", className)}>{children}</div>
 );
+
+// A day-first date field (shadcn InputGroup, Popover and Calendar): type DD/MM/YYYY or pick a
+// day from the calendar button. The day is kept as YYYY-MM-DD in a hidden input named `name`,
+// so forms submit it as before. With onChange it is controlled by `value` (filters); without,
+// `value` is the starting day (forms). Text that is not a real date in range blocks the form
+// with a message naming the field; in a filter it is simply not applied.
+const toDate = (iso) => (iso ? new Date(`${iso}T00:00:00`) : undefined);
+export function DateInput({ id, name, value, onChange, required, min, max, disabled, className, "aria-label": ariaLabel, "aria-describedby": describedBy }) {
+  const [own, setOwn] = useState(value == null ? "" : String(value));
+  const day = onChange ? (value == null ? "" : String(value)) : own;
+  const [draft, setDraft] = useState(null);
+  const [open, setOpen] = useState(false);
+  const field = useRef(null);
+  const inRange = (d) => (!min || d >= min) && (!max || d <= max);
+  const typed = draft === null ? null : draft.trim() ? parseDay(draft) : "";
+  const problem = draft === null || typed === "" || (typed && inRange(typed)) ? ""
+    : typed && max && typed > max ? `Enter a date no later than ${shortDate(max)}`
+    : typed && min && typed < min ? `Enter a date no earlier than ${shortDate(min)}`
+    : "Enter the date as DD/MM/YYYY, for example 23/11/2026";
+  // Runs after every render, so after the form's input handler has cleared custom messages.
+  useEffect(() => { field.current?.setCustomValidity(problem); });
+
+  function set(next) {
+    if (onChange) onChange(next);
+    else setOwn(next);
+  }
+  function type(entry) {
+    setDraft(entry);
+    const next = entry.trim() ? parseDay(entry) : "";
+    if (next === "" || (next && inRange(next))) set(next);
+  }
+  function pick(d) {
+    setOpen(false);
+    setDraft(null);
+    if (d) set(isoDay(d));
+    field.current?.focus();
+  }
+
+  return (
+    <>
+      <InputGroup className={cn("date-input h-11", className)} data-disabled={disabled || undefined}>
+        <InputGroupInput ref={field} id={id} inputMode="numeric" autoComplete="off" placeholder="DD/MM/YYYY" required={required} disabled={disabled}
+          value={draft ?? shortDate(day)} onChange={(e) => type(e.target.value)} onBlur={() => { if (!problem) setDraft(null); }}
+          aria-label={ariaLabel} aria-describedby={describedBy} aria-invalid={problem ? "true" : undefined} className="text-[13px] tabular" />
+        <InputGroupAddon align="inline-end">
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <InputGroupButton size="icon-sm" disabled={disabled} aria-label="Choose a date from the calendar"><Icon name="calendar" /></InputGroupButton>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-auto overflow-hidden p-0">
+              <Calendar mode="single" captionLayout="dropdown" selected={toDate(typed || day)} defaultMonth={toDate(typed || day || max)}
+                startMonth={new Date(2015, 0)} endMonth={new Date(new Date().getFullYear() + 5, 11)}
+                disabled={[min && { before: toDate(min) }, max && { after: toDate(max) }].filter(Boolean)} onSelect={pick} />
+            </PopoverContent>
+          </Popover>
+        </InputGroupAddon>
+      </InputGroup>
+      {name ? <input type="hidden" name={name} value={day} /> : null}
+    </>
+  );
+}
 
 // A text input with the legacy defaults: always a value, type text unless given.
 export const Input = ({ name, value, type = "text", className, ...rest }) => (

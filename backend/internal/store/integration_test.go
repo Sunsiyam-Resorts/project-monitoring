@@ -264,12 +264,19 @@ func TestPostgreSQLIntegration(t *testing.T) {
 		t.Fatalf("file: %s", r.body)
 	}
 
-	// Logout ends the session.
+	// Logout ends the session; its row stays as a record of when it started, was last
+	// active and why it ended.
 	r = p.want(p.call("POST", "action=logout", "{}", cookie), 200, "")
 	if r.header["Set-Cookie"][0] != "portal_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" {
 		t.Fatalf("logout cookie: %v", r.header["Set-Cookie"])
 	}
 	p.want(p.call("GET", "action=state", "", cookie), 401, "Sign in required")
+	var ended string
+	var ordered bool
+	db.QueryRow(ctx, "SELECT ended, created <= last_active AND last_active <= now() FROM portal_sessions WHERE token=$1 AND expires <= now()", auth.Hash(cookie)).Scan(&ended, &ordered)
+	if ended != store.SessionSignedOut || !ordered {
+		t.Fatalf("ended session row: %q %v", ended, ordered)
+	}
 
 	// Email OTP reset: new password, sessions revoked, audited; the authenticator stays.
 	sso := ssoToken("admin@example.test", "fictional-jti-1")
@@ -289,6 +296,10 @@ func TestPostgreSQLIntegration(t *testing.T) {
 	otp := regexp.MustCompile(`OTP is (\d{6})\.`).FindStringSubmatch(p.mail[0])[1]
 	p.want(p.call("POST", "action=reset-finish", `{"challenge":"`+reset["challenge"].(string)+`","code":"`+otp+`","password":"Fictional-New-Pass-2"}`, ""), 200, "")
 	p.want(p.call("GET", "action=state", "", ssoCookie), 401, "Sign in required")
+	db.QueryRow(ctx, "SELECT ended FROM portal_sessions WHERE token=$1", auth.Hash(ssoCookie)).Scan(&ended)
+	if ended != store.SessionPasswordReset {
+		t.Fatalf("reset session row: %q", ended)
+	}
 	s = state()
 	last := s.Audit[len(s.Audit)-1]
 	if *last.Action != "Password reset" || s.Users[0].TOTPSecret == nil || !auth.PasswordOK("Fictional-New-Pass-2", s.Users[0].PasswordHash) {

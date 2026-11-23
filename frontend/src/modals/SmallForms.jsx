@@ -1,7 +1,7 @@
 // Short dialogs: reasons for workflow decisions, payment recording, requested documents,
 // restoring deleted records and project tasks.
 import { TASK_STATUSES, today } from "../domain/domain.js";
-import { Field, FieldGrid, FormSelect, Input, Section, TextArea, text } from "../components/ui.jsx";
+import { DateInput, Field, FieldGrid, FormSelect, Input, Section, TextArea, text } from "../components/ui.jsx";
 import { Notice, RecordLead } from "../components/detail.jsx";
 import { Footer, Form } from "../components/Form.jsx";
 import { fmt } from "../lib/format.js";
@@ -60,7 +60,7 @@ export function PayForm({ id }) {
         <div className="grid gap-7">
         <Section number="01" title="Payment details">
           <FieldGrid>
-            <Field label="Payment date"><Input name="paymentDate" value={today()} type="date" required max={today()} /></Field>
+            <Field label="Payment date"><DateInput name="paymentDate" value={today()} required max={today()} /></Field>
             <Field label="Payment type"><FormSelect name="paymentType" id="paymentType" required defaultValue="Transfer" options={["Transfer", "Cheque", "TT"].map((x) => ({ value: x, label: x }))} /></Field>
           </FieldGrid>
         </Section>
@@ -120,7 +120,7 @@ export function TaskForm({ projectId, id }) {
           <FieldGrid>
             <Field label="Task name" wide><Input name="name" value={t?.name} required maxLength={120} /></Field>
             <Field label="Status"><FormSelect name="status" id="taskStatus" defaultValue={t?.status || "To do"} options={TASK_STATUSES.map((x) => ({ value: x, label: x }))} /></Field>
-            <Field label="Due date · optional"><Input name="due" value={t?.due} type="date" /></Field>
+            <Field label="Due date · optional"><DateInput name="due" value={t?.due} /></Field>
             <Field label="Owner · optional" wide><Input name="owner" value={t?.owner} maxLength={80} /></Field>
           </FieldGrid>
         </Section>

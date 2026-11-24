@@ -1,4 +1,4 @@
-import { budgetAmount, categoryUsed, isFinanceAdmin } from "../domain/domain.js";
+import { budgetAmount, categoryUsed, masterKinds } from "../domain/domain.js";
 import { Icon } from "../components/Icon.jsx";
 import { Empty, Help, PageHeader, RegionLabel } from "../components/ui.jsx";
 import { FiguresTable, TableCell, TableRow } from "../components/tables.jsx";
@@ -75,7 +75,7 @@ export function Budgets() {
   const { actions } = useApp();
   const { state, user } = useData();
   const { company, budgetSearch } = useAppState();
-  const canManage = isFinanceAdmin(user);
+  const canManage = masterKinds(user).includes("budgets");
   const q = budgetSearch.trim().toLowerCase();
   const all = state.budgets.filter((b) => !company || b.companyId === company);
   const shown = all

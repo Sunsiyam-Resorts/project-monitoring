@@ -19,8 +19,18 @@
 - **Balance to request:** the tab shows each order's Balance Amount (still to be requested, in the order's currency) next to its Total Amount.
 - **Budgets page:**
   - It lists every approved budget in the selected company scope, with its Approved Budget, Budget Utilized, Available Budget and share utilized in USD, and each category's approved, utilized and available amounts.
-  - Finance and Admin can add and revise budgets from it, using the Master Data budget form.
+  - Admin can add and revise budgets from it, using the Master Data budget form (Finance could too until Revision 6).
   - The Dashboard shortcuts link to it.
+
+**Revision 6 (24 November 2026) supersedes everything below where they differ.**
+
+- **Admin processes any request:** Admin may hold, release, pay, reject, return and ask for documents on any payment request, and approve any amendment, including ones it raised or imported itself. The separation of duties stays for Finance: a Finance user never processes a request or amendment they raised.
+- **Finance and master data:** Finance opens Master Data for Suppliers only, and adds, edits and imports suppliers. Companies, projects, approved budgets (and their revisions) and currencies are Admin's alone; Finance does not see them in Master Data, and the Budgets and Projects pages offer no add, revise or edit actions to Finance. The server refuses any other master data change or import from Finance.
+- **Audit trail:** only Admin opens the Audit Log. The server sends Finance, like Viewer, only the audit entries of records in its companies, which feed Recent activity on the Dashboard and project pages; entries without a company (master data, users, settings, imports, sign-ins) go to Admin only.
+- **Payment updates by import:** each payment request's system-generated reference (its number, for example `FLR-VU-PAY-000001`) identifies it for a payment update import (see [IMPORTS.md](IMPORTS.md)):
+  - Finance and Admin download a template already listing the payment requests they can process (with Finance or On Hold), with read-only context, and fill in New status (Paid, On Hold or Rejected) on the rows to change.
+  - Paid needs a payment type and a payment date no later than today, and releases a hold first; On Hold and Rejected need a remark as the reason.
+  - Each row becomes the same actions taken one by one (release, remark, pay, hold or reject) with their usual checks, locks and audit entries, and the whole file is refused if any row fails.
 
 The approved first-review contract is documented in [REVIEW-1.md](REVIEW-1.md). It supersedes the earlier testing-release rules below where they differ, including Planning approvals, financial calculations, amendments, payment deletion, numbering and currencies.
 

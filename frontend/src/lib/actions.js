@@ -9,7 +9,7 @@ import { api } from "./api.js";
 import { IDLE_MINUTES } from "./idle.js";
 import { csvExport, downloadPDF, readFiles, readPDF } from "./files.js";
 import { importTemplate } from "./excel.js";
-import { allowedPages, deletedRecord } from "./selectors.js";
+import { allowedPages, deletedRecord, paymentUpdateRows } from "./selectors.js";
 import { emptyAuditFilter } from "./store.js";
 
 export const STORE_KEY = "ss-project-monitoring-demo-v1";
@@ -626,8 +626,12 @@ export function createActions(store) {
     newTask: g((projectId) => taskForm(projectId)), editTask: g((id) => taskForm(null, id)),
     deleteTask: g((id) => showModal("taskDelete", { id })),
     taskStatus: g(taskStatus, "success"),
-    importForm: g(() => { const s = get(); showModal("importForm", { kinds: s.page === "master" ? [s.masterTab] : ["orders", "payments"] }); }),
-    importTemplate: g(importTemplate),
+    importForm: g(() => { const s = get(); showModal("importForm", { kinds: s.page === "master" ? [s.masterTab] : ["orders", "payments", "paymentUpdates"] }); }),
+    // The payment update template comes filled with the payment requests the user can process.
+    importTemplate: g((kind, asExcel) => {
+      const s = get();
+      return importTemplate(kind, asExcel, kind === "paymentUpdates" ? paymentUpdateRows(s.state, s.user) : []);
+    }),
     newMaster: g(() => masterForm()), editMaster: g((id) => masterForm(id)),
     newUser: g(() => showModal("userForm", {})), editUser: g((id) => showModal("userForm", { id })),
     unlock: g(unlock), fileDownload: g(fileDownload),

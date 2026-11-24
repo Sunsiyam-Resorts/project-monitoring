@@ -13,6 +13,8 @@ import {
   currencyStats,
   supportingFile,
   projectProgress,
+  masterKinds,
+  MASTER_KINDS,
 } from "../src/domain/domain.js";
 import { demoState } from "../src/domain/demo.js";
 const now = Date.parse("2026-10-14T12:00:00Z");
@@ -98,8 +100,10 @@ test("Admin and Finance can raise requests; each payment request goes to Finance
   x.lock(x.admin, r.id);
   assert.throws(() => x.run(x.admin, "request.submit", r.id), /draft/);
   assert.throws(() => x.run(x.admin, "request.approve", r.id), /Unknown request action/);
-  // Nobody pays a request they raised themselves.
-  assert.throws(() => x.run(x.admin, "request.pay", r.id, { paymentDate: "2026-10-14", paymentType: "TT", files: x.payload.files }), /Finance role/);
+  // Admin may process a request it raised itself: it also enters and imports records for others.
+  x.run(x.admin, "request.pay", r.id, { paymentDate: "2026-10-14", paymentType: "TT", files: x.payload.files });
+  assert.equal(r.status, "Paid");
+  assert.equal(r.payment.userId, x.admin.id);
   assert.throws(() => x.run(x.admin, "request.edit", r.id, { percent: 50 }), /draft/);
   x.lock(x.admin, o.id);
   x.run(x.admin, "request.create", null, { orderId: o.id, percent: 20 });
@@ -108,12 +112,10 @@ test("Admin and Finance can raise requests; each payment request goes to Finance
   x.run(x.admin, "order.amend", o.id, { ...x.payload, po: o.po, invoice: o.invoice, description: "Admin proposed correction", reason: "Population correction" });
   assert.equal(o.description, x.payload.description);
   assert.equal(o.amendment.status, "Finance");
-  assert.throws(() => x.run(x.admin, "amendment.approve", o.id), /cannot review/);
-  x.run(x.admin, "unlock", o.id);
-  x.lock(x.finance, o.id);
-  x.run(x.finance, "amendment.approve", o.id);
+  x.run(x.admin, "amendment.approve", o.id);
   assert.equal(o.description, "Admin proposed correction");
-  // Finance can raise an order too; a different Finance user pays it.
+  x.run(x.admin, "unlock", o.id);
+  // Finance can raise an order too, but never processes it: a different Finance user pays it.
   x.run(x.finance, "order.create", null, { ...x.payload, po: "FIN-PO", invoice: "FIN-INV", payment: { percent: 50 } });
   const fr = x.s.requests.at(-1);
   x.lock(x.finance, fr.id);
@@ -425,14 +427,20 @@ test("Budget revisions keep prior approved values and demand reason", () => {
   });
   assert.equal(x.s.budgets[0].revisions[0].categories[0].amount, 900000);
 });
-test("Finance and Admin manage master data and budgets; only Admin manages users and settings", () => {
+test("Admin manages all master data; Finance manages suppliers only; only Admin manages users and settings", () => {
   const x = setup();
-  x.run(x.finance, "master.save", null, { kind: "companies", record: { name: "Finance Co", code: "FCO" } });
-  assert.ok(x.s.companies.some((c) => c.code === "FCO"));
+  x.run(x.admin, "master.save", null, { kind: "companies", record: { name: "Admin Co", code: "ACO" } });
+  assert.ok(x.s.companies.some((c) => c.code === "ACO"));
   const b = structuredClone(x.s.budgets[0]);
   b.categories[0].amount = 950000;
-  x.run(x.finance, "master.save", null, { kind: "budgets", record: b, reason: "Finance revision" });
-  assert.equal(x.s.budgets[0].revisions.at(-1).by, x.finance.name);
+  x.run(x.admin, "master.save", null, { kind: "budgets", record: b, reason: "Admin revision" });
+  assert.equal(x.s.budgets[0].revisions.at(-1).by, x.admin.name);
+  x.run(x.finance, "master.save", null, { kind: "suppliers", record: { name: "Finance Supplier", email: "" } });
+  assert.ok(x.s.suppliers.some((v) => v.name === "Finance Supplier"));
+  for (const kind of ["companies", "projects", "budgets", "currencies"])
+    assert.throws(() => x.run(x.finance, "master.save", null, { kind, record: { ...x.s[kind][0], name: "Changed by Finance" }, reason: "x" }), /suppliers only/);
+  assert.deepEqual(masterKinds(x.finance), ["suppliers"]);
+  assert.deepEqual(masterKinds(x.admin), MASTER_KINDS);
   for (const u of [x.planner, x.viewer])
     assert.throws(() => x.run(u, "master.save", null, { kind: "companies", record: { name: "X", code: "XX" } }), /Finance or Admin/);
   assert.throws(() => x.run(x.finance, "settings.save", null, {}), /Admin/);
@@ -1109,4 +1117,13 @@ test("Planning sees projects and tasks only, and cannot raise requests or touch 
   x.run(x.requester, "unlock", x.r.id);
   assert.throws(() => x.run(x.planner, "lock", x.r.id), /Record not available/);
   assert.throws(() => supportingFile(x.s, x.planner, { id: x.o.id, kind: "order" }, now), /Record not available/);
+});
+
+test("Finance receives only the audit entries of its companies' records; Admin receives the whole audit trail", () => {
+  const x = setup();
+  x.run(x.admin, "master.save", null, { kind: "suppliers", record: { name: "Audited Supplier", email: "" } });
+  assert.ok(x.s.audit.some((a) => !a.companyId));
+  const seen = visibleState(x.s, x.finance).audit;
+  assert.ok(seen.length && seen.every((a) => a.companyId));
+  assert.equal(visibleState(x.s, x.admin).audit.length, x.s.audit.length);
 });

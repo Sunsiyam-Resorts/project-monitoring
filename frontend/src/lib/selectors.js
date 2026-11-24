@@ -1,5 +1,6 @@
 // Read-only derivations over the visible workspace state, shared by pages and dialogs.
-import { canManageRequest, isFinanceAdmin, stageActor } from "../domain/domain.js";
+import { canManageRequest, isFinanceAdmin, masterKinds, stageActor } from "../domain/domain.js";
+import { PAYMENT_UPDATE_TEMPLATE_ROWS } from "../domain/import-data.js";
 
 // Planning works on project tasks only; every other role sees the financial workspace.
 export const isPlanning = (user) => user?.role === "Planning";
@@ -9,9 +10,12 @@ export const isPlanning = (user) => user?.role === "Planning";
 export function allowedPages(user) {
   if (isPlanning(user)) return ["projects", "project"];
   return ["dashboard", "projects", "project", "budgets", "requests",
-    ...(isFinanceAdmin(user) ? ["master", "audit"] : []),
-    ...(user?.role === "Admin" ? ["users", "deleted", "settings"] : [])];
+    ...(isFinanceAdmin(user) ? ["master"] : []),
+    ...(user?.role === "Admin" ? ["users", "audit", "deleted", "settings"] : [])];
 }
+
+// The Master Data tabs a role may open: every kind for Admin, Suppliers only for Finance.
+export const masterTabs = (user) => masterKinds(user);
 
 export const nameOf = (state, kind, id) => state[kind].find((x) => x.id === id)?.name || "—";
 
@@ -22,6 +26,19 @@ export function amendmentAttention(user, o) {
 
 export function attention(user, r) {
   return (["Draft", "Documents Required"].includes(r.status) && canManageRequest(user, r)) || stageActor(user, r);
+}
+
+// The payment update template's rows: each payment request the user can process now (with
+// Finance or On Hold), by its system-generated reference, with read-only context to find it.
+export function paymentUpdateRows(state, user) {
+  return state.requests
+    .filter((r) => stageActor(user, r) && !state.orders.find((o) => o.id === r.orderId)?.rejectedAt)
+    .sort((a, b) => a.number.localeCompare(b.number))
+    .slice(0, PAYMENT_UPDATE_TEMPLATE_ROWS)
+    .map((r) => {
+      const o = state.orders.find((x) => x.id === r.orderId);
+      return [r.number, o?.number || "", nameOf(state, "suppliers", o?.supplierId), r.currency, r.amount, r.status, "", "", "", ""];
+    });
 }
 
 export const pendingCount = (state, user) =>

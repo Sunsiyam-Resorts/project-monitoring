@@ -160,7 +160,7 @@ func accessDyn(u *User, c any) bool {
 	return u != nil && (isTrue(u.GroupAccess) || (ok && hasCompany(u, s)))
 }
 
-// isFinanceAdmin: Finance and Admin have full operational access.
+// isFinanceAdmin: Finance and Admin have full operational access to requests and payments.
 func isFinanceAdmin(u *User) bool {
 	return u != nil && activeUser(u) && strIn(u.Role, "Finance", "Admin")
 }
@@ -173,9 +173,23 @@ func canManageRequest(u *User, companyID, requestedBy *string) bool {
 	return canCreateRequests(u) && access(u, companyID) && (isFinanceAdmin(u) || sameStr(u.ID, requestedBy))
 }
 
-// financeActor: Finance or Admin with company access, never on their own record.
+// financeActor: Finance or Admin with company access. Finance never acts on its own record
+// (separation of duties); Admin may, since it also enters and imports records for others.
 func financeActor(u *User, companyID, requestedBy *string) bool {
-	return isFinanceAdmin(u) && access(u, companyID) && !sameStr(u.ID, requestedBy)
+	return isFinanceAdmin(u) && access(u, companyID) && (is(roleOf(u), "Admin") || !sameStr(u.ID, requestedBy))
+}
+
+// masterKindsOf: master data is Admin's; Finance maintains suppliers only.
+func masterKindsOf(u *User) []string {
+	switch {
+	case u == nil || !activeUser(u):
+		return nil
+	case is(roleOf(u), "Admin"):
+		return masterKinds
+	case is(roleOf(u), "Finance"):
+		return []string{"suppliers"}
+	}
+	return nil
 }
 
 // canEditTasks: project tasks are Planning's work (Admin may also change them); Finance
@@ -557,7 +571,7 @@ func (r *Rules) visibleState(s *State, u *User) *State {
 	out.Requests = filter(out.Requests, func(c *Request) bool { return access(u, c.CompanyID) })
 	out.Audit = filter(out.Audit, func(c *AuditEntry) bool {
 		company := field(c, "companyId")
-		return (!truthy(company) || accessDyn(u, company)) && (isFinanceAdmin(u) || truthy(company))
+		return (!truthy(company) || accessDyn(u, company)) && (is(roleOf(u), "Admin") || truthy(company))
 	})
 	// Planning sees projects and their tasks only: no budgets, requests, suppliers, locks or
 	// financial history.

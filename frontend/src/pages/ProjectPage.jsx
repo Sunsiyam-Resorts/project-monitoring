@@ -1,7 +1,7 @@
 // One project: the Dashboard's overview for this project, its progress, tasks and details.
 import { Check, ChevronLeft } from "lucide-react";
 import {
-  TASK_STATUSES, access, canCreateRequests, canEditTasks, canManageRequest, categoryUsed, isFinanceAdmin,
+  TASK_STATUSES, access, canCreateRequests, canEditTasks, canManageRequest, categoryUsed, masterKinds,
   projectProgress, remainingToRequest, today,
 } from "../domain/domain.js";
 import { Icon } from "../components/Icon.jsx";
@@ -140,7 +140,7 @@ export function ProjectPage() {
     <>
       {back}
       <PageHeader title={p.name} description={`${subtitle} · Budget, payments and progress for this project.`}
-        actions={isFinanceAdmin(user) ? <Button variant="outline" data-action="editProject" data-id={p.id} onClick={() => actions.editProject(p.id)}>Edit project</Button> : null} />
+        actions={masterKinds(user).includes("projects") ? <Button variant="outline" data-action="editProject" data-id={p.id} onClick={() => actions.editProject(p.id)}>Edit project</Button> : null} />
       <Overview company={p.companyId} project={p.id} before={<ProgressCard g={g} />} />
       <div className="dashboard-bottom grid grid-cols-[minmax(0,1fr)_minmax(320px,0.46fr)] items-start gap-4 max-xl:grid-cols-1">
         <div className="project-main flex min-w-0 flex-col gap-4">

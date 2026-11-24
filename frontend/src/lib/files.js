@@ -37,6 +37,13 @@ export function downloadPDF(f) {
   download(new Blob([bytes], { type: "application/pdf" }), f.name);
 }
 
+// One quoted CSV cell. Text that a spreadsheet would run as a formula is prefixed with '.
+export function csvCell(x) {
+  let v = String(x);
+  if (/^[=+@-]/.test(v) && typeof x === "string") v = "'" + v;
+  return '"' + v.replaceAll('"', '""') + '"';
+}
+
 export function csvExport(state, company, project) {
   const rows = [
     ["Company", "Project", "Approved Budget USD", "Budget Utilized USD", "Available USD", "Paid USD", "Outstanding Payments USD", "Balance Payments Pending USD", "On Hold USD"],
@@ -47,12 +54,6 @@ export function csvExport(state, company, project) {
         return [nameOf(state, "companies", p.companyId), p.name, k.budget, k.commitment, k.available, k.paid, k.outstanding, k.balance, k.hold];
       }),
   ];
-  const csv = rows
-    .map((r) => r.map((x) => {
-      let v = String(x);
-      if (/^[=+@-]/.test(v) && typeof x === "string") v = "'" + v;
-      return '"' + v.replaceAll('"', '""') + '"';
-    }).join(","))
-    .join("\r\n");
+  const csv = rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
   download(new Blob(["﻿" + csv], { type: "text/csv" }), "Project_Financial_Summary.csv");
 }

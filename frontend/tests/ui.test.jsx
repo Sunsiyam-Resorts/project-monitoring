@@ -293,7 +293,12 @@ test("All five pages and document render, scoped role switching works", async ()
   assert.equal(w.document.querySelector("#pageTitle").textContent, "Projects");
   choose(w, "#actor", "fin");
   await flush();
-  assert.deepEqual([...w.document.querySelectorAll(NAV)].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests", "master", "audit"]);
+  // Finance opens Master Data for suppliers only, and never the Audit Log.
+  assert.deepEqual([...w.document.querySelectorAll(NAV)].map((b) => b.dataset.page), ["dashboard", "projects", "budgets", "requests", "master"]);
+  click(w, "[data-page=master]");
+  await flush();
+  assert.equal(w.document.querySelectorAll("[data-master]").length, 0);
+  assert.equal(w.document.querySelector("#masterSearch").getAttribute("placeholder"), "Search suppliers");
   click(w, "[data-page=dashboard]");
   assert.match(w.document.body.textContent, /All/);
   choose(w, "#actor", "req0");
@@ -881,7 +886,7 @@ test('CSV and Excel imports preview without saving, confirm creates masters, and
       assert.equal(saved.suppliers.at(-1).name, name);
       assert.equal(modalOpen(w), false);
       await actor(w, 'req0'); click(w, '[data-page=requests]'); click(w, '[data-action=import]');
-      assert.deepEqual([...w.document.querySelectorAll('[name=importKind] option')].map(o => o.value), ['orders', 'payments']);
+      assert.deepEqual([...w.document.querySelectorAll('[name=importKind] option')].map(o => o.value), ['orders', 'payments', 'paymentUpdates']);
     } finally { w.close(); await w.happyDOM.abort(); }
   }
 });
@@ -1113,7 +1118,8 @@ test('Projects list and project pages show task progress; only Planning and Admi
     await flush();
     assert.equal(w.document.querySelector('#pageTitle').textContent, 'Villa Refurbishment');
     click(w, '[data-action=backProjects]');
-    assert.ok(w.document.querySelector('[data-action=newProject]'));
+    // Projects are master data: only Admin adds and edits them.
+    assert.equal(w.document.querySelector('[data-action=newProject]'), null);
     const search = w.document.querySelector('#projectSearch');
     type(w, search, 'villa');
     await flush();
@@ -1295,7 +1301,8 @@ test("Budgets page lists each approved budget; the Balance to request tab shows 
     assert.ok(cards.length > 0);
     assert.deepEqual([...cards[0].querySelectorAll(".budget-figures dt")].map((x) => x.textContent), ["Approved Budget", "Budget Utilized", "Available Budget", "Utilized"]);
     assert.ok(cards[0].querySelector(".dashboard-table tbody tr"));
-    assert.ok(w.document.querySelector("[data-action=newBudget]"));
+    // Budgets are master data: only Admin adds and revises them.
+    assert.equal(w.document.querySelector("[data-action=newBudget]"), null);
     type(w, w.document.querySelector("#budgetSearch"), "no such budget");
     await flush();
     assert.equal(w.document.querySelectorAll(".budget-card").length, 0);

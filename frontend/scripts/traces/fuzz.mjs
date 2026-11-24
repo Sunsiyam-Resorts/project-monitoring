@@ -382,11 +382,12 @@ function userCommand(s) {
 }
 
 function importCommand(s) {
-  const kind = pick(['companies', 'projects', 'suppliers', 'currencies', 'budgets', 'orders', 'orders', 'payments', 'payments', 'toString', 'constructor', '__proto__', 'nope']);
+  const kind = pick(['companies', 'projects', 'suppliers', 'currencies', 'budgets', 'orders', 'orders', 'payments', 'payments', 'paymentUpdates', 'paymentUpdates', 'paymentUpdates', 'toString', 'constructor', '__proto__', 'nope']);
   const table = { companies: ['Name', 'Short code'], projects: ['Name', 'Short code', 'Company'], suppliers: ['Name', 'Email'], currencies: ['Name', 'Currency code', 'Currency units per USD 1'],
     budgets: ['Name', 'Company', 'Project', 'Budget currency', 'Categories'],
     orders: ['Company', 'Project', 'Approved budget', 'Supplier', 'PO number', 'Invoice number', 'Currency', 'Full order amount', 'Description', 'Budget category allocations', 'Supporting PDFs', 'Payment request date', 'Payment currency', 'Payment request %', 'Payment Amount', 'Payment terms'],
-    payments: ['Main request number', 'Payment request date', 'Payment currency', 'Payment request %', 'Payment Amount', 'Payment terms'] };
+    payments: ['Main request number', 'Payment request date', 'Payment currency', 'Payment request %', 'Payment Amount', 'Payment terms'],
+    paymentUpdates: ['Payment request reference', 'Main request number', 'Supplier', 'Currency', 'Amount', 'Current status', 'New status', 'Payment type', 'Payment date', 'Remark'] };
   const fields = Object.hasOwn(table, kind) ? table[kind] : [];
   const n = int(1, 999);
   const good = {
@@ -398,6 +399,17 @@ function importCommand(s) {
     'Main request number': s.orders.filter((o) => !o.deleted).length ? pick(s.orders.filter((o) => !o.deleted)).number : 'nope',
   };
   if (!good['Payment request %']) good['Payment Amount'] = '100';
+  // A consistent payment update for a payment request waiting for Finance.
+  const waiting = s.requests.filter((r) => !r.deleted && ['Finance', 'On Hold'].includes(r.status));
+  const target = waiting.length ? pick(waiting) : null;
+  const update = pick(['Paid', 'Paid', 'On Hold', 'Rejected']);
+  const day = D.today(now).split('-').reverse().join('/');
+  Object.assign(good, {
+    'Payment request reference': target ? target.number : 'nope', Amount: '', 'Current status': target?.status || '',
+    'New status': update, 'Payment type': update === 'Paid' ? pick(['Cheque', 'transfer', 'TT']) : '',
+    'Payment date': update === 'Paid' ? day : '', Remark: update === 'Paid' ? pick(['', 'Paid in full']) : 'Fictional reason',
+  });
+  if (kind === 'paymentUpdates' && target) good['Main request number'] = '';
   const valid = chance(0.6);
   const value = (f) => {
     if (valid && f in good) return good[f];
@@ -426,6 +438,12 @@ function importCommand(s) {
       case 'Payment Amount': return pick(['', '', '100', '-1']);
       case 'Payment terms': return pick(['', 'Advance']);
       case 'Main request number': return s.orders.length && chance(0.8) ? pick(s.orders).number : 'nope';
+      case 'Payment request reference': return s.requests.length && chance(0.8) ? pick(s.requests).number : pick(['nope', '']);
+      case 'Supplier': case 'Currency': case 'Amount': case 'Current status': return pick(['', 'x']);
+      case 'New status': return pick(['Paid', 'paid', 'On Hold', 'on  hold', 'Rejected', 'Finance', '']);
+      case 'Payment type': return pick(['', 'Cheque', 'TT', 'Cash']);
+      case 'Payment date': return pick(['', D.today(now).split('-').reverse().join('/'), '01/03/2026', '01/01/2099', '31/02/2026', '2026-03-01']);
+      case 'Remark': return pick(['', 'Fictional reason']);
     }
     return '';
   };

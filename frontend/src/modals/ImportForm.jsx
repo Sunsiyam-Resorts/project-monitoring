@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Modal } from "./ModalHost.jsx";
 
-const LABELS = { companies: "Companies", projects: "Projects", suppliers: "Suppliers", currencies: "Currencies", budgets: "Approved budgets", orders: "New requests with first payment", payments: "Additional payment requests" };
+const LABELS = { companies: "Companies", projects: "Projects", suppliers: "Suppliers", currencies: "Currencies", budgets: "Approved budgets", orders: "New requests with first payment", payments: "Additional payment requests", paymentUpdates: "Payment updates by reference" };
 const isTemplate = (f) => /\.(csv|xlsx)$/i.test(f.name);
 const isPDF = (f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf";
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -30,6 +30,7 @@ export function ImportForm({ kinds }) {
   const [confirming, setConfirming] = useState(false);
   const validated = useRef(null);
   const withPDFs = kind === "orders";
+  const updates = kind === "paymentUpdates";
 
   // Any change discards the preview. The import type is tracked in state: reading it back
   // through form.elements is unreliable because the select's trigger button shares its id.
@@ -111,14 +112,18 @@ export function ImportForm({ kinds }) {
     <Modal title="Import CSV or Excel">
       <Form kind="import" onSubmit={validate} onChange={reset}>
         <div className="grid gap-5">
-          <Notice className="mt-0">Create new records only. Existing records and budget revisions must be edited individually. Imported payment requests go straight to Finance, as when they are created one by one.</Notice>
+          <Notice className="mt-0">{updates
+            ? "Update payment requests waiting for Finance, found by their system-generated reference. Each change is checked and recorded as if made one by one."
+            : "Create new records only. Existing records and budget revisions must be edited individually. Imported payment requests go straight to Finance, as when they are created one by one."}</Notice>
           <div className="max-w-sm"><Field label="Import type"><FormSelect name="importKind" id="importKind" disabled={kinds.length === 1} value={kind} onValueChange={changeKind} options={kinds.map((k) => ({ value: k, label: LABELS[k] }))} /></Field></div>
           <div className="grid gap-2">
             <ActionRow className="mt-0">
               <Button type="button" variant="outline" size="sm" data-action="importCSV" onClick={() => actions.importTemplate(kind, false)}>Download CSV template</Button>
               <Button type="button" variant="outline" size="sm" data-action="importXLSX" onClick={() => actions.importTemplate(kind, true)}>Download Excel template</Button>
             </ActionRow>
-            <Help>Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use DD/MM/YYYY, for example 23/11/2026. Excel imports use one populated sheet; formulas are not accepted.</Help>
+            {updates
+              ? <Help>The template lists the payment requests you can process now, with their reference. Fill New status on the rows to update (up to 100) and leave it blank on the rest. Paid needs Payment type (Cheque, Transfer or TT) and Payment date (DD/MM/YYYY, no later than today), and releases a hold first. On Hold and Rejected need a Remark giving the reason. Main request number, Supplier, Currency, Amount and Current status are for reference only and are not changed. Excel imports use one populated sheet; formulas are not accepted.</Help>
+              : <Help>Use all template headings, one record per row (maximum 100). Company and project accept names or short codes. Categories and allocations use Category:amount | Category:amount. For payments enter either amount or percentage, leaving the other blank. Dates use DD/MM/YYYY, for example 23/11/2026. Excel imports use one populated sheet; formulas are not accepted.</Help>}
           </div>
           {/* Drop area, then what happened to the files, then the files themselves, then the rules. */}
           <Field label={withPDFs ? "Completed template and supporting PDFs" : "Completed template"}>

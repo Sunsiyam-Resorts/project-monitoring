@@ -1,4 +1,4 @@
-import { isFinanceAdmin, kpis, projectProgress } from "../domain/domain.js";
+import { kpis, masterKinds, projectProgress } from "../domain/domain.js";
 import { Icon } from "../components/Icon.jsx";
 import { Empty, PageHeader } from "../components/ui.jsx";
 import { ListToolbar, SearchBox } from "../components/Toolbar.jsx";
@@ -21,7 +21,7 @@ export function Projects() {
   return (
     <>
       <PageHeader title="Projects" description={planning ? "Progress from each project’s tasks." : "Progress from each project’s tasks, beside its budget position."}
-        actions={isFinanceAdmin(user) ? <Button data-action="newProject" onClick={() => actions.newProject()}><Icon name="plus" />Add project</Button> : null} />
+        actions={masterKinds(user).includes("projects") ? <Button data-action="newProject" onClick={() => actions.newProject()}><Icon name="plus" />Add project</Button> : null} />
       <ListToolbar>
         <SearchBox id="projectSearch" label="Search projects" placeholder="Search project, code or company" value={projectSearch} onChange={(v) => actions.setSearch("projectSearch", v)} />
         <small className="text-xs text-muted-foreground">{`${ps.length} of ${all.length} projects${planning ? "" : " · budgets in USD"}`}</small>

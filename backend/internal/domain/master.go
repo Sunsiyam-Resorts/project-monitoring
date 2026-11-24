@@ -69,6 +69,7 @@ func (r *Rules) saveMaster(s *State, u *User, d any, now int64) (entity, company
 	need(isFinanceAdmin(u), "Finance or Admin required")
 	kind, _ := get(d, "kind").(string)
 	need(isString(get(d, "kind")) && slices.Contains(masterKinds, kind), "Invalid master type")
+	need(slices.Contains(masterKindsOf(u), kind), "Finance can change suppliers only; other master data is Admin's")
 	record := cloneDyn(get(d, "record"))
 	need(text(get(record, "name")) != "", "Name required")
 	rec := record.(map[string]any) // only an object can have a name

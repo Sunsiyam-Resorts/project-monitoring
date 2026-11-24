@@ -8,7 +8,14 @@ export const importFields = {
   budgets: ['Name', 'Company', 'Project', 'Budget currency', 'Categories'],
   orders: ['Company', 'Project', 'Approved budget', 'Supplier', 'PO number', 'Invoice number', 'Currency', 'Full order amount', 'Description', 'Budget category allocations', 'Supporting PDFs', 'Payment request date', 'Payment currency', 'Payment request %', 'Payment Amount', 'Payment terms'],
   payments: ['Main request number', 'Payment request date', 'Payment currency', 'Payment request %', 'Payment Amount', 'Payment terms'],
+  // Updates existing payment requests found by their system-generated reference. Main request
+  // number to Current status are read-only context filled in by the template and ignored.
+  paymentUpdates: ['Payment request reference', 'Main request number', 'Supplier', 'Currency', 'Amount', 'Current status', 'New status', 'Payment type', 'Payment date', 'Remark'],
 };
+export const PAYMENT_UPDATE_STATUSES = ['Paid', 'On Hold', 'Rejected'];
+export const PAYMENT_TYPES = ['Cheque', 'Transfer', 'TT'];
+// The pre-filled payment update template lists up to this many payment requests.
+export const PAYMENT_UPDATE_TEMPLATE_ROWS = 1000;
 const norm = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 function requireValue(ok, message) { if (!ok) throw Error(message); }
 
@@ -45,11 +52,15 @@ export function tableRows(kind, table) {
   for (const h of headers) requireValue(fields.some(f => norm(f) === h), `Unknown column: ${h || '(blank)'}`);
   for (const f of fields) requireValue(headers.includes(norm(f)), `Missing column: ${f}`);
   const rows = [];
+  // A payment update row with no New status leaves that payment request unchanged.
+  const status = kind === 'paymentUpdates' ? headers.indexOf(norm('New status')) : -1;
   table.slice(1).forEach((cells, i) => {
     if (cells.every(c => !String(c ?? '').trim())) return;
+    if (status >= 0 && !String(cells[status] ?? '').trim()) return;
     requireValue(cells.length <= headers.length, `Row ${i + 2}: too many columns`);
     rows.push({ line: i + 2, values: Object.fromEntries(fields.map(f => [f, String(cells[headers.indexOf(norm(f))] ?? '').trim()])) });
   });
+  requireValue(status < 0 || rows.length > 0, 'Fill in New status for at least one payment request');
   requireValue(rows.length > 0 && rows.length <= 100, 'Import between 1 and 100 records at a time');
   return rows;
 }
@@ -58,7 +69,9 @@ export function excelRows(kind, workbook) {
   const sheets = workbook.worksheets.filter(s => s.actualRowCount);
   requireValue(sheets.length === 1, 'Use exactly one populated worksheet');
   const sheet = sheets[0];
-  requireValue(sheet.rowCount <= 101 && sheet.columnCount <= importFields[kind].length, 'Excel imports support up to 100 records and the template columns only');
+  // The payment update template lists every payment request awaiting payment; at most 100 are filled in.
+  const maxRows = kind === 'paymentUpdates' ? PAYMENT_UPDATE_TEMPLATE_ROWS + 1 : 101;
+  requireValue(sheet.rowCount <= maxRows && sheet.columnCount <= importFields[kind].length, 'Excel imports support up to 100 records and the template columns only');
   const table = [];
   for (let i = 1; i <= sheet.rowCount; i++) {
     const row = [];
@@ -113,15 +126,46 @@ function categories(value) {
 }
 
 // Import dates are written day first, DD/MM/YYYY (day and month may be one digit), and stored
-// as YYYY-MM-DD like every other date. A blank date stays blank and defaults to today.
-function importDate(value) {
+// as YYYY-MM-DD like every other date. A blank date stays blank.
+function importDate(value, label = 'Payment request date') {
   const s = String(value ?? '').trim();
   if (!s) return '';
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   const [d, mo, y] = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
   const days = mo === 2 ? (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28) : [4, 6, 9, 11].includes(mo) ? 30 : 31;
-  requireValue(m && mo >= 1 && mo <= 12 && d >= 1 && d <= days, `Payment request date must be a real date written DD/MM/YYYY, for example 23/11/2026 (found ${s})`);
+  requireValue(m && mo >= 1 && mo <= 12 && d >= 1 && d <= days, `${label} must be a real date written DD/MM/YYYY, for example 23/11/2026 (found ${s})`);
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+const cell = v => String(v ?? '').trim();
+function oneOf(value, options, label) {
+  const match = options.find(o => norm(o) === norm(value));
+  requireValue(match, `${label} must be one of ${options.join(', ')}`);
+  return match;
+}
+
+// A payment update becomes the ordinary request actions Finance would take one by one: Paid
+// releases a hold first and records the remark, if any, before the payment; On Hold and
+// Rejected need the remark as their reason.
+function paymentUpdate(s, v) {
+  const r = find(s.requests.filter(r => !r.deleted), v['Payment request reference'], 'payment request');
+  requireValue(['Finance', 'On Hold'].includes(r.status), `${r.number} is ${r.status}; only payment requests with Finance or On Hold can be updated`);
+  const status = oneOf(v['New status'], PAYMENT_UPDATE_STATUSES, 'New status');
+  const remark = cell(v.Remark), id = r.id, steps = [];
+  if (status === 'Paid') {
+    const paymentType = oneOf(v['Payment type'], PAYMENT_TYPES, 'Payment type');
+    const paymentDate = importDate(v['Payment date'], 'Payment date');
+    requireValue(paymentDate, 'Enter the Payment date');
+    if (r.status === 'On Hold') steps.push({ type: 'request.resume', id });
+    if (remark) steps.push({ type: 'request.remark', id, data: { reason: remark } });
+    steps.push({ type: 'request.pay', id, data: { paymentType, paymentDate } });
+  } else {
+    requireValue(!(status === 'On Hold' && r.status === 'On Hold'), `${r.number} is already On Hold`);
+    requireValue(!cell(v['Payment type']) && !cell(v['Payment date']), `Leave Payment type and Payment date blank when New status is ${status}`);
+    requireValue(remark, `Enter a Remark giving the reason for ${status}`);
+    steps.push({ type: status === 'On Hold' ? 'request.hold' : 'request.reject', id, data: { reason: remark } });
+  }
+  return { type: 'import.update', id, steps };
 }
 
 export function importCommand(s, u, kind, v, files = []) {
@@ -140,6 +184,7 @@ export function importCommand(s, u, kind, v, files = []) {
     const o = find(s.orders.filter(o => !o.deleted), v['Main request number'], 'main request');
     return { type: 'request.create', data: { orderId: o.id, ...payment() } };
   }
+  if (kind === 'paymentUpdates') return paymentUpdate(s, v);
   let company, project;
   if (['projects', 'budgets', 'orders'].includes(kind)) company = find(s.companies, v.Company, 'company');
   if (['budgets', 'orders'].includes(kind)) project = find(s.projects.filter(p => p.companyId === company.id), v.Project, 'project');

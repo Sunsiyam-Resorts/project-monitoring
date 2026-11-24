@@ -1,7 +1,7 @@
 // One small external store per mounted app. Components read it through useAppState()
 // (useSyncExternalStore); the action layer (actions.js) is the only writer.
 import { createContext, useContext, useSyncExternalStore } from "react";
-import { allowedPages } from "./selectors.js";
+import { allowedPages, masterTabs } from "./selectors.js";
 
 export const emptyAuditFilter = () => ({ action: "", user: "", company: "", from: "", to: "" });
 
@@ -36,6 +36,8 @@ function normalise(s) {
   if (!s.state) return s;
   const pages = allowedPages(s.user);
   if (s.user && !pages.includes(s.page)) s = { ...s, page: pages[0] };
+  const tabs = masterTabs(s.user);
+  if (tabs.length && !tabs.includes(s.masterTab)) s = { ...s, masterTab: tabs[0] };
   if (s.company && !s.state.companies.some((c) => c.id === s.company)) s = { ...s, company: "", project: "" };
   if (s.page === "project" && !s.state.projects.some((p) => p.id === s.projectId)) s = { ...s, page: "projects" };
   return s;

@@ -5,7 +5,7 @@ import { Sub, TableBody, TableCell, TableHead, TableHeader, TableRow, WORK_TABLE
 import { ListToolbar, SearchBox, TabCount } from "../components/Toolbar.jsx";
 import { TableFooterNote } from "../components/TableFooterNote.jsx";
 import { fmt } from "../lib/format.js";
-import { nameOf } from "../lib/selectors.js";
+import { masterTabs, nameOf } from "../lib/selectors.js";
 import { useApp, useAppState, useData } from "../lib/store.js";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,7 +17,9 @@ const SINGULAR = { companies: "company", projects: "project", budgets: "budget",
 export function MasterData() {
   const { actions } = useApp();
   const { state } = useData();
-  const { masterTab, masterSearch } = useAppState();
+  const { masterTab, masterSearch, user } = useAppState();
+  // Admin sees every kind; Finance sees Suppliers only, so it gets no tab bar.
+  const tabs = masterTabs(user);
   const label = LABELS[masterTab].toLowerCase();
   const rows = state[masterTab].filter((r) => !masterSearch ||
     [r.name, r.email, nameOf(state, "companies", r.companyId), nameOf(state, "projects", r.projectId), r.id].join(" ").toLowerCase().includes(masterSearch.toLowerCase()));
@@ -31,13 +33,15 @@ export function MasterData() {
     <>
       <PageHeader title="Master data" description="The shared foundation for accurate budgets, requests and reporting."
         actions={<><Button variant="outline" data-action="import" onClick={() => actions.importForm()}>Import CSV / Excel</Button><Button data-action="newMaster" onClick={() => actions.newMaster()}><Icon name="plus" />{`Add ${SINGULAR[masterTab]}`}</Button></>} />
-      <Tabs value={masterTab} onValueChange={(v) => actions.setMasterTab(v)} className="mb-6">
-        <TabsList aria-label="View selection" className="tabs">
-          {Object.entries(LABELS).map(([v, t]) => (
-            <TabsTrigger key={v} value={v} data-master={v} className={masterTab === v ? "active" : ""} aria-pressed={String(masterTab === v)}>{t}<TabCount active={masterTab === v}>{state[v].length}</TabCount></TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {tabs.length > 1 ? (
+        <Tabs value={masterTab} onValueChange={(v) => actions.setMasterTab(v)} className="mb-6">
+          <TabsList aria-label="View selection" className="tabs">
+            {tabs.map((v) => (
+              <TabsTrigger key={v} value={v} data-master={v} className={masterTab === v ? "active" : ""} aria-pressed={String(masterTab === v)}>{LABELS[v]}<TabCount active={masterTab === v}>{state[v].length}</TabCount></TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      ) : null}
       <ListToolbar>
         <SearchBox id="masterSearch" label={`Search ${label}`} placeholder={`Search ${label}`} value={masterSearch} onChange={(v) => actions.setSearch("masterSearch", v)} />
         <small className="text-xs text-muted-foreground">{`${rows.length} ${label}`}</small>

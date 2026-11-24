@@ -3,7 +3,8 @@ import { randomId } from './ids.js';
 export { randomId };
 // One role per user. Finance raises requests and reviews and pays every payment request
 // (never one they raised themselves); there are no approval teams or approval levels.
-// Planning works on project tasks only. Viewers read; Admin administers.
+// Planning works on project tasks only. Viewers read; Admin administers and may process any
+// request, including its own.
 export const ROLES = [
   "Finance",
   "Planning",
@@ -70,8 +71,12 @@ export function emptyState() {
 }
 export const access = (u, c) =>
   !!u && (u.groupAccess || (u.companies || []).includes(c));
-// Finance and Admin have full operational access (everything except users and settings).
+// Finance and Admin have full operational access to requests and payments.
 export const isFinanceAdmin = (u) => !!u && u.active !== false && ["Finance", "Admin"].includes(u.role);
+// Master data is Admin's; Finance maintains suppliers only and opens no other master data.
+export const MASTER_KINDS = ["companies", "projects", "budgets", "suppliers", "currencies"];
+export const masterKinds = (u) =>
+  !u || u.active === false ? [] : u.role === "Admin" ? MASTER_KINDS : u.role === "Finance" ? ["suppliers"] : [];
 export const canCreateRequests = (u) => !!u && u.active !== false && ["Finance", "Admin"].includes(u.role);
 export const canManageRequest = (u, r) => canCreateRequests(u) && access(u, r.companyId) &&
   (isFinanceAdmin(u) || u.id === r.requestedBy);
@@ -79,9 +84,10 @@ export function roleFor(u, r, role) {
   return u.role === role && access(u, r.companyId) && u.id !== r.requestedBy;
 }
 // Who may act on a request or amendment waiting for Finance: Finance or Admin with access to
-// the company, never on a record they requested themselves (separation of duties).
+// the company. Finance never acts on a record it requested itself (separation of duties);
+// Admin may, since it also enters and imports records for others.
 export const financeActor = (u, r) =>
-  isFinanceAdmin(u) && access(u, r.companyId) && u.id !== r.requestedBy;
+  isFinanceAdmin(u) && access(u, r.companyId) && (u.role === "Admin" || u.id !== r.requestedBy);
 // Project tasks are Planning's work (Admin may also change them); Finance only reads them.
 export const canEditTasks = (u, companyId) => !!u && u.active !== false && ["Planning", "Admin"].includes(u.role) && access(u, companyId);
 // Project progress is the share of its tasks that are Done; null when it has no tasks.
@@ -495,7 +501,7 @@ export function visibleState(s, u) {
   out.audit = out.audit.filter(
     (c) =>
       (!c.companyId || access(u, c.companyId)) &&
-      (isFinanceAdmin(u) || c.companyId),
+      (u.role === "Admin" || c.companyId),
   );
   out.users = out.users.map(
     ({
@@ -802,20 +808,24 @@ export function apply(s, u, a, now = Date.now()) {
     const { kind, rows, files = [] } = a.data || {};
     need(u && u.active !== false, 'Active user required');
     need(importFields[kind], 'Invalid import type');
-    need(['orders', 'payments'].includes(kind) ? canCreateRequests(u) : isFinanceAdmin(u), 'Your role cannot import these records');
+    need(['orders', 'payments'].includes(kind) ? canCreateRequests(u)
+      : ['suppliers', 'paymentUpdates'].includes(kind) ? isFinanceAdmin(u) : u.role === 'Admin', 'Your role cannot import these records');
     need(Array.isArray(rows) && rows.length > 0 && rows.length <= 100, 'Import between 1 and 100 records');
     need(Array.isArray(files) && JSON.stringify(files).length <= 2800000, 'Combined supporting PDFs must not exceed 2 MB');
     const next = structuredClone(s), errors = [];
     for (const [index, row] of rows.entries()) {
       try {
         const cmd = importCommand(next, u, kind, row.values, files);
-        // Payment creation retains its ordinary parent lock contract.
-        const previousLock = cmd.type === 'request.create' ? next.locks?.[cmd.data.orderId] : null;
-        if (cmd.type === 'request.create') apply(next, u, { type: 'lock', id: cmd.data.orderId }, now);
-        apply(next, u, cmd, now);
-        if (cmd.type === 'request.create') {
-          if (previousLock) next.locks[cmd.data.orderId] = previousLock;
-          else apply(next, u, { type: 'unlock', id: cmd.data.orderId }, now);
+        // Payment creation keeps the ordinary lock contract of its parent, and a payment update
+        // that of its payment request: the row locks the record, then restores whoever had it.
+        const lockId = cmd.type === 'request.create' ? cmd.data.orderId : cmd.type === 'import.update' ? cmd.id : null;
+        const previousLock = lockId ? next.locks?.[lockId] : null;
+        if (lockId) apply(next, u, { type: 'lock', id: lockId }, now);
+        // A payment update is one or more ordinary request actions, each checked and audited.
+        for (const step of cmd.type === 'import.update' ? cmd.steps : [cmd]) apply(next, u, step, now);
+        if (lockId) {
+          if (previousLock) next.locks[lockId] = previousLock;
+          else apply(next, u, { type: 'unlock', id: lockId }, now);
         }
       } catch (error) { errors.push(`Row ${row.line || index + 2}: ${error.message}`); }
     }
@@ -1219,12 +1229,8 @@ export function apply(s, u, a, now = Date.now()) {
   } else if (a.type === "master.save") {
     need(isFinanceAdmin(u), "Finance or Admin required");
     const kind = d.kind;
-    need(
-      ["companies", "projects", "budgets", "suppliers", "currencies"].includes(
-        kind,
-      ),
-      "Invalid master type",
-    );
+    need(MASTER_KINDS.includes(kind), "Invalid master type");
+    need(masterKinds(u).includes(kind), "Finance can change suppliers only; other master data is Admin's");
     const rec = structuredClone(d.record);
     need(text(rec.name), "Name required");
     const prev = s[kind].find((x) => x.id === rec.id);

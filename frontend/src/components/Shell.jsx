@@ -124,7 +124,7 @@ function AppSidebar() {
           <SidebarGroup className="pt-4">
             <SidebarGroupLabel className="nav-label">Administration</SidebarGroupLabel>
             <SidebarMenu>
-              {item("master", "Master Data")}{admin ? item("users", "User Manager") : null}{item("audit", "Audit Log")}
+              {item("master", "Master Data")}{admin ? item("users", "User Manager") : null}{admin ? item("audit", "Audit Log") : null}
               {admin ? item("deleted", "Deleted") : null}{admin ? item("settings", "Settings") : null}
             </SidebarMenu>
           </SidebarGroup>

@@ -22,7 +22,16 @@ var ImportFields = map[string][]string{
 		"Full order amount", "Description", "Budget category allocations", "Supporting PDFs",
 		"Payment request date", "Payment currency", "Payment request %", "Payment Amount", "Payment terms"},
 	"payments": {"Main request number", "Payment request date", "Payment currency", "Payment request %", "Payment Amount", "Payment terms"},
+	// Updates existing payment requests found by their system-generated reference. Main
+	// request number to Current status are read-only context from the template and ignored.
+	"paymentUpdates": {"Payment request reference", "Main request number", "Supplier", "Currency", "Amount",
+		"Current status", "New status", "Payment type", "Payment date", "Remark"},
 }
+
+var (
+	paymentUpdateStatuses = []string{"Paid", "On Hold", "Rejected"}
+	paymentTypes          = []string{"Cheque", "Transfer", "TT"}
+)
 
 // importFields[kind] also finds Object.prototype members in JavaScript; their function
 // lengths decide what happens next (__proto__ has none).
@@ -127,8 +136,8 @@ func kindIs(kind any, names ...string) bool {
 }
 
 // importDate converts an import's day-first DD/MM/YYYY date (day and month may be one digit)
-// to the stored YYYY-MM-DD. A blank date stays blank and defaults to today.
-func importDate(value any) string {
+// to the stored YYYY-MM-DD. A blank date stays blank.
+func importDate(value any, label string) string {
 	s := jsTrim(toString(coalesce(value, "")))
 	if s == "" {
 		return ""
@@ -163,7 +172,7 @@ func importDate(value any) string {
 		days = 30
 	}
 	need(ok && m >= 1 && m <= 12 && d >= 1 && d <= days,
-		"Payment request date must be a real date written DD/MM/YYYY, for example 23/11/2026 (found "+s+")")
+		label+" must be a real date written DD/MM/YYYY, for example 23/11/2026 (found "+s+")")
 	pad := func(p string) string {
 		if len(p) == 1 {
 			return "0" + p
@@ -171,6 +180,53 @@ func importDate(value any) string {
 		return p
 	}
 	return parts[2] + "-" + pad(parts[1]) + "-" + pad(parts[0])
+}
+
+func importCell(v any) string { return jsTrim(toString(coalesce(v, ""))) }
+
+func importOneOf(value any, options []string, label string) string {
+	want := importNorm(value)
+	for _, o := range options {
+		if importNorm(o) == want {
+			return o
+		}
+	}
+	throw(label + " must be one of " + strings.Join(options, ", "))
+	return ""
+}
+
+// paymentUpdate turns a payment update row into the ordinary request actions Finance would
+// take one by one: Paid releases a hold first and records the remark, if any, before the
+// payment; On Hold and Rejected need the remark as their reason.
+func paymentUpdate(s *State, v any) map[string]any {
+	q := importFind(filter(s.Requests, func(x *Request) bool { return x.Deleted == nil }), get(v, "Payment request reference"), "payment request")
+	need(strIn(q.Status, "Finance", "On Hold"), tpl(q.Number)+" is "+tpl(q.Status)+"; only payment requests with Finance or On Hold can be updated")
+	status := importOneOf(get(v, "New status"), paymentUpdateStatuses, "New status")
+	remark, id := importCell(get(v, "Remark")), dynString(q.ID)
+	steps := []any{}
+	if status == "Paid" {
+		paymentType := importOneOf(get(v, "Payment type"), paymentTypes, "Payment type")
+		paymentDate := importDate(get(v, "Payment date"), "Payment date")
+		need(paymentDate != "", "Enter the Payment date")
+		if is(q.Status, "On Hold") {
+			steps = append(steps, map[string]any{"type": "request.resume", "id": id})
+		}
+		if remark != "" {
+			steps = append(steps, map[string]any{"type": "request.remark", "id": id, "data": map[string]any{"reason": remark}})
+		}
+		steps = append(steps, map[string]any{"type": "request.pay", "id": id, "data": map[string]any{"paymentType": paymentType, "paymentDate": paymentDate}})
+	} else {
+		need(!(status == "On Hold" && is(q.Status, "On Hold")), tpl(q.Number)+" is already On Hold")
+		need(importCell(get(v, "Payment type")) == "" && importCell(get(v, "Payment date")) == "",
+			"Leave Payment type and Payment date blank when New status is "+status)
+		need(remark != "", "Enter a Remark giving the reason for "+status)
+		typ := "request.reject"
+		if status == "On Hold" {
+			typ = "request.hold"
+		}
+		steps = append(steps, map[string]any{"type": typ, "id": id, "data": map[string]any{"reason": remark}})
+	}
+	return map[string]any{"type": "import.update", "id": id, "steps": steps}
 }
 
 // importCommand turns one row's values into the command that creates the record.
@@ -195,7 +251,7 @@ func (r *Rules) importCommand(s *State, u *User, kind, v, files any) map[string]
 	payment := func() map[string]any {
 		amount, percent := get(v, "Payment Amount"), get(v, "Payment request %")
 		need(truthy(amount) || truthy(percent), "Enter Payment Amount or Payment request %")
-		p := map[string]any{"date": importDate(get(v, "Payment request date")), "currency": get(v, "Payment currency"), "terms": get(v, "Payment terms")}
+		p := map[string]any{"date": importDate(get(v, "Payment request date"), "Payment request date"), "currency": get(v, "Payment currency"), "terms": get(v, "Payment terms")}
 		if truthy(amount) {
 			p["amount"] = importPositive(amount, "Payment Amount")
 		}
@@ -213,6 +269,9 @@ func (r *Rules) importCommand(s *State, u *User, kind, v, files any) map[string]
 			data[k] = x
 		}
 		return map[string]any{"type": "request.create", "data": data}
+	}
+	if kindIs(kind, "paymentUpdates") {
+		return paymentUpdate(s, v)
 	}
 	var company *Company
 	var project *Project
@@ -314,9 +373,11 @@ func (r *Rules) importRecords(s *State, u *User, a any, typ string, now int64) {
 	}
 	need(u != nil && activeUser(u), "Active user required")
 	need(importTypeOf(kind).found, "Invalid import type")
-	allowed := isFinanceAdmin(u)
+	allowed := is(roleOf(u), "Admin")
 	if kindIs(kind, "orders", "payments") {
 		allowed = canCreateRequests(u)
+	} else if kindIs(kind, "suppliers", "paymentUpdates") {
+		allowed = isFinanceAdmin(u)
 	}
 	need(allowed, "Your role cannot import these records")
 	list, ok := rows.([]any)
@@ -328,23 +389,34 @@ func (r *Rules) importRecords(s *State, u *User, a any, typ string, now int64) {
 	for index, row := range list {
 		err := capture(func() {
 			cmd := r.importCommand(next, u, kind, get(row, "values"), files)
-			// Payment creation retains its ordinary parent lock contract.
-			create := cmd["type"] == "request.create"
-			var orderID any
-			var previous *Lock
-			if create {
-				orderID = get(cmd["data"], "orderId")
-				if next.Locks != nil {
-					previous = next.Locks[lockKey(orderID)]
-				}
-				r.apply(next, u, map[string]any{"type": "lock", "id": orderID}, now)
+			// Payment creation keeps the ordinary lock contract of its parent, and a payment
+			// update that of its payment request: the row locks the record, then restores
+			// whoever had it.
+			var lockID any = Undefined
+			steps := []any{cmd}
+			switch cmd["type"] {
+			case "request.create":
+				lockID = get(cmd["data"], "orderId")
+			case "import.update":
+				lockID, steps = cmd["id"], cmd["steps"].([]any)
 			}
-			r.apply(next, u, cmd, now)
-			if create {
+			locked := truthy(lockID)
+			var previous *Lock
+			if locked {
+				if next.Locks != nil {
+					previous = next.Locks[lockKey(lockID)]
+				}
+				r.apply(next, u, map[string]any{"type": "lock", "id": lockID}, now)
+			}
+			// A payment update is one or more ordinary request actions, each checked and audited.
+			for _, step := range steps {
+				r.apply(next, u, step, now)
+			}
+			if locked {
 				if previous != nil {
-					next.Locks[lockKey(orderID)] = previous
+					next.Locks[lockKey(lockID)] = previous
 				} else {
-					r.apply(next, u, map[string]any{"type": "unlock", "id": orderID}, now)
+					r.apply(next, u, map[string]any{"type": "unlock", "id": lockID}, now)
 				}
 			}
 		})

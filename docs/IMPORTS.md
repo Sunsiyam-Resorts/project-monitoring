@@ -1,8 +1,8 @@
 # CSV and Excel imports
 
-Use **Import CSV / Excel** in Master Data (Admin) or on the Requests tab (Finance). Download the template for the selected type, fill it, upload it, then choose **Validate and preview**. Review the displayed values and choose **Import records**. No records are saved during preview. The server validates again at confirmation; any error rejects the entire batch, without consuming reference numbers.
+Use **Import CSV / Excel** in Master Data (Admin for every type; Finance for suppliers only) or on the Requests tab (Finance and Admin). Download the template for the selected type, fill it, upload it, then choose **Validate and preview**. Review the displayed values and choose **Import records**. No records are saved during preview. The server validates again at confirmation; any error rejects the entire batch, without consuming reference numbers.
 
-Imports create new records only. Edit existing masters through their normal forms, including mandatory reasons and preserved history for budget revisions. Currency imports cannot replace configured currencies. Imports cannot set request numbers, actors, statuses, approvals, payment history or commitment flags.
+Imports create new records only, apart from payment updates (below). Edit existing masters through their normal forms, including mandatory reasons and preserved history for budget revisions. Currency imports cannot replace configured currencies. Imports cannot set request numbers, actors, statuses, approvals, payment history or commitment flags.
 
 ## File format
 
@@ -36,6 +36,19 @@ Attach supporting PDFs using the import dialog and put their exact filenames in 
 Fill **either Payment Amount or Payment request %**, leaving the other blank. A percentage is entered as `30` for 30%, using a plain numeric Excel cell. The other value is calculated using the same saved conversion rules as manual creation. Blank payment date defaults to today's Maldives date, blank payment currency to the order currency, and blank terms to the normal website default. Each imported payment request goes straight to Finance, as when it is created one by one, and the first one commits its order (Revision 4).
 
 **Additional payment requests:** Main request number, Payment request date, Payment currency, Payment request %, Payment Amount, Payment terms. Use the existing main request reference. Only the original requester with matching team/company access can add children, subject to record locks and the remaining order balance. Each imported child starts its own independent approval workflow after manual submission.
+
+## Payment updates by reference
+
+**Payment updates by reference** (Requests tab, Finance and Admin) records payments, holds and rejections for existing payment requests in one file instead of one by one. Each payment request is found by its system-generated reference, the payment request number shown on the Requests page (for example `FLR-VU-PAY-000001`).
+
+Columns: Payment request reference, Main request number, Supplier, Currency, Amount, Current status, New status, Payment type, Payment date, Remark.
+
+- **The template comes filled in.** It lists every payment request you can process now (with Finance or On Hold, up to 1,000), by reference, with its main request, supplier, currency, amount and current status. Those context columns are for reading only and the import ignores them. The Excel template offers New status and Payment type as drop-down lists.
+- **Fill in New status on the rows to change** (up to 100 per file) and leave it blank on the rest; blank rows are skipped. A file with no New status filled in is refused.
+- **Paid** needs Payment type (`Cheque`, `Transfer` or `TT`) and Payment date (`DD/MM/YYYY`, no later than today). A request On Hold is released first. A Remark, if given, is recorded as a Finance remark before the payment.
+- **On Hold** and **Rejected** need a Remark, which becomes the reason; leave Payment type and Payment date blank. A request already On Hold cannot be put on hold again.
+- Status and type values ignore case. Only payment requests with Finance or On Hold can be updated.
+- Each row becomes the ordinary actions (release, remark, pay, hold, reject) with their usual checks: company access, the record lock, and separation of duties (a Finance user never processes a request they raised; Admin may). Each action is audited as if taken one by one, and any failing row rejects the whole file.
 
 ## Verification
 
